@@ -1,0 +1,16 @@
+# IDEA
+*.iml
+.idea/
+
+# Rust/Cargo
+/target
+
+# Development
+#/_build
+#/_data
+
+# Application
+#/log
+#application.conf
+
+*.log
