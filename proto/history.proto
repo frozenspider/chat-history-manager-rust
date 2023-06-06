@@ -1,0 +1,270 @@
+syntax = "proto3";
+
+package history;
+
+// The book store service definition.
+service JsonLoader {
+  // Retrieve a book
+  rpc ParseJsonFile(ParseJsonFileRequest) returns (ParseJsonFileResponse) {}
+}
+
+message ParseJsonFileRequest {
+  string path = 1;
+}
+
+message ParseJsonFileResponse {
+  Dataset ds = 1;
+
+  User myself = 2;
+
+  // Includes myself
+  repeated User users = 3;
+
+  repeated ChatWithMessages cwm = 10;
+}
+
+message Dataset {
+  UUID uuid = 1;
+  string alias = 2;
+  string source_type = 3;
+}
+
+message User {
+  UUID dsUuid = 1;
+  int64 id = 2;
+  /** If there's no first/last name separation, everything will be in first name */
+  optional string first_name = 3;
+  optional string last_name = 4;
+  optional string username = 5;
+  optional string phone_number = 6;
+}
+
+message ChatWithMessages {
+  Chat chat = 1;
+  repeated Message messages = 2;
+}
+
+message UUID {
+  string value = 1;
+}
+
+// The request with a id of the book
+message Chat {
+  UUID dsUuid = 1;
+  int64 id = 2;
+
+  string name = 3;
+  ChatType tpe = 4;
+  string img_path = 5;
+
+  repeated int64 member_ids = 6;
+  int32 msg_count = 7;
+}
+
+enum ChatType {
+  Personal = 0;
+  PrivateGroup = 1;
+}
+
+message Message {
+  /**
+   * Unique ID assigned to this message by a DAO storage engine, should be -1 until saved.
+   * No ordering guarantees are provided in general case.
+   * Might change on dataset/chat mutation operations.
+   * Should NEVER be compared across different DAOs!
+   */
+  int64 internal_id = 1;
+
+  /**
+   * Unique within a chat, serves as a persistent ID when merging with older/newer DB version.
+   * If it's not useful for this purpose, should be empty.
+   */
+  int64 source_id = 2;
+  int64 timestamp = 3;
+  int64 fromId = 4;
+
+  repeated RichTextElement text = 5;
+
+  MessageRegular regular = 6;
+  MessageService service = 7;
+}
+
+message MessageRegular {
+  optional int64 edit_timestamp = 1;
+  optional string forward_from_name = 2;
+  optional int64 reply_to_message_id = 3;
+  optional Content content = 4;
+}
+
+message MessageService {
+  oneof val {
+    MessageServicePhoneCall             phone_call = 1;
+    MessageServicePinMessage            pin_message = 2;
+    MessageServiceClearHistory          clear_history = 3;
+    MessageServiceGroupCreate           group_create = 4;
+    MessageServiceGroupEditTitle        group_edit_title = 5;
+    MessageServiceGroupEditPhoto        group_edit_photo = 6;
+    MessageServiceGroupInviteMembers    group_invite_members = 7;
+    MessageServiceGroupRemoveMembers    group_remove_members = 8;
+    MessageServiceGroupMigrateFrom      group_migrate_from = 9;
+    MessageServiceGroupMigrateTo        group_migrate_to = 10;
+    MessageServiceGroupCall             group_call = 11; // TODO: Unite with PhoneCall
+  }
+}
+
+message RichTextElement {
+  oneof val {
+    RtePlain            plain = 1;
+    RteBold             bold = 2;
+    RteItalic           italic = 3;
+    RteUnderline        underline = 4;
+    RteStrikethrough    strikethrough = 5;
+    RteLink             link = 6;
+    RtePrefmtInline     prefmt_inline = 7;
+    RtePrefmtBlock      prefmt_block = 8;
+  }
+}
+
+message RtePlain {
+  string text = 1;
+}
+message RteBold {
+  string text = 1;
+}
+message RteItalic {
+  string text = 1;
+}
+message RteUnderline {
+  string text = 1;
+}
+message RteStrikethrough {
+  string text = 1;
+}
+message RteLink {
+  optional string text = 1;
+  string href = 2;
+  bool hidden = 3;
+}
+message RtePrefmtInline {
+  string text = 1;
+}
+message RtePrefmtBlock {
+  string text = 1;
+  optional string language = 2;
+}
+
+message Content {
+  oneof val {
+    ContentSticker          sticker = 1;
+    ContentPhoto            photo = 2;
+    ContentVoiceMsg         voice_msg = 3;
+    ContentVideoMsg         video_msg = 4;
+    ContentAnimation        animation = 5;
+    ContentFile             file = 6;
+    ContentLocation         location = 7;
+    ContentPoll             poll = 8;
+    ContentSharedContact    shared_contact = 9;
+  }
+}
+message ContentSticker {
+  optional string path = 1;
+  int32 width = 2;
+  int32 height = 3;
+
+  optional string thumbnail_path = 4;
+  optional string emoji = 5;
+}
+message ContentPhoto {
+  optional string path = 1;
+  int32 width = 2;
+  int32 height = 3;
+}
+message ContentVoiceMsg {
+  optional string path = 1;
+  string mime_type = 2;
+  optional int32 duration_sec = 3;
+}
+message ContentVideoMsg {
+  optional string path = 1;
+  int32 width = 2;
+  int32 height = 3;
+
+  string mime_type = 4;
+  optional int32 duration_sec = 5;
+
+  optional string thumbnail_path = 6;
+}
+message ContentAnimation {
+  optional string path = 1;
+  int32 width = 2;
+  int32 height = 3;
+
+  optional string mime_type = 4;
+  optional int32 duration_sec = 5;
+
+  optional string thumbnail_path = 6;
+}
+message ContentFile {
+  optional string path = 1;
+  string title = 2;
+  optional int32 width = 3;
+  optional int32 height = 4;
+
+  optional string mime_type = 5;
+  optional int32 duration_sec = 6;
+
+  optional string thumbnail_path = 7;
+
+  optional string performer = 8;
+}
+message ContentLocation {
+  optional string title = 1;
+  optional string address = 2;
+  string lat_str = 3;
+  string lon_str = 4;
+
+  optional int32 duration_sec = 5;
+}
+message ContentPoll {
+  string question = 1;
+}
+message ContentSharedContact {
+  string first_name = 1;
+  string last_name = 2;
+  string phone_number = 3;
+  optional string vcard_path = 4;
+}
+
+message MessageServicePhoneCall {
+  optional int32 duration_sec = 1;
+  optional string discard_reason = 2;
+}
+message MessageServicePinMessage {
+  int64 message_id = 1;
+}
+message MessageServiceClearHistory {}
+message MessageServiceGroupCreate {
+  string title = 1;
+  repeated string members = 2;
+}
+message MessageServiceGroupEditTitle {
+  string title = 1;
+}
+message MessageServiceGroupEditPhoto {
+  ContentPhoto photo = 1;
+}
+message MessageServiceGroupInviteMembers {
+  repeated string members = 1;
+}
+message MessageServiceGroupRemoveMembers {
+  repeated string members = 1;
+}
+message MessageServiceGroupMigrateFrom {
+  string title = 1;
+}
+/* Migrate to supergroup of the same name */
+message MessageServiceGroupMigrateTo {
+}
+message MessageServiceGroupCall {
+  repeated string members = 1;
+}
