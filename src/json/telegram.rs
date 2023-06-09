@@ -9,17 +9,20 @@ use regex::Regex;
 use simd_json::{BorrowedValue, StaticNode, Value as JValue};
 use simd_json::borrowed::{Object, Value};
 use uuid::Uuid;
-use crate::{InMemoryDb, EmptyRes, Res};
 
+use crate::{EmptyRes, InMemoryDb, Res};
 use crate::proto::history;
 use crate::proto::history::{Chat, ChatType, ChatWithMessages, Dataset, Message, MessageRegular, MessageService, RichTextElement, User, Uuid as PbUuid};
 
 use super::*;
 
+mod parser_full;
+mod parser_single;
+
 type Id = i64;
 
 #[derive(Default, Debug)]
-struct Users {
+pub struct Users {
     id_to_user: HashMap<Id, User>,
     pretty_name_to_id: Vec<(String, Id)>,
 }
@@ -47,18 +50,6 @@ struct ShortUser {
 struct ExpectedMessageField<'lt> {
     required_fields: HashSet<&'lt str>,
     optional_fields: HashSet<&'lt str>,
-}
-
-lazy_static! {
-    static ref REGULAR_MSG_FIELDS: ExpectedMessageField<'static> = ExpectedMessageField {
-        required_fields: HashSet::from(["id", "type", "date", "text", "from", "from_id"]),
-        optional_fields: HashSet::from(["forwarded_from", "via_bot"]),
-    };
-
-    static ref SERVICE_MSG_FIELDS: ExpectedMessageField<'static> = ExpectedMessageField {
-        required_fields: HashSet::from(["id", "type", "date", "text", "actor", "actor_id", "action"]),
-        optional_fields: HashSet::from([]),
-    };
 }
 
 fn add_user(users: &mut Users, user: User) {
@@ -89,97 +80,14 @@ pub fn parse_file(path: &str, ds_uuid: &Uuid) -> Res<InMemoryDb> {
     let mut myself: User = Default::default();
     myself.ds_uuid = Some(ds_uuid.clone());
 
-    let mut users: Users = Default::default();
-
-    let mut chats_with_messages: Vec<ChatWithMessages> = vec!();
-
-    parse_object(root_obj, "root", ActionMap::from([
-        ("about", consume()),
-        ("profile_pictures", consume()),
-        ("frequent_contacts", consume()),
-        ("other_data", consume()),
-        ("contacts", Box::new(|v: &BorrowedValue| {
-            parse_bw_as_object(v, "personal_information", ActionMap::from([
-                ("about", consume()),
-                ("list", Box::new(|v: &BorrowedValue| {
-                    for v in v.as_array().ok_or("contact list is not an array!")? {
-                        let mut contact = parse_contact(v, "contact")?;
-                        contact.ds_uuid = Some(ds_uuid.clone());
-                        add_user(&mut users, contact);
-                    }
-                    Ok(())
-                })),
-            ]))?;
-            Ok(())
-        })),
-        ("personal_information", Box::new(|v: &BorrowedValue| {
-            parse_bw_as_object(v, "personal_information", ActionMap::from([
-                ("about", consume()),
-                ("user_id", Box::new(|v: &BorrowedValue| {
-                    myself.id = as_i64!(v, "ID");
-                    Ok(())
-                })),
-                ("first_name", Box::new(|v: &BorrowedValue| {
-                    myself.first_name = Some(as_string!(v, "first_name"));
-                    Ok(())
-                })),
-                ("last_name", Box::new(|v: &BorrowedValue| {
-                    myself.last_name = Some(as_string!(v, "last_name"));
-                    Ok(())
-                })),
-                ("username", Box::new(|v: &BorrowedValue| {
-                    myself.username = Some(as_string!(v, "username"));
-                    Ok(())
-                })),
-                ("phone_number", Box::new(|v: &BorrowedValue| {
-                    myself.phone_number = Some(as_string!(v, "phone_number"));
-                    Ok(())
-                })),
-                ("bio", consume()),
-            ]))
-        })),
-        ("chats", consume() /* Cannot borrow users the second time here! */),
-        ("left_chats", consume() /* Cannot borrow users the second time here! */),
-    ]))?;
-
-    add_user(&mut users, myself.clone());
-
-    fn parse_chats_inner(section: &str,
-                         chat_json: &Object,
-                         ds_uuid: &PbUuid,
-                         myself_id: &Id,
-                         users: &mut Users,
-                         chats_with_messages: &mut Vec<ChatWithMessages>) -> EmptyRes {
-        let chats_arr = chat_json
-            .get("list").ok_or("No chats list in dataset!")?
-            .as_array().ok_or(format!("{section} list is not an array!"))?;
-
-        for v in chats_arr {
-            let mut cwm = parse_chat(v, &ds_uuid, myself_id, users)?;
-            if let Some(ref mut c) = cwm.chat {
-                c.ds_uuid = Some(ds_uuid.clone());
-            }
-            chats_with_messages.push(cwm);
-        }
-
-        Ok(())
-    }
-
-    match root_obj.get("chats") {
-        Some(chats_json) => parse_chats_inner(
-            "chats", as_object!(chats_json, "chats"),
-            &ds_uuid, &myself.id, &mut users, &mut chats_with_messages,
-        )?,
-        None => return Err(String::from("No chats in dataset!")),
-    }
-
-    match root_obj.get("left_chats") {
-        Some(chats_json) => parse_chats_inner(
-            "left_chats", as_object!(chats_json, "left_chats"),
-            &ds_uuid, &myself.id, &mut users, &mut chats_with_messages,
-        )?,
-        None => { /* NOOP, left_chats are optional */ }
-    }
+    let single_chat_keys = HashSet::from(["name", "type", "id", "messages"]);
+    let keys = root_obj.keys().map(|s| s.deref()).collect::<HashSet<_>>();
+    let (users, chats_with_messages) =
+        if single_chat_keys.is_superset(&keys) {
+            parser_single::parse(root_obj, &ds_uuid, &mut myself)?
+        } else {
+            parser_full::parse(root_obj, &ds_uuid, &mut myself)?
+        };
 
     println!("Processed in {} ms", start_time.elapsed().as_millis());
 
@@ -223,7 +131,7 @@ fn parse_contact(bw: &BorrowedValue, name: &str) -> Res<User> {
     Ok(user)
 }
 
-fn parse_chat(bw: &BorrowedValue,
+fn parse_chat(chat_json: &Object,
               ds_uuid: &PbUuid,
               myself_id: &Id,
               users: &mut Users) -> Res<ChatWithMessages> {
@@ -232,7 +140,7 @@ fn parse_chat(bw: &BorrowedValue,
 
     let is_saved_messages = Cell::from(false);
 
-    parse_bw_as_object(bw, "chat", ActionMap::from([
+    parse_object(chat_json, "chat", ActionMap::from([
         ("", consume()), // No idea how to get rid of it
         ("name", Box::new(|v: &BorrowedValue| {
             if v.value_type() != ValueType::Null {
@@ -290,13 +198,21 @@ impl<'lt> MessageJson<'lt> {
         }
     }
 
-    fn field_opt(&mut self, name: &'lt str) -> Res<Option<&BorrowedValue>> {
+    fn add_required(&mut self, name: &'lt str) {
+        self.expected_fields.as_mut().map(|ef| ef.required_fields.insert(name));
+    }
+
+    fn add_optional(&mut self, name: &'lt str) {
         self.expected_fields.as_mut().map(|ef| ef.optional_fields.insert(name));
+    }
+
+    fn field_opt(&mut self, name: &'lt str) -> Res<Option<&BorrowedValue>> {
+        self.add_optional(name);
         Ok(self.val.get(name))
     }
 
     fn field(&mut self, name: &'lt str) -> Res<&BorrowedValue> {
-        self.expected_fields.as_mut().map(|ef| ef.required_fields.insert(name));
+        self.add_required(name);
         Self::unopt(Ok(self.val.get(name)), name, self.val)
     }
 
@@ -356,6 +272,18 @@ fn parse_message(bw: &BorrowedValue,
                  ds_uuid: &PbUuid,
                  myself_id: &Id,
                  users: &mut Users) -> Res<Option<Message>> {
+    lazy_static! {
+        static ref REGULAR_MSG_FIELDS: ExpectedMessageField<'static> = ExpectedMessageField {
+            required_fields: HashSet::from(["id", "type", "date", "text", "from", "from_id"]),
+            optional_fields: HashSet::from(["date_unixtime", "text_entities", "forwarded_from", "via_bot"]),
+        };
+
+        static ref SERVICE_MSG_FIELDS: ExpectedMessageField<'static> = ExpectedMessageField {
+            required_fields: HashSet::from(["id", "type", "date", "text", "actor", "actor_id", "action"]),
+            optional_fields: HashSet::from([]),
+        };
+    }
+
     let mut message_json = MessageJson {
         val: as_object!(bw, "message"),
         expected_fields: None,
@@ -398,9 +326,11 @@ fn parse_message(bw: &BorrowedValue,
         etc => return Err(format!("Unknown message type: {}", etc)),
     }
 
+    // Associate it with a real user, or create one if none found.
     append_user(short_user, users, ds_uuid, myself_id)?;
 
-    // Associate it with a real user, or create one if none found.
+    let has_unixtime = message_json.val.get("date_unixtime").is_some();
+    let has_text_entities = message_json.val.get("text_entities").is_some();
 
     for (k, v) in message_json.val.iter() {
         let kr = k.as_ref();
@@ -414,10 +344,16 @@ fn parse_message(bw: &BorrowedValue,
         match kr {
             "id" =>
                 message.source_id = as_i64!(v, "id"),
-            "date" => {
+            "date_unixtime" => {
+                message.timestamp = parse_timestamp(as_str!(v, "date_unixtime"))?;
+            }
+            "date" if !has_unixtime => {
                 message.timestamp = parse_datetime(as_str!(v, "date"))?;
             }
-            "text" => {
+            "text_entities" => {
+                message.text = parse_rich_text(v)?;
+            }
+            "text" if !has_text_entities => {
                 message.text = parse_rich_text(v)?;
             }
             _ => { /* Ignore, already consumed */ }
@@ -438,7 +374,10 @@ fn parse_regular_message(message_json: &mut MessageJson,
     use history::*;
     use history::content::Val;
 
-    if let Some(ref edited) = message_json.field_opt_str("edited")? {
+    if let Some(ref edited) = message_json.field_opt_str("edited_unixtime")? {
+        message_json.add_required("edited");
+        regular_msg.edit_timestamp = Some(parse_timestamp(edited.as_str())?);
+    } else if let Some(ref edited) = message_json.field_opt_str("edited")? {
         regular_msg.edit_timestamp = Some(parse_datetime(edited.as_str())?);
     }
     regular_msg.forward_from_name = match message_json.field_opt("forwarded_from")? {
@@ -617,9 +556,7 @@ fn parse_service_message(message_json: &mut MessageJson,
                 members: message_json.field_strs("members")?
             }),
         "join_group_by_link" => {
-            if let Some(ref mut ef) = message_json.expected_fields {
-                ef.required_fields.insert("inviter");
-            }
+            message_json.add_required("inviter");
             Val::GroupInviteMembers(MessageServiceGroupInviteMembers {
                 members: vec![message_json.field_str("actor")?]
             })
@@ -708,6 +645,10 @@ fn parse_rich_text_object(rte_json: &Box<Object>) -> Res<history::rich_text_elem
     }
 
     let res: Val = match get_field_str!(rte_json, "type") {
+        "plain" => {
+            check_keys!(["type", "text"]);
+            Val::Plain(RtePlain { text: get_field_string!(rte_json, "text") })
+        }
         "bold" => {
             check_keys!(["type", "text"]);
             Val::Bold(RteBold { text: get_field_string!(rte_json, "text") })
@@ -835,6 +776,10 @@ fn parse_user_id(bw: &BorrowedValue) -> Res<Id> {
         Value::String(Cow::Owned(s)) => parse_str(s.as_str()),
         _ => Err(err_msg)
     }
+}
+
+fn parse_timestamp(s: &str) -> Res<i64> {
+    s.parse::<i64>().map_err(|e| format!("Failed to parse unit timestamp {s}: {e}"))
 }
 
 fn parse_datetime(s: &str) -> Res<i64> {
