@@ -9,6 +9,7 @@ fn main() {
         .build_server(true)
         .file_descriptor_set_path(out_dir.join("greeter_descriptor.bin"))
         .out_dir("./src/proto")
+        .type_attribute(".", "#[derive(deepsize::DeepSizeOf)]")
         .compile(&[proto_file], &["."])
         .unwrap_or_else(|e| panic!("protobuf compile error: {}", e));
 

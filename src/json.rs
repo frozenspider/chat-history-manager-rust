@@ -96,7 +96,11 @@ fn consume<'lt>() -> BoxObjFn<'lt> {
 
 pub fn parse_file(path: &str) -> Res<InMemoryDb> {
     let uuid = Uuid::new_v4();
-    let src_alias = "Telegram"; // No choice yet.
+
+    // No choice yet.
+    let src_alias = "Telegram";
+    let src_type = "telegram";
+
     let now_str = Local::now().format("%Y-%m-%d");
 
     let results_json_path =
@@ -110,7 +114,7 @@ pub fn parse_file(path: &str) -> Res<InMemoryDb> {
         telegram::parse_file(results_json_path.as_str(), &uuid);
     parsed.iter_mut().for_each(|p| {
         p.dataset.alias = format!("{src_alias} data loaded @ {now_str}");
-        p.dataset.source_type = "telegram".to_owned();
+        p.dataset.source_type = src_type.to_owned();
     });
     parsed
 }

@@ -1,5 +1,6 @@
 use std::env::args;
 
+use deepsize::DeepSizeOf;
 use mimalloc::MiMalloc;
 
 use crate::proto::history::{ChatWithMessages, Dataset, User};
@@ -15,6 +16,7 @@ static GLOBAL: MiMalloc = MiMalloc;
 pub type Res<T> = Result<T, String>;
 pub type EmptyRes = Res<()>;
 
+#[derive(DeepSizeOf)]
 pub struct InMemoryDb {
     dataset: Dataset,
     myself: User,
@@ -30,7 +32,9 @@ fn main() {
             server::start_server().unwrap();
         }
         Some(path) => {
-            json::parse_file(path.as_str()).unwrap();
+            let parsed = json::parse_file(path.as_str()).unwrap();
+            let size: usize = parsed.deep_size_of();
+            println!("Size of parsed in-memory DB: {} MB ({} B)", size / 1024 / 1024, size);
         }
     }
 }
