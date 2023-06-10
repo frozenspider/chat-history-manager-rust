@@ -3,9 +3,9 @@ use std::env::args;
 use deepsize::DeepSizeOf;
 use mimalloc::MiMalloc;
 
-use crate::proto::history::{ChatWithMessages, Dataset, User};
+use crate::protobuf::history::{ChatWithMessages, Dataset, User};
 
-mod proto;
+mod protobuf;
 mod json;
 mod server;
 
@@ -29,7 +29,8 @@ fn main() {
     let mut args = args();
     match args.nth(1) {
         None => {
-            server::start_server().unwrap();
+            let server_port: u16 = 50051;
+            server::start_server(server_port).unwrap();
         }
         Some(path) => {
             let parsed = json::parse_file(path.as_str()).unwrap();

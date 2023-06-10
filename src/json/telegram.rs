@@ -11,8 +11,8 @@ use simd_json::borrowed::{Object, Value};
 use uuid::Uuid;
 
 use crate::{EmptyRes, InMemoryDb, Res};
-use crate::proto::history;
-use crate::proto::history::{Chat, ChatType, ChatWithMessages, Dataset, Message, MessageRegular, MessageService, RichTextElement, User, Uuid as PbUuid};
+use crate::protobuf::history;
+use crate::protobuf::history::{Chat, ChatType, ChatWithMessages, Dataset, Message, MessageRegular, MessageService, RichTextElement, User, Uuid as PbUuid};
 
 use super::*;
 
@@ -416,7 +416,7 @@ fn parse_regular_message(message_json: &mut MessageJson,
                 path: message_json.field_opt_path("file")?,
                 width: message_json.field_i32("width")?,
                 height: message_json.field_i32("height")?,
-                mime_type: message_json.field_opt_str("mime_type")?,
+                mime_type: message_json.field_str("mime_type")?,
                 duration_sec: message_json.field_opt_i32("duration_seconds")?,
                 thumbnail_path: message_json.field_opt_path("thumbnail")?,
             })),
@@ -496,8 +496,8 @@ fn parse_regular_message(message_json: &mut MessageJson,
             };
             Some(Val::SharedContact(ContentSharedContact {
                 first_name,
-                last_name,
-                phone_number,
+                last_name: Some(last_name),
+                phone_number: Some(phone_number),
                 vcard_path: message_json.field_opt_path("contact_vcard")?,
             }))
         }

@@ -1,0 +1,23 @@
+/**
+ * This file is only needed for a placeholder, since ScalaPB relies on importing this file
+ * (which is provided implicitly).
+ * On the Rust side though, this file is not present.
+ */
+syntax = "proto3";
+
+package scalapb;
+
+import "google/protobuf/descriptor.proto";
+
+extend google.protobuf.FileOptions {
+  // File-level optionals for ScalaPB.
+  // Extension number officially assigned by protobuf-global-extension-registry@google.com
+  optional ScalaPbOptions options = 1020;
+}
+
+message ScalaPbOptions {
+  string package_name = 1;
+  bool flat_package = 2;
+  bool single_file = 3;
+  bool no_default_values_in_constructor = 4;
+}

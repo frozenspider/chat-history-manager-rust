@@ -1,9 +1,10 @@
+use std::net::SocketAddr;
 use tonic::{Code, Request, Response, Status, transport::Server};
 use unicode_segmentation::UnicodeSegmentation;
 
 use crate::{EmptyRes, InMemoryDb, json};
-use crate::proto::history::{ParseJsonFileRequest, ParseJsonFileResponse};
-use crate::proto::history::json_loader_server::*;
+use crate::protobuf::history::{HelloWorldRequest, HelloWorldResponse, ParseJsonFileRequest, ParseJsonFileResponse};
+use crate::protobuf::history::json_loader_server::*;
 
 pub(crate) const FILE_DESCRIPTOR_SET: &[u8] =
     tonic::include_file_descriptor_set!("greeter_descriptor");
@@ -43,8 +44,8 @@ impl JsonLoader for JsonServer {
 
 // https://betterprogramming.pub/building-a-grpc-server-with-rust-be2c52f0860e
 #[tokio::main]
-pub async fn start_server() -> EmptyRes {
-    let addr = "[::1]:50051".parse().unwrap();
+pub async fn start_server(port: u16) -> EmptyRes {
+    let addr = format!("127.0.0.1:{port}").parse::<SocketAddr>().unwrap();
     let chm_server = JsonServer::default();
 
     let reflection_service = tonic_reflection::server::Builder::configure()

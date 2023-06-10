@@ -6,7 +6,7 @@
 /target
 
 # Generated
-src/proto/*
+src/protobuf/*
 
 # Development
 #/_build

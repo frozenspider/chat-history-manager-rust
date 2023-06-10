@@ -2,10 +2,29 @@ syntax = "proto3";
 
 package history;
 
+import "scalapb/scalapb.proto";
+
+option (scalapb.options) = {
+  package_name: "org.fs.chm.protobuf"
+  flat_package: true
+  single_file: true
+  // getters: true
+  no_default_values_in_constructor: true
+  // bytes_type: "scodec.bits.ByteVector"
+};
+
 // The book store service definition.
 service JsonLoader {
-  // Retrieve a book
+  rpc HelloWorld(HelloWorldRequest) returns (HelloWorldResponse) {}
   rpc ParseJsonFile(ParseJsonFileRequest) returns (ParseJsonFileResponse) {}
+}
+
+message HelloWorldRequest {
+  string name = 1;
+}
+
+message HelloWorldResponse {
+  string hello = 1;
 }
 
 message ParseJsonFileRequest {
@@ -55,6 +74,8 @@ message Chat {
 
   string name = 3;
   ChatType tpe = 4;
+
+  // Absolute path!
   string img_path = 5;
 
   repeated int64 member_ids = 6;
@@ -167,24 +188,29 @@ message Content {
   }
 }
 message ContentSticker {
+  // Absolute path!
   optional string path = 1;
   int32 width = 2;
   int32 height = 3;
 
+  // Absolute path!
   optional string thumbnail_path = 4;
   optional string emoji = 5;
 }
 message ContentPhoto {
+  // Absolute path!
   optional string path = 1;
   int32 width = 2;
   int32 height = 3;
 }
 message ContentVoiceMsg {
+  // Absolute path!
   optional string path = 1;
   string mime_type = 2;
   optional int32 duration_sec = 3;
 }
 message ContentVideoMsg {
+  // Absolute path!
   optional string path = 1;
   int32 width = 2;
   int32 height = 3;
@@ -192,19 +218,23 @@ message ContentVideoMsg {
   string mime_type = 4;
   optional int32 duration_sec = 5;
 
+  // Absolute path!
   optional string thumbnail_path = 6;
 }
 message ContentAnimation {
+  // Absolute path!
   optional string path = 1;
   int32 width = 2;
   int32 height = 3;
 
-  optional string mime_type = 4;
+  string mime_type = 4;
   optional int32 duration_sec = 5;
 
+  // Absolute path!
   optional string thumbnail_path = 6;
 }
 message ContentFile {
+  // Absolute path!
   optional string path = 1;
   string title = 2;
   optional int32 width = 3;
@@ -213,6 +243,7 @@ message ContentFile {
   optional string mime_type = 5;
   optional int32 duration_sec = 6;
 
+  // Absolute path!
   optional string thumbnail_path = 7;
 
   optional string performer = 8;
@@ -230,8 +261,9 @@ message ContentPoll {
 }
 message ContentSharedContact {
   string first_name = 1;
-  string last_name = 2;
-  string phone_number = 3;
+  optional string last_name = 2;
+  optional string phone_number = 3;
+  // Absolute path!
   optional string vcard_path = 4;
 }
 
