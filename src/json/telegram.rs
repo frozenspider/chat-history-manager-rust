@@ -272,15 +272,20 @@ fn parse_message(bw: &BorrowedValue,
                  ds_uuid: &PbUuid,
                  myself_id: &Id,
                  users: &mut Users) -> Res<Option<Message>> {
+    fn as_hash_set<'lt>(arr: &[&'lt str]) -> HashSet<&'lt str> {
+        let mut result = HashSet::with_capacity(100);
+        result.extend(arr);
+        result
+    }
     lazy_static! {
         static ref REGULAR_MSG_FIELDS: ExpectedMessageField<'static> = ExpectedMessageField {
-            required_fields: HashSet::from(["id", "type", "date", "text", "from", "from_id"]),
-            optional_fields: HashSet::from(["date_unixtime", "text_entities", "forwarded_from", "via_bot"]),
+            required_fields: as_hash_set(&["id", "type", "date", "text", "from", "from_id"]),
+            optional_fields: as_hash_set(&["date_unixtime", "text_entities", "forwarded_from", "via_bot"]),
         };
 
         static ref SERVICE_MSG_FIELDS: ExpectedMessageField<'static> = ExpectedMessageField {
-            required_fields: HashSet::from(["id", "type", "date", "text", "actor", "actor_id", "action"]),
-            optional_fields: HashSet::from([]),
+            required_fields: as_hash_set(&["id", "type", "date", "text", "actor", "actor_id", "action"]),
+            optional_fields: as_hash_set(&[]),
         };
     }
 
