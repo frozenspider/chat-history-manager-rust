@@ -1,0 +1,949 @@
+{
+ "about": "Here is the data you requested. Remember: Telegram is ad free, it doesn't use your data for ad targeting and doesn't sell it to others. Telegram only keeps the information it needs to function as a secure and feature-rich cloud service.\n\nCheck out Settings > Privacy & Security on Telegram's mobile apps for the relevant settings.",
+ "personal_information": {
+  "user_id": 11111111,
+  "first_name": "Aaaaa",
+  "last_name": "Aaaaaaaaaaa",
+  "phone_number": "+998 91 1234567",
+  "username": "@frozenspider",
+  "bio": "There should be bio, shouldn't there?"
+ },
+ "profile_pictures": [
+  {
+   "date": "2018-12-25T16:12:45",
+   "photo": "profile_pictures/photo_3@25-12-2018_16-12-45.jpg"
+  },
+  {
+   "date": "2015-11-06T12:36:57",
+   "photo": "profile_pictures/photo_4@06-11-2015_12-36-57.jpg"
+  }
+ ],
+ "contacts": {
+  "about": "If you allow access, your contacts are continuously synced with Telegram. Thanks to this, you can easily switch to Telegram and immediately connect with friends across all your devices. We use data about your contacts to let you know when they join Telegram, and to display them by the name you set for them in your phone.\n\nYou can disable contact syncing or delete your stored contacts in Settings > Privacy & Security on Telegram's mobile apps.",
+  "list": [
+   {
+    "user_id": 0,
+    "first_name": "Eeeee",
+    "last_name": "Eeeeeeeeee",
+    "phone_number": "+7 916 337 53 10",
+    "date": "2016-11-30T23:41:02"
+   },
+   {
+    "user_id": 0,
+    "first_name": "Myself",
+    "last_name": "",
+    "phone_number": "+998 91 1234567",
+    "date": "2016-01-08T01:51:40"
+   },
+   {
+    "user_id": 0,
+    "first_name": "Vvvvv",
+    "last_name": "Vvvvvvvvv",
+    "phone_number": "+7 951 123 45 67",
+    "date": "2016-08-18T12:20:07"
+   },
+   {
+    "user_id": 0,
+    "first_name": "Vvvvv",
+    "last_name": "Vvvvvvvvv",
+    "phone_number": "+7 910 765 43 21",
+    "date": "2016-08-18T14:05:26"
+   },
+   {
+    "user_id": 0,
+    "first_name": "Wwwwww",
+    "last_name": "Www",
+    "phone_number": "+998 90 9998877",
+    "date": "2015-12-31T18:27:53"
+   },
+   {
+    "user_id": 0,
+    "first_name": "Nnnnnnn",
+    "last_name": "",
+    "phone_number": "+998 90 1112233",
+    "date": "2016-10-03T18:51:43"
+   }
+  ]
+ },
+ "frequent_contacts": {
+  "about": "This rating shows which people you are likelier to message frequently. Telegram uses this data to populate the 'People' box at the top of the Search section. This rating is also calculated for inline bots so that the app can suggest the bots you are most likely to use in the attachment menu (or when you start a new message with \"@\").\n\nTo delete this data, go to Settings > Privacy & Security and disable 'Suggest Frequent Contacts' (requires Telegram for iOS v.4.8.3 or Telegram for Android v.4.8.10 or higher).",
+  "list": [
+  ]
+ },
+ "chats": {
+  "about": "This page lists all chats from this export.",
+  "list": [
+   {
+    "name": "ppppppp gggggg",
+    "type": "private_group",
+    "id": 8123123123,
+    "messages": [
+    {
+      "id": 4720,
+      "type": "service",
+      "date": "2016-11-09T00:26:24",
+      "edited": "1970-01-01T05:00:00",
+      "actor": "Wwwwww Www",
+      "actor_id": 22222222,
+      "action": "create_group",
+      "title": "ppppppp gggggg",
+      "members": [
+       "Wwwwww Www",
+       "Nnnnnnn",
+       "Aaaaa Aaaaaaaaaaa",
+       "Eeeee Eeeeeeeeee"
+      ],
+      "text": ""
+     },
+     {
+      "id": 4721,
+      "type": "service",
+      "date": "2016-11-09T00:29:02",
+      "edited": "1970-01-01T05:00:00",
+      "actor": "Wwwwww Www",
+      "actor_id": 22222222,
+      "action": "edit_group_photo",
+      "photo": "chats/chat_01/group_photo_1.jpg",
+      "width": 640,
+      "height": 640,
+      "text": ""
+     },
+     {
+      "id": 4722,
+      "type": "service",
+      "date": "2016-11-09T00:29:03",
+      "edited": "1970-01-01T05:00:00",
+      "actor": "Ddddddd Uuuuuuuu",
+      "actor_id": 333333333,
+      "action": "remove_members",
+      "members": [
+       "Ddddddd Uuuuuuuu"
+      ],
+      "text": ""
+     },
+     {
+      "id": 4725,
+      "type": "message",
+      "date": "2016-11-09T00:29:16",
+      "edited": "1970-01-01T05:00:00",
+      "from": "Wwwwww Www",
+      "from_id": 22222222,
+      "photo": "chats/chat_01/group_photo_2.jpg",
+      "width": 1280,
+      "height": 723,
+      "text": ""
+     },
+     {
+      "id": 4730,
+      "type": "message",
+      "date": "2016-11-09T00:36:45",
+      "edited": "1970-01-01T05:00:00",
+      "from": "Eeeee Eeeeeeeeee",
+      "from_id": 44444444,
+      "text": "Видел)"
+     },
+     {
+       "id": 4740,
+       "type": "service",
+       "date": "2016-11-09T00:46:45",
+       "edited": "1970-01-01T05:00:00",
+       "actor": "Wwwwww Www",
+       "actor_id": 22222222,
+       "action": "pin_message",
+       "message_id": 4723,
+       "text": ""
+     },
+     {
+      "id": 4744,
+      "type": "message",
+      "date": "2016-11-09T01:25:16",
+      "edited": "1970-01-01T05:00:00",
+      "from": "Wwwwww Www",
+      "from_id": 22222222,
+      "file": "chats/chat_01/stickers/sticker.webp",
+      "thumbnail": "chats/chat_01/stickers/sticker.webp_thumb.jpg",
+      "media_type": "sticker",
+      "sticker_emoji": "😆",
+      "width": 512,
+      "height": 512,
+      "text": ""
+     },
+     {
+       "id": 4756,
+       "type": "service",
+       "date": "2016-11-09T22:56:24",
+       "edited": "1970-01-01T05:00:00",
+       "actor": "Wwwwww Www",
+       "actor_id": 22222222,
+       "action": "invite_members",
+       "members": [
+         "Vvvvv Vvvvvvvvv"
+       ],
+       "text": ""
+     },
+     {
+       "id": 5104,
+       "type": "message",
+       "date": "2016-11-18T18:38:12",
+       "edited": "1970-01-01T05:00:00",
+       "from": "Vvvvv Vvvvvvvvv",
+       "from_id": 777777777,
+       "text": "Дратути"
+     },
+     {
+      "id": 10355,
+      "type": "message",
+      "date": "2016-12-13T18:25:51",
+      "edited": "1970-01-01T05:00:00",
+      "from": "Eeeee Eeeeeeeeee",
+      "from_id": 44444444,
+      "via_bot": "@saytextbot",
+      "file": "chats/chat_01/voice_messages/test.mp3",
+      "media_type": "voice_message",
+      "mime_type": "audio/mpeg",
+      "duration_seconds": 2,
+      "text": ""
+     },
+     {
+      "id": 10415,
+      "type": "message",
+      "date": "2016-12-13T19:57:06",
+      "edited": "1970-01-01T05:00:00",
+      "from": "Aaaaa Aaaaaaaaaaa",
+      "from_id": 11111111,
+      "text": [
+       "девиз Вольво:\n",
+       {
+        "type": "link",
+        "text": "http://cs5.pikabu.ru/post_img/big/2015/12/04/5/1449210847155432089.jpg"
+       },
+       "гыгы"
+      ]
+     },
+     {
+      "id": 10699,
+      "type": "message",
+      "date": "2016-12-14T16:15:43",
+      "edited": "1970-01-01T05:00:00",
+      "from": "Eeeee Eeeeeeeeee",
+      "from_id": 44444444,
+      "file": "(File not included. Change data exporting settings to download.)",
+      "thumbnail": "(File not included. Change data exporting settings to download.)",
+      "media_type": "animation",
+      "mime_type": "video/mp4",
+      "duration_seconds": 11,
+      "width": 258,
+      "height": 329,
+      "text": ""
+     },
+     {
+       "id": 27100,
+       "type": "message",
+       "date": "2017-07-28T13:41:40",
+       "edited": "1970-01-01T05:00:00",
+       "from": "Nnnnnnn",
+       "from_id": 555555555,
+       "forwarded_from": "Uzbek-MDK",
+       "text": [
+         "Латвии – денежные средства и ценные бумаги на 16,5 млн. долл. США, развлекательный центр в парковой зоне г.Риги стоимостью 9 млн. евро;\n \nИрландии – денежные средства и ценные бумаги на 300 млн. долл. США;\n \nострова Мальта – самолет стоимостью 48,8 млн. долл. США;\n \nГермании – денежные средства 2 млн. евро;\n \nИспании – денежные средства 82 тыс. долл. США;\n \nРоссии – денежные средства 6 млн. долл. США, в г.Москве – пентхаус в жилом комплексе «Камелот», особняк в массиве «Рублевка» и 8 квартир, в г.Ялте – гостиничный комплекс, жилой дом и земельный участок общей стоимостью более 2 млн. долл. США;\n \nГонконга – денежные средства 67 млн. долл. США, пентхаус в небоскребе «The Arch» стоимостью 15 млн. долл. США;\n \nОбъединенных Арабских Эмиратов – денежные средства 32 млн. долл. США, золота и золотых сертификатов на сумму 31,5 млн. долл. США, в Дубае – пентхаус, 2 виллы, 2 гостиничных комплекса общей стоимостью 67,4 млн. долл. США.\n \nВ рамках международного сотрудничества компетентным органам иностранных государств направлены постановления следственных органов о наложении ареста на вышеуказанные активы организованной преступной группы.\n \nВ настоящее время продолжаются оперативно-следственные мероприятия по установлению других активов организованной преступной группы и их возврату в Узбекистан. 👇                                                           ",
+         {
+           "type": "link",
+           "text": "https://t.me/joinchat/AAAAAEEdc-qGaxT9dUYbjw"
+         },
+         ""
+       ]
+     },
+     {
+      "id": 31325,
+      "type": "message",
+      "date": "2017-09-22T17:50:57",
+      "edited": "1970-01-01T05:00:00",
+      "from": "Nnnnnnn",
+      "from_id": 555555555,
+      "text": [
+       {
+        "type": "pre",
+        "text": "Уважаемый(ая) NNNNNN MMMMMMM ,\nОплата ГУП ГАВС НАК \"Узбекистон хаво йуллари\" 86815 сум за авиабилет номер 1231231231231 успешно произведена.\nSchet UZCARD (EOPC-0000). Номер платежа 987654321. Дата 19901231.",
+        "language": ""
+       },
+       {
+        "type": "bold",
+        "text": "bold text"
+       },
+       {
+        "type": "italic",
+        "text": "italic text"
+       },
+       {
+        "type": "strikethrough",
+        "text": "strikethrough text"
+       },
+       ""
+      ]
+     },
+     {
+      "id": 38952,
+      "type": "message",
+      "date": "2017-12-30T19:52:33",
+      "edited": "1970-01-01T05:00:00",
+      "from": "Wwwwww Www",
+      "from_id": 22222222,
+      "forwarded_from": "Wwwwww Www",
+      "file": "(File not included. Change data exporting settings to download.)",
+      "thumbnail": "(File not included. Change data exporting settings to download.)",
+      "media_type": "video_message",
+      "mime_type": "video/mp4",
+      "duration_seconds": 12,
+      "width": 240,
+      "height": 240,
+      "text": ""
+     },
+     {
+      "id": 39115,
+      "type": "message",
+      "date": "2017-12-31T13:40:45",
+      "edited": "1970-01-01T05:00:00",
+      "from": "Wwwwww Www",
+      "from_id": 22222222,
+      "file": "(File not included. Change data exporting settings to download.)",
+      "thumbnail": "(File not included. Change data exporting settings to download.)",
+      "media_type": "video_file",
+      "mime_type": "video/mp4",
+      "duration_seconds": 14,
+      "width": 480,
+      "height": 480,
+      "text": ""
+     },
+     {
+      "id": 39125,
+      "type": "message",
+      "date": "2017-12-31T16:10:55",
+      "edited": "1970-01-01T05:00:00",
+      "from": "Aaaaa Aaaaaaaaaaa",
+      "from_id": 11111111,
+      "forwarded_from": "Hearthstone Channel",
+      "photo": "(File not included. Change data exporting settings to download.)",
+      "width": 849,
+      "height": 1280,
+      "text": "Всех с наступающим!🐶🍾🎄"
+     },
+     {
+      "id": 39739,
+      "type": "message",
+      "date": "2018-01-18T20:04:30",
+      "edited": "1970-01-01T05:00:00",
+      "from": "Nnnnnnn",
+      "from_id": 555555555,
+      "text": "Reply to this!"
+     },
+     {
+      "id": 39740,
+      "type": "message",
+      "date": "2018-01-18T21:22:47",
+      "edited": "1970-01-01T05:00:00",
+      "from": "Aaaaa Aaaaaaaaaaa",
+      "from_id": 11111111,
+      "reply_to_message_id": 39739,
+      "text": "+, окно в Ад"
+     },
+     {
+      "id": 61541,
+      "type": "message",
+      "date": "2018-10-01T16:54:30",
+      "edited": "1970-01-01T05:00:00",
+      "from": "Wwwwww Www",
+      "from_id": 22222222,
+      "forwarded_from": "Tashkent24 - Новости Узбекистана",
+      "text": [
+       {
+        "type": "text_link",
+        "text": "​",
+        "href": "https://telegra.ph/file/8ae0cc38ca730522ddd44.jpg"
+       },
+       {
+        "type": "bold",
+        "text": "Ожидается повышение цен на: Бензин, газ, свет, горячую воду.\n\nКак сообщили корреспонденту Tashkent24 собственный источник в правительстве ожидается резкое повышение цвет в середине или в конце октября. Подробный прайс скоро выйдет на нашем канале. \n\n\nНовый прайс на бензин 👇"
+       },
+       ""
+      ]
+     },
+     {
+      "id": 62613,
+      "type": "message",
+      "date": "2018-10-13T15:09:43",
+      "edited": "1970-01-01T05:00:00",
+      "from": "Aaaaa Aaaaaaaaaaa",
+      "from_id": 11111111,
+      "forwarded_from": "Samarkand & Самарканд",
+      "text": [
+       {
+        "type": "text_link",
+        "text": "​​",
+        "href": "https://telegra.ph/file/702d087b6dc3cb5aec7f2.jpg"
+       },
+       "   \n",
+       {
+        "type": "bold",
+        "text": "В Узбекистане на официальном уровне признали народную медицину"
+       },
+       " \n\nВ документе отмечается, что теперь в стране \"народная медицина признается дополнительным методом оказания медицинской помощи населению\", а \"лица, оказывающие медицинские услуги с использованием методов народной медицины, несут ответственность за последствия своей деятельности в объеме, предусмотренном для медицинских работников в соответствии с законодательством\".\n \n🔗 ",
+       {
+        "type": "mention",
+        "text": "@samarkand100"
+       },
+       ""
+      ]
+     },
+     {
+       "id": 62898,
+       "type": "message",
+       "date": "2018-10-14T18:06:56",
+       "edited": "1970-01-01T05:00:00",
+       "from": "Aaaaa Aaaaaaaaaaa",
+       "from_id": 11111111,
+       "forwarded_from": "Samarkand & Самарканд",
+       "text": [
+         {
+           "type": "text_link",
+           "text": "​​",
+           "href": "https://telegra.ph/file/826f79ad0483087c77b49.jpg"
+         },
+         "   \n",
+         {
+           "type": "bold",
+           "text": "Все знают, где вкусно: Узбекистан занял первое место в номинации \"Гастрономический туризм\" в National Geographic Traveler Awards 2018"
+         },
+         " \n\n Эта престижная международная премия учреждена российским приложением знаменитого журнала National Geographic. В этом году лучшие отбирались по 25 номинациям. Голосование проходило на сайте журнала. ПолуWwwие премии National Geographic Traveler считается чрезвычайно престижным в мире международного туризма. \n \n🔗 ",
+         {
+           "type": "mention",
+           "text": "@samarkand100"
+         },
+         ""
+       ]
+     },
+     {
+      "id": 67346,
+      "type": "message",
+      "date": "2018-11-17T00:58:01",
+      "edited": "2018-11-17T00:58:05",
+      "from": "Aaaaa Aaaaaaaaaaa",
+      "from_id": 11111111,
+      "text": [
+       "ох ты что нашёл) в группе по хс проскочило\n",
+       {
+        "type": "link",
+        "text": "https://habr.com/post/335436/"
+       },
+       "\nдля нас работает с параметрами ",
+       {
+        "type": "code",
+        "text": "-a -3"
+       },
+       ""
+      ]
+     },
+     {
+      "id": 70625,
+      "type": "message",
+      "date": "2018-12-09T19:44:02",
+      "edited": "1970-01-01T05:00:00",
+      "from": "Wwwwww Www",
+      "from_id": 22222222,
+      "forwarded_from": "ᅠ",
+      "photo": "(File not included. Change data exporting settings to download.)",
+      "width": 420,
+      "height": 280,
+      "text": [
+       {
+        "type": "bold",
+        "text": "Узбекских милиционеров заставили на Коране поклясться не брать взятки."
+       },
+       " Сотрудники правоохранительных органов Юкоричирчикского района Ташкентской области публично поклялись на Коране не брать взятки и не заниматься вымогательством. \n   Таким образом в Узбекистане выполняют государственную программу по противодействию коррупции, которую утвердил президент страны Шавкат Мирзиеев. По словам одного из местных милиционеров, на мероприятии присутствовал главный имам района.\n\n",
+       {
+        "type": "italic",
+        "text": "Теперь осталось найти, есть ли что-либо святое для наших — и вот тогда точно победим коррупцию!"
+       },
+       ""
+      ]
+     },
+     {
+      "id": 71032,
+      "type": "message",
+      "date": "2018-12-10T00:48:57",
+      "edited": "1970-01-01T05:00:00",
+      "from": "Nnnnnnn",
+      "from_id": 555555555,
+      "forwarded_from": "2ch/Двач",
+      "photo": "(File not included. Change data exporting settings to download.)",
+      "width": 832,
+      "height": 1280,
+      "text": [
+       {
+        "type": "bold",
+        "text": "У DC "
+       },
+       {
+        "type": "text_link",
+        "text": "вышла новая серия",
+        "href": "https://readcomiconline.to/Comic/Doomsday-Clock/Issue-8?id=145162#1"
+       },
+       " комикса",
+       {
+        "type": "bold",
+        "text": " «Часы Судного дня»"
+       },
+       " про",
+       {
+        "type": "bold",
+        "text": " Супермэна"
+       },
+       " с участием ",
+       {
+        "type": "bold",
+        "text": "Пыни.\n\nЕсли коротко:"
+       },
+       " супергерой ",
+       {
+        "type": "bold",
+        "text": "Огненный Шторм"
+       },
+       " случайно превращает людей на Красной Площади в стекло. \n\n",
+       {
+        "type": "bold",
+        "text": "Пыня"
+       },
+       " тут же ",
+       {
+        "type": "bold",
+        "text": "обвиняет "
+       },
+       "\"проклятую",
+       {
+        "type": "bold",
+        "text": " Америку и пендосов"
+       },
+       "\", прилетает ",
+       {
+        "type": "bold",
+        "text": "Супермэн"
+       },
+       " в надежде разобраться в ситуации, но в этот же момент возвращается ",
+       {
+        "type": "bold",
+        "text": "Огненый Шторм"
+       },
+       ", который хотел все исправить и превратить людей обратно. \n\nПоявляются ",
+       {
+        "type": "bold",
+        "text": "российские супергерои(!)"
+       },
+       " и начинается битва, которая заканчивается взрывом на Красной Площади и, предположительно, 3-ей Мировой."
+      ]
+     },
+     {
+      "id": 74752,
+      "type": "message",
+      "date": "2018-12-25T15:18:42",
+      "edited": "1970-01-01T05:00:00",
+      "from": "Aaaaa Aaaaaaaaaaa",
+      "from_id": 11111111,
+      "contact_information": {
+       "first_name": "Vvvvv",
+       "last_name": "Vvvvvvvvv",
+       "phone_number": "+7 910 041 13 85"
+      },
+      "text": ""
+     },
+     {
+      "id": 78768,
+      "type": "message",
+      "date": "2019-01-15T06:13:31",
+      "edited": "1970-01-01T05:00:00",
+      "from": "Nnnnnnn",
+      "from_id": 555555555,
+      "forwarded_from": "2ch/Двач",
+      "text": [
+       "Похоже, скоро будет поставлен новый",
+       {
+        "type": "text_link",
+        "text": " ",
+        "href": "http://youtube.com/watch?v=koPmuEyP3a0"
+       },
+       "рекорд дизлайков. У ",
+       {
+        "type": "bold",
+        "text": "YouTube Rewind 2018"
+       },
+       " и ",
+       {
+        "type": "bold",
+        "text": "Diablo Mobile"
+       },
+       " появился конкурент.\n\nУ компании ",
+       {
+        "type": "bold",
+        "text": "Gillette"
+       },
+       " (дочерняя компания Procter & Gamble), которую многие знают как производителя мыльно-рыльных принадлежностей вроде бритв и гелей для бритья, начала подтекать крыша. \n\nОни решили, что пора сказать нет",
+       {
+        "type": "bold",
+        "text": "\"токсичной маскулинности\""
+       },
+       " и объяснить всем мужчинам, которые являются основными потребителями товаров, что те ",
+       {
+        "type": "bold",
+        "text": "живут неправильно"
+       },
+       ", харасят бедных ",
+       {
+        "type": "hashtag",
+        "text": "#мояборьба"
+       },
+       " и пора положить этому конец.\n\nРекламная агитка в лучших традициях пропаганды: на видео только нигры и прочие латиносы поступают правильно, а белые представленны агрессорами и \"плохими\".  \n\nВ лучших традициях все неудобные комменты под видео трут, а один из анонимасов решил затролить написав что-то вроде:",
+       {
+        "type": "bold",
+        "text": " «Ролик оWwwь понравился сыну моей жены! Спасибо вам!»"
+       },
+       " на что канал Gillette отреагировал лайком. Для ньюфагов — это была отсылка к ",
+       {
+        "type": "text_link",
+        "text": "мему про Сой-боев",
+        "href": "https://www.urbandictionary.com/define.php?term=Soy%20Boy"
+       },
+       " и куколдов\n\n",
+       {
+        "type": "bold",
+        "text": "Интересно, как скоро рыночек порешает за такой охуенный анти-маркетинг? \n\nСсылка на тред"
+       },
+       " — ",
+       {
+        "type": "link",
+        "text": "2ch.hk/b/res/189725761.html"
+       },
+       ""
+      ]
+     },
+     {
+       "id": 103927,
+       "type": "message",
+       "date": "2019-06-25T18:18:37",
+       "edited": "1970-01-01T05:00:00",
+       "from": "Wwwwww Www",
+       "from_id": 22222222,
+       "contact_information": {
+         "first_name": "Марат Такси Сам",
+         "last_name": "",
+         "phone_number": ""
+       },
+       "contact_vcard": "chats/chat_10/contacts/contact_1.vcard",
+       "text": ""
+     },
+     {
+       "id": 129125,
+       "type": "message",
+       "date": "2019-09-23T18:30:21",
+       "edited": "1970-01-01T05:00:00",
+       "from": "Nnnnnnn",
+       "from_id": 555555555,
+       "contact_information": {
+         "first_name": "",
+         "last_name": "",
+         "phone_number": "+998 90 9222229"
+       },
+       "contact_vcard": "chats/chat_08/contacts/contact_1.vcard",
+       "text": ""
+     },
+     {
+        "id": 129455,
+        "type": "message",
+        "date": "2019-09-24T20:47:19",
+        "edited": "2019-09-24T20:49:31",
+        "from": "Iiiii Kkkkkkkkkk",
+        "from_id": 666666666,
+        "location_information": {
+          "latitude": 41.328109,
+          "longitude": 69.327564
+        },
+        "live_location_period_seconds": 132,
+        "text": ""
+     },
+     {
+       "id": 132894,
+       "type": "message",
+       "date": "2019-09-30T18:23:26",
+       "edited": "1970-01-01T05:00:00",
+       "from": "Vlllllll",
+       "from_id": 310242343,
+       "forwarded_from": "Varlamov.ru",
+       "poll": {
+         "question": "Вечерний Мудозвон – это...",
+         "closed": false,
+         "total_voters": 36084,
+         "answers": [
+           {
+             "text": "Соловьёв",
+             "voters": 18714,
+             "chosen": false
+           },
+           {
+             "text": "Киселёв",
+             "voters": 3046,
+             "chosen": false
+           },
+           {
+             "text": "Ургант",
+             "voters": 1422,
+             "chosen": false
+           },
+           {
+             "text": "Собирательный образ тележурналиста",
+             "voters": 11202,
+             "chosen": true
+           },
+           {
+             "text": "Просто лирический герой",
+             "voters": 1700,
+             "chosen": false
+           }
+         ]
+       },
+       "text": ""
+     }
+    ]
+   },
+   {
+    "name": "Vvvvv",
+    "type": "personal_chat",
+    "id": 9777777777,
+    "messages": [
+     {
+      "id": 32616,
+      "type": "message",
+      "date": "2017-10-17T16:41:03",
+      "edited": "1970-01-01T05:00:00",
+      "from": "Aaaaa Aaaaaaaaaaa",
+      "from_id": 11111111,
+      "file": "chats/chat_01/stickers/sticker (100).webp",
+      "thumbnail": "chats/chat_01/stickers/sticker (100).webp_thumb.jpg",
+      "media_type": "sticker",
+      "sticker_emoji": "👍",
+      "width": 512,
+      "height": 512,
+      "text": ""
+     },
+     {
+      "id": 33500,
+      "type": "message",
+      "date": "2017-10-31T01:03:26",
+      "edited": "1970-01-01T05:00:00",
+      "from": "Vvvvv Vvvvvvvvv",
+      "from_id": 777777777,
+      "photo": "(File not included. Change data exporting settings to download.)",
+      "width": 772,
+      "height": 644,
+      "text": ""
+     },
+     {
+      "id": 36066,
+      "type": "message",
+      "date": "2017-11-09T23:59:12",
+      "edited": "1970-01-01T05:00:00",
+      "from": "Vvvvv Vvvvvvvvv",
+      "from_id": 777777777,
+      "file": "(File not included. Change data exporting settings to download.)",
+      "thumbnail": "(File not included. Change data exporting settings to download.)",
+      "media_type": "animation",
+      "mime_type": "video/mp4",
+      "duration_seconds": 119,
+      "width": 320,
+      "height": 240,
+      "text": ""
+     },
+     {
+      "id": 36302,
+      "type": "message",
+      "date": "2017-11-14T05:14:48",
+      "edited": "1970-01-01T05:00:00",
+      "from": "Aaaaa Aaaaaaaaaaa",
+      "from_id": 11111111,
+      "text": "во имя мира на планете\nвы не могли бы зоя впредь\nхотя б при женщинах и детях\nне петь\n© арчи бальчи"
+     },
+     {
+      "id": 36969,
+      "type": "message",
+      "date": "2017-11-19T10:31:06",
+      "edited": "1970-01-01T05:00:00",
+      "from": "Vvvvv Vvvvvvvvv",
+      "from_id": 777777777,
+      "photo": "(File not included. Change data exporting settings to download.)",
+      "width": 466,
+      "height": 623,
+      "text": ""
+     },
+     {
+      "id": 36970,
+      "type": "message",
+      "date": "2017-11-19T10:33:03",
+      "edited": "1970-01-01T05:00:00",
+      "from": "Vvvvv Vvvvvvvvv",
+      "from_id": 777777777,
+      "text": [
+       {
+        "type": "link",
+        "text": "https://vk.com/video11487496_456239071"
+       }
+      ]
+     },
+     {
+      "id": 40149,
+      "type": "service",
+      "date": "2018-01-25T14:44:24",
+      "edited": "1970-01-01T05:00:00",
+      "actor": "Vvvvv Vvvvvvvvv",
+      "actor_id": 777777777,
+      "action": "phone_call",
+      "discard_reason": "missed",
+      "text": ""
+     },
+     {
+      "id": 40163,
+      "type": "service",
+      "date": "2018-01-25T15:01:52",
+      "edited": "1970-01-01T05:00:00",
+      "actor": "Vvvvv Vvvvvvvvv",
+      "actor_id": 777777777,
+      "action": "phone_call",
+      "duration_seconds": 77,
+      "discard_reason": "hangup",
+      "text": ""
+     },
+     {
+      "id": 123883,
+      "type": "message",
+      "date": "2019-09-15T00:36:47",
+      "edited": "1970-01-01T05:00:00",
+      "from": "Vvvvv Vvvvvvvvv",
+      "from_id": 777777777,
+      "photo": "(File not included. Change data exporting settings to download.)",
+      "width": 669,
+      "height": 654,
+      "text": ""
+     },
+     {
+      "id": 123884,
+      "type": "message",
+      "date": "2019-09-15T00:36:56",
+      "edited": "1970-01-01T05:00:00",
+      "from": "Aaaaa Aaaaaaaaaaa",
+      "from_id": 11111111,
+      "text": "лол"
+     },
+     {
+      "id": 124030,
+      "type": "message",
+      "date": "2019-09-15T16:04:32",
+      "edited": "1970-01-01T05:00:00",
+      "from": "Aaaaa Aaaaaaaaaaa",
+      "from_id": 11111111,
+      "file": "(File not included. Change data exporting settings to download.)",
+      "mime_type": "application/pdf",
+      "text": ""
+     },
+     {
+      "id": 124133,
+      "type": "message",
+      "date": "2019-09-15T22:30:14",
+      "edited": "1970-01-01T05:00:00",
+      "from": "Aaaaa Aaaaaaaaaaa",
+      "from_id": 11111111,
+      "file": "chats/chat_02/stickers/sticker (8).webp",
+      "thumbnail": "chats/chat_02/stickers/sticker (8).webp_thumb.jpg",
+      "media_type": "sticker",
+      "sticker_emoji": "🍖",
+      "width": 512,
+      "height": 512,
+      "text": ""
+     }
+    ]
+   },
+   {
+    "name": null,
+    "type": "personal_chat",
+    "id": 4321012345,
+    "messages": [
+     {
+      "id": 24712,
+      "type": "message",
+      "date": "2017-06-23T20:11:00",
+      "edited": "1970-01-01T05:00:00",
+      "from": null,
+      "from_id": 32507588,
+      "text": "Message from null-names contact"
+     },
+     {
+      "id": 24713,
+      "type": "message",
+      "date": "2017-06-23T21:23:45",
+      "edited": "1970-01-01T05:00:00",
+      "from": null,
+      "from_id": 32507588,
+      "text": "These messages..."
+     },
+     {
+      "id": 24714,
+      "type": "message",
+      "date": "2017-06-23T21:23:45",
+      "edited": "1970-01-01T05:00:00",
+      "from": null,
+      "from_id": 32507588,
+      "text": "...have the same timestamp..."
+     },
+     {
+      "id": 24715,
+      "type": "message",
+      "date": "2017-06-23T21:23:45",
+      "edited": "1970-01-01T05:00:00",
+      "from": null,
+      "from_id": 32507588,
+      "text": "...but different IDs..."
+     },
+     {
+      "id": 24716,
+      "type": "message",
+      "date": "2017-06-23T21:23:45",
+      "edited": "1970-01-01T05:00:00",
+      "from": null,
+      "from_id": 32507588,
+      "text": "...and we expect order to be preserved."
+     }
+    ]
+   },
+   {
+    "name": "Ddddddd",
+    "type": "personal_chat",
+    "id": 9333333333,
+    "messages": [
+     {
+      "id": 91190,
+      "type": "service",
+      "date": "2019-04-27T00:57:16",
+      "edited": "1970-01-01T05:00:00",
+      "actor": "Aaaaa Aaaaaaaaaaa",
+      "actor_id": 11111111,
+      "action": "clear_history",
+      "text": ""
+     },
+     {
+      "id": 98749,
+      "type": "message",
+      "date": "2019-05-31T10:32:27",
+      "edited": "1970-01-01T05:00:00",
+      "from": "Ddddddd Uuuuuuuu",
+      "from_id": 333333333,
+      "text": "Конструктор 12.99\nБензин 35\nМакдак 10.59 (X + Я)\nБензин 40\nБензин 35\nМолоко 2.99\nБенз 1 + 1 ???\nБензин 40\nмагниты 7.71\nбензин 45 (наличка)\nмагниты 14.01\nбензин 40\nмакдак 7.49"
+     }
+    ]
+   }
+  ]
+ }
+}

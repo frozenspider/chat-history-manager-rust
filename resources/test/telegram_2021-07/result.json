@@ -1,0 +1,85 @@
+{
+ "about": "Here is the data you requested. Remember: Telegram is ad free, it doesn't use your data for ad targeting and doesn't sell it to others. Telegram only keeps the information it needs to function as a secure and feature-rich cloud service.\n\nCheck out Settings > Privacy & Security on Telegram's mobile apps for the relevant settings.",
+ "personal_information": {
+  "user_id": 11111111,
+  "first_name": "Aaaaa",
+  "last_name": "Aaaaaaaaaaa",
+  "phone_number": "+998 91 1234567",
+  "username": "@frozenspider",
+  "bio": "There should be bio, shouldn't there?"
+ },
+ "profile_pictures": [
+  {
+   "date": "2018-12-25T16:12:45",
+   "photo": "profile_pictures/photo_3@25-12-2018_16-12-45.jpg"
+  },
+  {
+   "date": "2015-11-06T12:36:57",
+   "photo": "profile_pictures/photo_4@06-11-2015_12-36-57.jpg"
+  }
+ ],
+ "contacts": {
+  "about": "If you allow access, your contacts are continuously synced with Telegram. Thanks to this, you can easily switch to Telegram and immediately connect with friends across all your devices. We use data about your contacts to let you know when they join Telegram, and to display them by the name you set for them in your phone.\n\nYou can disable contact syncing or delete your stored contacts in Settings > Privacy & Security on Telegram's mobile apps.",
+  "list": [
+   {
+    "first_name": "Eeeee",
+    "last_name": "Eeeeeeeeee",
+    "phone_number": "+7 916 337 53 10",
+    "date": "2016-11-30T23:41:02"
+   },
+   {
+    "first_name": "Myself",
+    "last_name": "",
+    "phone_number": "+998 91 1234567",
+    "date": "2016-01-08T01:51:40"
+   },
+   {
+    "first_name": "Wwwwww",
+    "last_name": "Www",
+    "phone_number": "+998 90 9998877",
+    "date": "2015-12-31T18:27:53"
+   }
+  ]
+ },
+ "frequent_contacts": {
+  "about": "This rating shows which people you are likelier to message frequently. Telegram uses this data to populate the 'People' box at the top of the Search section. This rating is also calculated for inline bots so that the app can suggest the bots you are most likely to use in the attachment menu (or when you start a new message with \"@\").\n\nTo delete this data, go to Settings > Privacy & Security and disable 'Suggest Frequent Contacts' (requires Telegram for iOS v.4.8.3 or Telegram for Android v.4.8.10 or higher).",
+  "list": [
+  ]
+ },
+ "chats": {
+  "about": "This page lists all chats from this export.",
+  "list": [
+   {
+    "name": "My Group",
+    "type": "private_group",
+    "id": 123123123,
+    "messages": [
+     {
+      "id": 111111,
+      "type": "service",
+      "date": "2021-07-03T22:38:58",
+      "actor": "Eeeee Eeeeeeeeee",
+      "actor_id": "user44444444",
+      "action": "invite_to_group_call",
+      "members": [
+       "Www Wwwwww"
+      ],
+      "text": ""
+     },
+     {
+      "id": 111112,
+      "type": "service",
+      "date": "2021-07-03T22:39:01",
+      "actor": "Eeeee Eeeeeeeeee",
+      "actor_id": "user44444444",
+      "action": "invite_to_group_call",
+      "members": [
+       "Myself"
+      ],
+      "text": ""
+     }
+    ]
+   }
+  ]
+ }
+}

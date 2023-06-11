@@ -4,34 +4,110 @@ use std::num::ParseIntError;
 use std::ops::Deref;
 
 use chrono::{Local, NaiveDate};
+use itertools::Itertools;
 use lazy_static::lazy_static;
 use regex::Regex;
 use simd_json::{BorrowedValue, StaticNode, Value as JValue};
 use simd_json::borrowed::{Object, Value};
-use uuid::Uuid;
 
 use crate::{EmptyRes, InMemoryDb, Res};
-use crate::protobuf::history;
-use crate::protobuf::history::{Chat, ChatType, ChatWithMessages, Dataset, Message, MessageRegular, MessageService, RichTextElement, User, Uuid as PbUuid};
+use crate::protobuf::*;
+use crate::protobuf::history::{Chat, ChatType, ChatWithMessages, Dataset, Message, MessageRegular, MessageService, RichTextElement, User, PbUuid};
 
 use super::*;
 
 mod parser_full;
 mod parser_single;
+#[cfg(test)]
+#[path = "telegram_tests.rs"]
+mod tests;
 
-type Id = i64;
+/// Starting with Telegram 2020-10, user IDs are shifted by this value
+static USER_ID_SHIFT: Id = 0x100000000_i64;
+
+/// Starting with Telegram 2021-05, personal chat IDs are un-shifted by this value
+static PERSONAL_CHAT_ID_SHIFT: Id = 0x100000000_i64;
+
+/// Starting with Telegram 2021-05, personal chat IDs are un-shifted by this value
+static GROUP_CHAT_ID_SHIFT: Id = PERSONAL_CHAT_ID_SHIFT * 2;
 
 #[derive(Default, Debug)]
 pub struct Users {
     id_to_user: HashMap<Id, User>,
-    pretty_name_to_id: Vec<(String, Id)>,
+    pretty_name_to_id: HashMap<String, Id>,
+    pretty_name_to_idless_users: Vec<(String, User)>,
 }
 
 impl Users {
-    fn insert(&mut self, user: User, pretty_name: String) {
+    fn pretty_name(u: &User) -> String {
+        String::from(format!(
+            "{} {}",
+            u.first_name.as_ref().map(|s| s.as_str()).unwrap_or(""),
+            u.last_name.as_ref().map(|s| s.as_str()).unwrap_or(""),
+        ).trim())
+    }
+
+    /// Consumes both users, creating a mega-user!
+    fn merge(original: User, new: User) -> User {
+        let (first_name, last_name) =
+            match (original.last_name.is_some(), new.last_name.is_some()) {
+                (true, _) => (original.first_name, original.last_name),
+                (_, true) => (new.first_name, new.last_name),
+                _ => (original.first_name.or(new.first_name),
+                      original.last_name.or(new.last_name))
+            };
+        User {
+            ds_uuid: original.ds_uuid.or(new.ds_uuid),
+            id: if original.id == 0 { new.id } else { original.id },
+            first_name,
+            last_name,
+            phone_number: original.phone_number.or(new.phone_number),
+            username: original.username.or(new.username),
+        }
+    }
+
+    fn insert(&mut self, user: User) {
+        println!("Inserting user {:?}", user);
+
+        let pretty_name = Self::pretty_name(&user);
+
+        let existing_pos = self.pretty_name_to_idless_users.iter()
+            .position(|(u_pretty_name, u)| {
+                let has_matching_name = match pretty_name.as_str() {
+                    "" => None,
+                    s => Some(s == u_pretty_name)
+                };
+                let has_matching_phone = match user.phone_number {
+                    None => None,
+                    ref some => Some(*some == u.phone_number)
+                };
+                match (has_matching_name, has_matching_phone) {
+                    // One is matching and the other isn't.
+                    (Some(true), Some(false)) | (Some(false), Some(true)) => false,
+
+                    // Matching
+                    (Some(true), _) | (_, Some(true)) => true,
+
+                    _ => false,
+                }
+            });
+        let existing_user =
+            existing_pos.map(|p| self.pretty_name_to_idless_users.remove(p).1);
+        println!("> Found user: {:?}", existing_user);
+        let user = match existing_user {
+            None => user,
+            Some(eu) => Self::merge(eu, user),
+        };
+        println!("> Merged into {:?}", user);
         let id = user.id;
-        self.id_to_user.insert(id, user);
-        self.pretty_name_to_id.push((pretty_name, id));
+        if id > 0 {
+            println!("> User has valid ID");
+            self.id_to_user.insert(id, user);
+            self.pretty_name_to_id.insert(pretty_name, id);
+        } else {
+            println!("> User has no ID!");
+            self.pretty_name_to_idless_users.push((pretty_name, user));
+        }
     }
 }
 
@@ -40,27 +116,10 @@ enum ShouldProceed {
     Skip,
 }
 
-#[derive(Debug)]
-struct ShortUser {
-    id: Id,
-    full_name: Option<String>,
-}
-
 #[derive(Clone)]
 struct ExpectedMessageField<'lt> {
     required_fields: HashSet<&'lt str>,
     optional_fields: HashSet<&'lt str>,
-}
-
-fn add_user(users: &mut Users, user: User) {
-    let pretty_name = String::from(
-        format!(
-            "{} {}",
-            user.first_name.as_ref().map(|s| s.as_str()).unwrap_or(""),
-            user.last_name.as_ref().map(|s| s.as_str()).unwrap_or(""),
-        ).trim()
-    );
-    users.insert(user, pretty_name);
 }
 
 pub fn parse_file(path: &str, ds_uuid: &Uuid) -> Res<InMemoryDb> {
@@ -97,8 +156,17 @@ pub fn parse_file(path: &str, ds_uuid: &Uuid) -> Res<InMemoryDb> {
         source_type: String::new(), // Will be set by caller.
     };
 
-    let mut users = users.id_to_user.into_values().collect::<Vec<User>>();
-    users.sort_by_key(|u| u.id);
+    if !users.pretty_name_to_idless_users.is_empty() {
+        println!("Discarding users with no IDs:");
+        for (_pretty_name, u) in users.pretty_name_to_idless_users {
+            println!("> {:?}", u);
+        }
+    }
+
+    let mut users = users.id_to_user.into_values().collect_vec();
+
+    // Set myself to be a first member (not required by convention but to match existing behaviour).
+    users.sort_by_key(|u| if u.id == myself.id { Id::MIN } else { u.id });
 
     Ok(InMemoryDb {
         dataset: ds,
@@ -114,19 +182,33 @@ fn parse_contact(bw: &BorrowedValue, name: &str) -> Res<User> {
 
     parse_bw_as_object(bw, name, ActionMap::from([
         ("date", consume()),
+        ("user_id", Box::new(|v: &BorrowedValue| {
+            // In older (pre-2021-06) dumps, id field was present but was always 0.
+            let id = as_i64!(v, "id");
+            if id == 0 {
+                Ok(())
+            } else {
+                Err("ID was an actual value and not zero!".to_owned())
+            }
+        })),
         ("first_name", Box::new(|v: &BorrowedValue| {
-            user.first_name = Some(as_string!(v, "first_name"));
+            user.first_name = as_string_option!(v, "first_name");
             Ok(())
         })),
         ("last_name", Box::new(|v: &BorrowedValue| {
-            user.last_name = Some(as_string!(v, "last_name"));
+            user.last_name = as_string_option!(v, "last_name");
             Ok(())
         })),
         ("phone_number", Box::new(|v: &BorrowedValue| {
-            user.phone_number = Some(as_string!(v, "phone_number"));
+            user.phone_number = as_string_option!(v, "phone_number");
             Ok(())
         })),
     ]))?;
+
+    // Normalize user ID.
+    if user.id >= USER_ID_SHIFT {
+        user.id -= USER_ID_SHIFT;
+    }
 
     Ok(user)
 }
@@ -136,15 +218,17 @@ fn parse_chat(chat_json: &Object,
               myself_id: &Id,
               users: &mut Users) -> Res<ChatWithMessages> {
     let mut chat: Chat = Default::default();
-    let mut messages: Vec<Message> = vec!();
+    let mut messages: Vec<Message> = vec![];
 
     let is_saved_messages = Cell::from(false);
+
+    let mut member_ids: HashSet<Id> = HashSet::with_capacity(100);
 
     parse_object(chat_json, "chat", ActionMap::from([
         ("", consume()), // No idea how to get rid of it
         ("name", Box::new(|v: &BorrowedValue| {
             if v.value_type() != ValueType::Null {
-                chat.name = as_string!(v, "chat.name");
+                chat.name = as_string_option!(v, "chat.name");
             }
             Ok(())
         })),
@@ -170,13 +254,35 @@ fn parse_chat(chat_json: &Object,
             if is_saved_messages.get() { return Ok(()); }
             let messages_json = as_array!(v, "messages");
             for v in messages_json {
-                if let Some(message) = parse_message(v, ds_uuid, myself_id, users)? {
+                if let Some(message) = parse_message(v, ds_uuid, myself_id, users,
+                                                     &mut member_ids)? {
                     messages.push(message);
                 }
             }
             Ok(())
         })),
     ]))?;
+
+    chat.msg_count = messages.len() as i32;
+
+    // Undo the shifts introduced by Telegram 2021-05.
+    match ChatType::from_i32(chat.tpe) {
+        Some(ChatType::Personal) if chat.id < PERSONAL_CHAT_ID_SHIFT =>
+            chat.id += PERSONAL_CHAT_ID_SHIFT,
+        Some(ChatType::PrivateGroup) if chat.id < GROUP_CHAT_ID_SHIFT =>
+            chat.id += GROUP_CHAT_ID_SHIFT,
+        Some(_etc) =>
+            { /* Don't change anything. */ },
+        None =>
+            return Err(format!("Chat type has no associated enum: {}", chat.tpe))
+    }
+
+    // Add myself as a first member (not required by convention but to match existing behaviour).
+    member_ids.remove(myself_id);
+    let mut member_ids = member_ids.into_iter().collect_vec();
+    member_ids.sort();
+    member_ids.insert(0, myself_id.clone());
+    chat.member_ids = member_ids;
 
     Ok(ChatWithMessages { chat: Some(chat), messages })
 }
@@ -271,7 +377,10 @@ impl<'lt> MessageJson<'lt> {
 fn parse_message(bw: &BorrowedValue,
                  ds_uuid: &PbUuid,
                  myself_id: &Id,
-                 users: &mut Users) -> Res<Option<Message>> {
+                 users: &mut Users,
+                 member_ids: &mut HashSet<Id>) -> Res<Option<Message>> {
+    use history::message::Typed;
+
     fn as_hash_set<'lt>(arr: &[&'lt str]) -> HashSet<&'lt str> {
         let mut result = HashSet::with_capacity(100);
         result.extend(arr);
@@ -285,7 +394,7 @@ fn parse_message(bw: &BorrowedValue,
 
         static ref SERVICE_MSG_FIELDS: ExpectedMessageField<'static> = ExpectedMessageField {
             required_fields: as_hash_set(&["id", "type", "date", "text", "actor", "actor_id", "action"]),
-            optional_fields: as_hash_set(&[]),
+            optional_fields: as_hash_set(&["edited"]),
         };
     }
 
@@ -298,7 +407,7 @@ fn parse_message(bw: &BorrowedValue,
     message.internal_id = -1;
 
     // Determine message type an parse short user from it.
-    let mut short_user: ShortUser = ShortUser { id: -1, full_name: None };
+    let mut short_user: ShortUser = ShortUser::default();
     let tpe = message_json.field_str("type")?;
     match tpe.as_str() {
         "message" => {
@@ -306,7 +415,7 @@ fn parse_message(bw: &BorrowedValue,
 
             let mut regular: MessageRegular = Default::default();
             parse_regular_message(&mut message_json, &mut regular)?;
-            message.regular = Some(regular);
+            message.typed = Some(Typed::Regular(regular));
 
             short_user.id = parse_user_id(message_json.field("from_id")?)?;
             short_user.full_name = match message_json.field_opt("from")? {
@@ -323,13 +432,22 @@ fn parse_message(bw: &BorrowedValue,
             if matches!(proceed, ShouldProceed::Skip) {
                 return Ok(None);
             }
-            message.service = Some(service);
+            message.typed = Some(Typed::Service(service));
 
             short_user.id = parse_user_id(message_json.field("actor_id")?)?;
             short_user.full_name = Some(message_json.field_str("actor")?);
         }
         etc => return Err(format!("Unknown message type: {}", etc)),
     }
+
+    // Normalize user ID.
+    if short_user.id >= USER_ID_SHIFT {
+        short_user.id -= USER_ID_SHIFT;
+    }
+
+    message.from_id = short_user.id;
+
+    member_ids.insert(short_user.id);
 
     // Associate it with a real user, or create one if none found.
     append_user(short_user, users, ds_uuid, myself_id)?;
@@ -737,8 +855,7 @@ fn append_user(short_user: ShortUser,
     } else {
         let su_full_name = short_user.full_name.as_ref();
         let found_id =
-            if su_full_name.is_none() ||
-                su_full_name.unwrap().is_empty() {
+            if su_full_name.is_none() || su_full_name.unwrap().is_empty() {
                 None
             } else {
                 let su_full_name = su_full_name.unwrap().as_str();
@@ -749,16 +866,9 @@ fn append_user(short_user: ShortUser,
         match found_id {
             Some(id) => Ok(id),
             None => {
-                let user = User {
-                    ds_uuid: Some(ds_uuid.clone()),
-                    id: short_user.id,
-                    first_name: short_user.full_name,
-                    last_name: None,
-                    username: None,
-                    phone_number: None,
-                };
+                let user = short_user.to_user(ds_uuid);
                 let id = user.id;
-                add_user(users, user);
+                users.insert(user);
                 Ok(id)
             }
         }

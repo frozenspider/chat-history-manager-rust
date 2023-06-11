@@ -39,6 +39,14 @@ macro_rules! as_str {
 macro_rules! as_string {
     ($v:expr, $txt:expr) => {as_str!($v, $txt).to_owned()};
 }
+macro_rules! as_string_option {
+    ($v:expr, $txt:expr) => {
+        match as_str!($v, $txt) {
+            "" => None,
+            s  => Some(s.to_owned()),
+        }
+    };
+}
 
 
 macro_rules! as_array {
@@ -69,6 +77,7 @@ pub(crate) use as_object;
 pub(crate) use as_str;
 pub(crate) use as_str_res;
 pub(crate) use as_string;
+pub(crate) use as_string_option;
 pub(crate) use as_string_res;
 pub(crate) use get_field_str;
 pub(crate) use get_field_string;

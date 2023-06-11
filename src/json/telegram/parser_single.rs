@@ -5,9 +5,9 @@ pub fn parse(root_obj: &Object,
              ds_uuid: &PbUuid,
              myself: &mut User) -> Res<(Users, Vec<ChatWithMessages>)> {
     let mut users: Users = Default::default();
-    let mut chats_with_messages: Vec<ChatWithMessages> = vec!();
+    let mut chats_with_messages: Vec<ChatWithMessages> = vec![];
 
-    add_user(&mut users, myself.clone());
+    users.insert(myself.clone());
 
     let mut cwm = parse_chat(root_obj, &ds_uuid, &myself.id, &mut users)?;
     if let Some(ref mut c) = cwm.chat {

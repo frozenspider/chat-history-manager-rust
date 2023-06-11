@@ -147,6 +147,7 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "deepsize",
+ "itertools",
  "lazy_static",
  "mimalloc",
  "prost",

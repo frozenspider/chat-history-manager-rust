@@ -2,8 +2,8 @@ use std::net::SocketAddr;
 use tonic::{Code, Request, Response, Status, transport::Server};
 use unicode_segmentation::UnicodeSegmentation;
 
-use crate::{EmptyRes, InMemoryDb, json};
-use crate::protobuf::history::{HelloWorldRequest, HelloWorldResponse, ParseJsonFileRequest, ParseJsonFileResponse};
+use crate::{EmptyRes, json};
+use crate::protobuf::history::{ParseJsonFileRequest, ParseJsonFileResponse};
 use crate::protobuf::history::json_loader_server::*;
 
 pub(crate) const FILE_DESCRIPTOR_SET: &[u8] =
@@ -15,7 +15,7 @@ macro_rules! truncate_to {
 
 #[derive(Default)]
 pub struct JsonServer {
-    db: Option<InMemoryDb>,
+//   db: Option<InMemoryDb>,
 }
 
 impl JsonServer {}

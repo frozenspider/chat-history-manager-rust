@@ -19,7 +19,7 @@ pub fn parse(root_obj: &Object,
                     for v in v.as_array().ok_or("contact list is not an array!")? {
                         let mut contact = parse_contact(v, "contact")?;
                         contact.ds_uuid = Some(ds_uuid.clone());
-                        add_user(&mut users, contact);
+                        users.insert(contact);
                     }
                     Ok(())
                 })),
@@ -56,7 +56,7 @@ pub fn parse(root_obj: &Object,
         ("left_chats", consume() /* Cannot borrow users the second time here! */),
     ]))?;
 
-    add_user(&mut users, myself.clone());
+    users.insert(myself.clone());
 
     fn parse_chats_inner(section: &str,
                          chat_json: &Object,

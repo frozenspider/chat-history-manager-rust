@@ -15,16 +15,7 @@ option (scalapb.options) = {
 
 // The book store service definition.
 service JsonLoader {
-  rpc HelloWorld(HelloWorldRequest) returns (HelloWorldResponse) {}
   rpc ParseJsonFile(ParseJsonFileRequest) returns (ParseJsonFileResponse) {}
-}
-
-message HelloWorldRequest {
-  string name = 1;
-}
-
-message HelloWorldResponse {
-  string hello = 1;
 }
 
 message ParseJsonFileRequest {
@@ -43,13 +34,13 @@ message ParseJsonFileResponse {
 }
 
 message Dataset {
-  UUID uuid = 1;
+  PbUuid uuid = 1;
   string alias = 2;
   string source_type = 3;
 }
 
 message User {
-  UUID dsUuid = 1;
+  PbUuid dsUuid = 1;
   int64 id = 2;
   /** If there's no first/last name separation, everything will be in first name */
   optional string first_name = 3;
@@ -63,21 +54,23 @@ message ChatWithMessages {
   repeated Message messages = 2;
 }
 
-message UUID {
+message PbUuid {
   string value = 1;
 }
 
 // The request with a id of the book
 message Chat {
-  UUID dsUuid = 1;
+  PbUuid dsUuid = 1;
   int64 id = 2;
 
-  string name = 3;
+  // Can actually be none sometimes
+  optional string name = 3;
   ChatType tpe = 4;
 
   // Absolute path!
   string img_path = 5;
 
+  // Always contains myself
   repeated int64 member_ids = 6;
   int32 msg_count = 7;
 }
@@ -106,8 +99,10 @@ message Message {
 
   repeated RichTextElement text = 5;
 
-  MessageRegular regular = 6;
-  MessageService service = 7;
+  oneof typed {
+    MessageRegular regular = 6;
+    MessageService service = 7;
+  }
 }
 
 message MessageRegular {
