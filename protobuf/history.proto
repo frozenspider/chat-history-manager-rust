@@ -67,7 +67,7 @@ message Chat {
   optional string name = 3;
   ChatType tpe = 4;
 
-  // Absolute path!
+  // Path relative to data root!
   string img_path = 5;
 
   // Always contains myself
@@ -79,6 +79,13 @@ enum ChatType {
   Personal = 0;
   PrivateGroup = 1;
 }
+
+/*
+ * Design goal for messages - try to reuse as many fields as possible to comfortably store
+ * the whole Message hierarchy in one table.
+ *
+ * Same applies to Content.
+ */
 
 message Message {
   /**
@@ -93,15 +100,18 @@ message Message {
    * Unique within a chat, serves as a persistent ID when merging with older/newer DB version.
    * If it's not useful for this purpose, should be empty.
    */
-  int64 source_id = 2;
+  optional int64 source_id = 2;
   int64 timestamp = 3;
   int64 fromId = 4;
 
   repeated RichTextElement text = 5;
 
+  // String that can be used to search this content. Should not be present during parsing, populated while processing.
+  optional string searchable_string = 6;
+
   oneof typed {
-    MessageRegular regular = 6;
-    MessageService service = 7;
+    MessageRegular regular = 7;
+    MessageService service = 8;
   }
 }
 
@@ -139,6 +149,9 @@ message RichTextElement {
     RtePrefmtInline     prefmt_inline = 7;
     RtePrefmtBlock      prefmt_block = 8;
   }
+
+  // String that can be used to search this content. Should not be present during parsing, populated while processing.
+  optional string searchable_string = 9;
 }
 
 message RtePlain {
@@ -185,29 +198,29 @@ message Content {
   }
 }
 message ContentSticker {
-  // Absolute path!
+  // Path relative to data root!
   optional string path = 1;
   int32 width = 2;
   int32 height = 3;
 
-  // Absolute path!
+  // Path relative to data root!
   optional string thumbnail_path = 4;
   optional string emoji = 5;
 }
 message ContentPhoto {
-  // Absolute path!
+  // Path relative to data root!
   optional string path = 1;
   int32 width = 2;
   int32 height = 3;
 }
 message ContentVoiceMsg {
-  // Absolute path!
+  // Path relative to data root!
   optional string path = 1;
   string mime_type = 2;
   optional int32 duration_sec = 3;
 }
 message ContentVideoMsg {
-  // Absolute path!
+  // Path relative to data root!
   optional string path = 1;
   int32 width = 2;
   int32 height = 3;
@@ -215,11 +228,11 @@ message ContentVideoMsg {
   string mime_type = 4;
   optional int32 duration_sec = 5;
 
-  // Absolute path!
+  // Path relative to data root!
   optional string thumbnail_path = 6;
 }
 message ContentAnimation {
-  // Absolute path!
+  // Path relative to data root!
   optional string path = 1;
   int32 width = 2;
   int32 height = 3;
@@ -227,11 +240,11 @@ message ContentAnimation {
   string mime_type = 4;
   optional int32 duration_sec = 5;
 
-  // Absolute path!
+  // Path relative to data root!
   optional string thumbnail_path = 6;
 }
 message ContentFile {
-  // Absolute path!
+  // Path relative to data root!
   optional string path = 1;
   string title = 2;
   optional int32 width = 3;
@@ -240,7 +253,7 @@ message ContentFile {
   optional string mime_type = 5;
   optional int32 duration_sec = 6;
 
-  // Absolute path!
+  // Path relative to data root!
   optional string thumbnail_path = 7;
 
   optional string performer = 8;
@@ -260,7 +273,7 @@ message ContentSharedContact {
   string first_name = 1;
   optional string last_name = 2;
   optional string phone_number = 3;
-  // Absolute path!
+  // Path relative to data root!
   optional string vcard_path = 4;
 }
 

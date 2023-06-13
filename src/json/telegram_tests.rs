@@ -251,10 +251,11 @@ fn loading_2021_07() {
         use crate::protobuf::history::message_service::Val;
         assert_eq!(msgs[0], Message {
             internal_id: -1,
-            source_id: 111111,
+            source_id: Some(111111),
             timestamp: local_date(2021, 07, 03, 22, 38, 58).timestamp(),
             from_id: member.id,
             text: vec![],
+            searchable_string: None,
             typed: Some(Typed::Service(MessageService {
                 val: Some(Val::GroupCall(MessageServiceGroupCall {
                     members: vec!["Www Wwwwww".to_owned()]
@@ -263,10 +264,11 @@ fn loading_2021_07() {
         });
         assert_eq!(msgs[1], Message {
             internal_id: -1,
-            source_id: 111112,
+            source_id: Some(111112),
             timestamp: local_date(2021, 07, 03, 22, 39, 01).timestamp(),
             from_id: member.id,
             text: vec![],
+            searchable_string: None,
             typed: Some(Typed::Service(MessageService {
                 val: Some(Val::GroupCall(MessageServiceGroupCall {
                     members: vec!["Myself".to_owned()]

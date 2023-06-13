@@ -365,11 +365,12 @@ impl<'lt> MessageJson<'lt> {
             .collect::<Res<Vec<String>>>()
     }
 
+    /// Retrieve a RELATIVE path!
     fn field_opt_path(&mut self, name: &'lt str) -> Res<Option<String>> {
         Ok(self.field_opt_str(name)?.and_then(|s| (match s.as_str() {
             "" => None,
             "(File not included. Change data exporting settings to download.)" => None,
-            _ => Some(s) // FIXME: Relative path!
+            _ => Some(s)
         })))
     }
 }
@@ -466,7 +467,7 @@ fn parse_message(bw: &BorrowedValue,
 
         match kr {
             "id" =>
-                message.source_id = as_i64!(v, "id"),
+                message.source_id = Some(as_i64!(v, "id")),
             "date_unixtime" => {
                 message.timestamp = parse_timestamp(as_str!(v, "date_unixtime"))?;
             }
@@ -721,7 +722,8 @@ fn parse_rich_text(rt_json: &Value) -> Res<Vec<RichTextElement>> {
                 Ok(vec!())
             } else {
                 Ok(vec![RichTextElement {
-                    val: Some(Val::Plain(RtePlain { text: s.deref().to_owned() }))
+                    val: Some(Val::Plain(RtePlain { text: s.deref().to_owned() })),
+                    searchable_string: None,
                 }])
             },
         Value::Array(arr) => {
@@ -735,7 +737,7 @@ fn parse_rich_text(rt_json: &Value) -> Res<Vec<RichTextElement>> {
                     etc =>
                         return Err(format!("Don't know how to parse RichText element '{:?}'", etc))
                 };
-                result.push(RichTextElement { val: Some(val) })
+                result.push(RichTextElement { val: Some(val), searchable_string: None })
             }
             Ok(result)
         }
