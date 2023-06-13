@@ -122,7 +122,7 @@ struct ExpectedMessageField<'lt> {
     optional_fields: HashSet<&'lt str>,
 }
 
-pub fn parse_file(path: &str, ds_uuid: &Uuid) -> Res<InMemoryDb> {
+pub fn parse_file(path: &str, ds_uuid: &Uuid, myself_chooser: MyselfChooser) -> Res<InMemoryDb> {
     let start_time = Instant::now();
     let ds_uuid = PbUuid { value: ds_uuid.to_string() };
 
@@ -143,7 +143,7 @@ pub fn parse_file(path: &str, ds_uuid: &Uuid) -> Res<InMemoryDb> {
     let keys = root_obj.keys().map(|s| s.deref()).collect::<HashSet<_>>();
     let (users, chats_with_messages) =
         if single_chat_keys.is_superset(&keys) {
-            parser_single::parse(root_obj, &ds_uuid, &mut myself)?
+            parser_single::parse(root_obj, &ds_uuid, &mut myself, myself_chooser)?
         } else {
             parser_full::parse(root_obj, &ds_uuid, &mut myself)?
         };

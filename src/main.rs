@@ -26,6 +26,10 @@ pub struct InMemoryDb {
     cwm: Vec<ChatWithMessages>,
 }
 
+type MyselfChooser = fn(&Vec<&User>) -> Res<usize>;
+
+static NO_CHOOSER: MyselfChooser = |_| { Err("No way to choose myself!".to_owned()) };
+
 /** Starts a server by default. If an argument is provided, it's used as a path and parsed. */
 fn main() {
     let mut args = args();
@@ -35,7 +39,7 @@ fn main() {
             server::start_server(server_port).unwrap();
         }
         Some(path) => {
-            let parsed = json::parse_file(path.as_str()).unwrap();
+            let parsed = json::parse_file(path.as_str(), NO_CHOOSER).unwrap();
             let size: usize = parsed.deep_size_of();
             println!("Size of parsed in-memory DB: {} MB ({} B)", size / 1024 / 1024, size);
         }

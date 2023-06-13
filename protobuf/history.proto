@@ -157,8 +157,10 @@ message RteStrikethrough {
   string text = 1;
 }
 message RteLink {
+  // Empty text would mean that this link is hidden - but it can still be hidden even if it's not.
   optional string text = 1;
   string href = 2;
+  // Some TG chats use text_links with empty/invisible text to be shown as preview but not appear in text.
   bool hidden = 3;
 }
 message RtePrefmtInline {

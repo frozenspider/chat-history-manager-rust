@@ -2,7 +2,7 @@ use std::net::SocketAddr;
 use tonic::{Code, Request, Response, Status, transport::Server};
 use unicode_segmentation::UnicodeSegmentation;
 
-use crate::{EmptyRes, json};
+use crate::{EmptyRes, json, NO_CHOOSER};
 use crate::protobuf::history::{ParseJsonFileRequest, ParseJsonFileResponse};
 use crate::protobuf::history::json_loader_server::*;
 
@@ -28,7 +28,7 @@ impl JsonLoader for JsonServer {
     ) -> Result<Response<ParseJsonFileResponse>, Status> {
         println!(">>> Request:  {:?}", request.get_ref());
         let response =
-            json::parse_file(request.get_ref().path.as_str())
+            json::parse_file(request.get_ref().path.as_str(), NO_CHOOSER)
                 .map_err(|s| Status::new(Code::Internal, s))
                 .map(|pr| ParseJsonFileResponse {
                     ds: Some(pr.dataset),
