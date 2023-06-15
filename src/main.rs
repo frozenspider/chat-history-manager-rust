@@ -1,6 +1,7 @@
 extern crate core;
 
 use std::env::args;
+use std::path::PathBuf;
 
 use deepsize::DeepSizeOf;
 use mimalloc::MiMalloc;
@@ -21,6 +22,7 @@ pub type EmptyRes = Res<()>;
 #[derive(DeepSizeOf)]
 pub struct InMemoryDb {
     dataset: Dataset,
+    ds_root: PathBuf,
     myself: User,
     users: Vec<User>,
     cwm: Vec<ChatWithMessages>,

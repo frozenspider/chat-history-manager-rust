@@ -32,6 +32,7 @@ impl JsonLoader for JsonServer {
                 .map_err(|s| Status::new(Code::Internal, s))
                 .map(|pr| ParseJsonFileResponse {
                     ds: Some(pr.dataset),
+                    root_file: String::from(pr.ds_root.to_str().unwrap()),
                     myself: Some(pr.myself),
                     users: pr.users,
                     cwm: pr.cwm,

@@ -1,6 +1,7 @@
 use std::cell::Cell;
 use std::collections::HashMap;
 use std::fs;
+use std::path::Path;
 use std::time::Instant;
 use chrono::Local;
 
@@ -112,18 +113,13 @@ pub fn parse_file(path: &str, myself_chooser: MyselfChooser) -> Res<InMemoryDb> 
 
     let now_str = Local::now().format("%Y-%m-%d");
 
-    let results_json_path =
-        if !path.ends_with("result.json") {
-            format!("{path}/result.json")
-        } else {
-            path.to_owned()
-        };
-    println!("Parsing '{results_json_path}'");
     let mut parsed =
-        telegram::parse_file(results_json_path.as_str(), &uuid, myself_chooser);
+        telegram::parse_file(Path::new(path), &uuid, myself_chooser);
+
     parsed.iter_mut().for_each(|p| {
         p.dataset.alias = format!("{src_alias} data loaded @ {now_str}");
         p.dataset.source_type = src_type.to_owned();
     });
+
     parsed
 }

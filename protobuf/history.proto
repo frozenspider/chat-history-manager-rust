@@ -23,14 +23,16 @@ message ParseJsonFileRequest {
 }
 
 message ParseJsonFileResponse {
-  Dataset ds = 1;
+  Dataset ds = 1 [(scalapb.field).no_box = true];
 
-  User myself = 2;
+  string root_file = 2;
+
+  User myself = 3 [(scalapb.field).no_box = true];
 
   // Includes myself
-  repeated User users = 3;
+  repeated User users = 4;
 
-  repeated ChatWithMessages cwm = 10;
+  repeated ChatWithMessages cwm = 5;
 }
 
 message Dataset {
@@ -51,7 +53,7 @@ message User {
 }
 
 message ChatWithMessages {
-  Chat chat = 1;
+  Chat chat = 1 [(scalapb.field).no_box = true];
   repeated Message messages = 2;
 }
 

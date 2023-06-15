@@ -2,6 +2,7 @@ use std::borrow::Cow;
 use std::collections::HashSet;
 use std::num::ParseIntError;
 use std::ops::Deref;
+use std::path::{Path, PathBuf};
 
 use chrono::{Local, NaiveDate};
 use itertools::Itertools;
@@ -122,11 +123,24 @@ struct ExpectedMessageField<'lt> {
     optional_fields: HashSet<&'lt str>,
 }
 
-pub fn parse_file(path: &str, ds_uuid: &Uuid, myself_chooser: MyselfChooser) -> Res<InMemoryDb> {
+pub fn parse_file(path: &Path, ds_uuid: &Uuid, myself_chooser: MyselfChooser) -> Res<InMemoryDb> {
+    let path: PathBuf =
+        if !path.ends_with("result.json") {
+            path.join("result.json")
+        } else {
+            path.to_path_buf()
+        };
+
+    if !path.exists() {
+        return Err(format!("{} not found!", path.to_str().unwrap()))
+    }
+
+    println!("Parsing '{}'", path.to_str().unwrap());
+
     let start_time = Instant::now();
     let ds_uuid = PbUuid { value: ds_uuid.to_string().to_lowercase() };
 
-    let mut file_content = fs::read(path)
+    let mut file_content = fs::read(&path)
         .map_err(|e| e.to_string())?;
     let parsed = simd_json::to_borrowed_value(&mut file_content)
         .map_err(|e| e.to_string())?;
@@ -170,6 +184,7 @@ pub fn parse_file(path: &str, ds_uuid: &Uuid, myself_chooser: MyselfChooser) -> 
 
     Ok(InMemoryDb {
         dataset: ds,
+        ds_root: path.parent().unwrap().to_path_buf(),
         myself: myself,
         users: users,
         cwm: chats_with_messages,
