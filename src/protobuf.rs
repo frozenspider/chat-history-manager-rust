@@ -36,10 +36,10 @@ impl ShortUser {
         User {
             ds_uuid: Some(ds_uuid.clone()),
             id: self.id.clone(),
-            first_name: self.full_name.clone(),
-            last_name: None,
-            username: None,
-            phone_number: None,
+            first_name_option: self.full_name.clone(),
+            last_name_option: None,
+            username_option: None,
+            phone_number_option: None,
         }
     }
 }

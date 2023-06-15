@@ -42,27 +42,27 @@ impl Users {
     fn pretty_name(u: &User) -> String {
         String::from(format!(
             "{} {}",
-            u.first_name.as_ref().map(|s| s.as_str()).unwrap_or(""),
-            u.last_name.as_ref().map(|s| s.as_str()).unwrap_or(""),
+            u.first_name_option.as_ref().map(|s| s.as_str()).unwrap_or(""),
+            u.last_name_option.as_ref().map(|s| s.as_str()).unwrap_or(""),
         ).trim())
     }
 
     /// Consumes both users, creating a mega-user!
     fn merge(original: User, new: User) -> User {
-        let (first_name, last_name) =
-            match (original.last_name.is_some(), new.last_name.is_some()) {
-                (true, _) => (original.first_name, original.last_name),
-                (_, true) => (new.first_name, new.last_name),
-                _ => (original.first_name.or(new.first_name),
-                      original.last_name.or(new.last_name))
+        let (first_name_option, last_name_option) =
+            match (original.last_name_option.is_some(), new.last_name_option.is_some()) {
+                (true, _) => (original.first_name_option, original.last_name_option),
+                (_, true) => (new.first_name_option, new.last_name_option),
+                _ => (original.first_name_option.or(new.first_name_option),
+                      original.last_name_option.or(new.last_name_option))
             };
         User {
             ds_uuid: original.ds_uuid.or(new.ds_uuid),
             id: if original.id == 0 { new.id } else { original.id },
-            first_name,
-            last_name,
-            phone_number: original.phone_number.or(new.phone_number),
-            username: original.username.or(new.username),
+            first_name_option,
+            last_name_option,
+            phone_number_option: original.phone_number_option.or(new.phone_number_option),
+            username_option: original.username_option.or(new.username_option),
         }
     }
 
@@ -77,9 +77,9 @@ impl Users {
                     "" => None,
                     s => Some(s == u_pretty_name)
                 };
-                let has_matching_phone = match user.phone_number {
+                let has_matching_phone = match user.phone_number_option {
                     None => None,
-                    ref some => Some(*some == u.phone_number)
+                    ref some => Some(*some == u.phone_number_option)
                 };
                 match (has_matching_name, has_matching_phone) {
                     // One is matching and the other isn't.
@@ -124,7 +124,7 @@ struct ExpectedMessageField<'lt> {
 
 pub fn parse_file(path: &str, ds_uuid: &Uuid, myself_chooser: MyselfChooser) -> Res<InMemoryDb> {
     let start_time = Instant::now();
-    let ds_uuid = PbUuid { value: ds_uuid.to_string() };
+    let ds_uuid = PbUuid { value: ds_uuid.to_string().to_lowercase() };
 
     let mut file_content = fs::read(path)
         .map_err(|e| e.to_string())?;
@@ -192,15 +192,15 @@ fn parse_contact(bw: &BorrowedValue, name: &str) -> Res<User> {
             }
         })),
         ("first_name", Box::new(|v: &BorrowedValue| {
-            user.first_name = as_string_option!(v, "first_name");
+            user.first_name_option = as_string_option!(v, "first_name");
             Ok(())
         })),
         ("last_name", Box::new(|v: &BorrowedValue| {
-            user.last_name = as_string_option!(v, "last_name");
+            user.last_name_option = as_string_option!(v, "last_name");
             Ok(())
         })),
         ("phone_number", Box::new(|v: &BorrowedValue| {
-            user.phone_number = as_string_option!(v, "phone_number");
+            user.phone_number_option = as_string_option!(v, "phone_number");
             Ok(())
         })),
     ]))?;

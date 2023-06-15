@@ -8,9 +8,9 @@ option (scalapb.options) = {
   package_name: "org.fs.chm.protobuf"
   flat_package: true
   single_file: true
-  // getters: true
   no_default_values_in_constructor: true
-  // bytes_type: "scodec.bits.ByteVector"
+  enum_value_naming: CAMEL_CASE
+  enum_strip_prefix: true
 };
 
 // The book store service definition.
@@ -34,19 +34,20 @@ message ParseJsonFileResponse {
 }
 
 message Dataset {
-  PbUuid uuid = 1;
+  PbUuid uuid = 1 [(scalapb.field).no_box = true];
   string alias = 2;
   string source_type = 3;
 }
 
 message User {
-  PbUuid dsUuid = 1;
+  PbUuid dsUuid = 1 [(scalapb.field).no_box = true];
+  // Unique within a dataset.
   int64 id = 2;
-  /** If there's no first/last name separation, everything will be in first name */
-  optional string first_name = 3;
-  optional string last_name = 4;
-  optional string username = 5;
-  optional string phone_number = 6;
+  // If there's no first/last name separation, everything will be in first name.
+  optional string first_name_option = 3;
+  optional string last_name_option = 4;
+  optional string username_option = 5;
+  optional string phone_number_option = 6;
 }
 
 message ChatWithMessages {
@@ -55,12 +56,14 @@ message ChatWithMessages {
 }
 
 message PbUuid {
+  // Should be lowercase!
   string value = 1;
 }
 
 // The request with a id of the book
 message Chat {
-  PbUuid dsUuid = 1;
+  PbUuid dsUuid = 1 [(scalapb.field).no_box = true];
+  // Unique within a dataset
   int64 id = 2;
 
   // Can actually be none sometimes
@@ -68,7 +71,7 @@ message Chat {
   ChatType tpe = 4;
 
   // Path relative to data root!
-  string img_path = 5;
+  optional string img_path = 5;
 
   // Always contains myself
   repeated int64 member_ids = 6;
@@ -76,8 +79,8 @@ message Chat {
 }
 
 enum ChatType {
-  Personal = 0;
-  PrivateGroup = 1;
+  CHAT_TYPE_PERSONAL = 0;
+  CHAT_TYPE_PRIVATE_GROUP = 1;
 }
 
 /*
@@ -184,6 +187,10 @@ message RtePrefmtBlock {
   optional string language = 2;
 }
 
+//
+// Content
+//
+
 message Content {
   oneof val {
     ContentSticker          sticker = 1;
@@ -197,6 +204,7 @@ message Content {
     ContentSharedContact    shared_contact = 9;
   }
 }
+
 message ContentSticker {
   // Path relative to data root!
   optional string path = 1;
@@ -207,18 +215,21 @@ message ContentSticker {
   optional string thumbnail_path = 4;
   optional string emoji = 5;
 }
+
 message ContentPhoto {
   // Path relative to data root!
   optional string path = 1;
   int32 width = 2;
   int32 height = 3;
 }
+
 message ContentVoiceMsg {
   // Path relative to data root!
   optional string path = 1;
   string mime_type = 2;
   optional int32 duration_sec = 3;
 }
+
 message ContentVideoMsg {
   // Path relative to data root!
   optional string path = 1;
@@ -231,6 +242,7 @@ message ContentVideoMsg {
   // Path relative to data root!
   optional string thumbnail_path = 6;
 }
+
 message ContentAnimation {
   // Path relative to data root!
   optional string path = 1;
@@ -243,6 +255,7 @@ message ContentAnimation {
   // Path relative to data root!
   optional string thumbnail_path = 6;
 }
+
 message ContentFile {
   // Path relative to data root!
   optional string path = 1;
@@ -258,6 +271,7 @@ message ContentFile {
 
   optional string performer = 8;
 }
+
 message ContentLocation {
   optional string title = 1;
   optional string address = 2;
@@ -266,9 +280,11 @@ message ContentLocation {
 
   optional int32 duration_sec = 5;
 }
+
 message ContentPoll {
   string question = 1;
 }
+
 message ContentSharedContact {
   string first_name = 1;
   optional string last_name = 2;
@@ -277,36 +293,52 @@ message ContentSharedContact {
   optional string vcard_path = 4;
 }
 
+//
+// MessageService
+//
+
 message MessageServicePhoneCall {
   optional int32 duration_sec = 1;
   optional string discard_reason = 2;
 }
+
 message MessageServicePinMessage {
   int64 message_id = 1;
 }
+
+// Note: for Telegram, `from...` is not always meaningful
 message MessageServiceClearHistory {}
+
 message MessageServiceGroupCreate {
   string title = 1;
   repeated string members = 2;
 }
+
 message MessageServiceGroupEditTitle {
   string title = 1;
 }
+
 message MessageServiceGroupEditPhoto {
-  ContentPhoto photo = 1;
+  ContentPhoto photo = 1 [(scalapb.field).no_box = true];
 }
+
 message MessageServiceGroupInviteMembers {
   repeated string members = 1;
 }
+
 message MessageServiceGroupRemoveMembers {
   repeated string members = 1;
 }
+
 message MessageServiceGroupMigrateFrom {
   string title = 1;
 }
-/* Migrate to supergroup of the same name */
+
+// Migrate to supergroup of the same name
 message MessageServiceGroupMigrateTo {
 }
+
+// This is different to PhoneCall
 message MessageServiceGroupCall {
   repeated string members = 1;
 }

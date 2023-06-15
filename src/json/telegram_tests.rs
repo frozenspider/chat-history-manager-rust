@@ -39,10 +39,10 @@ fn expected_myself(ds_uuid: &PbUuid) -> User {
     User {
         ds_uuid: Some(ds_uuid.clone()),
         id: 11111111,
-        first_name: Some("Aaaaa".to_owned()),
-        last_name: Some("Aaaaaaaaaaa".to_owned()),
-        username: Some("@frozenspider".to_owned()),
-        phone_number: Some("+998 91 1234567".to_owned()),
+        first_name_option: Some("Aaaaa".to_owned()),
+        last_name_option: Some("Aaaaaaaaaaa".to_owned()),
+        username_option: Some("@frozenspider".to_owned()),
+        phone_number_option: Some("+998 91 1234567".to_owned()),
     }
 }
 
@@ -71,38 +71,38 @@ fn loading_2020_01() {
         User {
             ds_uuid: Some(ds_uuid.clone()),
             id: 22222222,
-            first_name: Some("Wwwwww".to_owned()),
-            last_name: Some("Www".to_owned()),
-            username: None,
-            phone_number: Some("+998 90 9998877".to_owned()),
+            first_name_option: Some("Wwwwww".to_owned()),
+            last_name_option: Some("Www".to_owned()),
+            username_option: None,
+            phone_number_option: Some("+998 90 9998877".to_owned()),
         },
         member.to_user(ds_uuid),
         User {
             ds_uuid: Some(ds_uuid.clone()),
             id: 44444444,
-            first_name: Some("Eeeee".to_owned()),
-            last_name: Some("Eeeeeeeeee".to_owned()),
-            username: None,
-            phone_number: Some("+7 916 337 53 10".to_owned()),
+            first_name_option: Some("Eeeee".to_owned()),
+            last_name_option: Some("Eeeeeeeeee".to_owned()),
+            username_option: None,
+            phone_number_option: Some("+7 916 337 53 10".to_owned()),
         },
         ShortUser::new_name_str(310242343, "Vlllllll").to_user(ds_uuid),
         ShortUser::new_name_str(333333333, "Ddddddd Uuuuuuuu").to_user(ds_uuid),
         User {
             ds_uuid: Some(ds_uuid.clone()),
             id: 555555555,
-            first_name: Some("Nnnnnnn".to_owned()),
-            last_name: None,
-            username: None,
-            phone_number: Some("+998 90 1112233".to_owned()),
+            first_name_option: Some("Nnnnnnn".to_owned()),
+            last_name_option: None,
+            username_option: None,
+            phone_number_option: Some("+998 90 1112233".to_owned()),
         },
         ShortUser::new_name_str(666666666, "Iiiii Kkkkkkkkkk").to_user(ds_uuid),
         User {
             ds_uuid: Some(ds_uuid.clone()),
             id: 777777777,
-            first_name: Some("Vvvvv".to_owned()),
-            last_name: Some("Vvvvvvvvv".to_owned()),
-            username: None,
-            phone_number: Some("+7 951 123 45 67".to_owned()),
+            first_name_option: Some("Vvvvv".to_owned()),
+            last_name_option: Some("Vvvvvvvvv".to_owned()),
+            username_option: None,
+            phone_number_option: Some("+7 951 123 45 67".to_owned()),
         },
     ];
 
@@ -161,18 +161,18 @@ fn loading_2021_05() {
     let member1 = User {
         ds_uuid: Some(ds_uuid.clone()),
         id: 22222222,
-        first_name: Some("Wwwwww".to_owned()),
-        last_name: Some("Www".to_owned()),
-        username: None,
-        phone_number: Some("+998 90 9998877".to_owned()), // Taken from contacts list
+        first_name_option: Some("Wwwwww".to_owned()),
+        last_name_option: Some("Www".to_owned()),
+        username_option: None,
+        phone_number_option: Some("+998 90 9998877".to_owned()), // Taken from contacts list
     };
     let member2 = User {
         ds_uuid: Some(ds_uuid.clone()),
         id: 44444444,
-        first_name: Some("Eeeee".to_owned()),
-        last_name: Some("Eeeeeeeeee".to_owned()),
-        username: None,
-        phone_number: Some("+7 916 337 53 10".to_owned()), // Taken from contacts list
+        first_name_option: Some("Eeeee".to_owned()),
+        last_name_option: Some("Eeeeeeeeee".to_owned()),
+        username_option: None,
+        phone_number_option: Some("+7 916 337 53 10".to_owned()), // Taken from contacts list
     };
     assert_eq!(dao.users.len(), 4);
     assert_eq!(dao.users.iter().collect_vec(), vec![myself, &service_member, &member1, &member2]);
@@ -219,10 +219,10 @@ fn loading_2021_07() {
     let member = User {
         ds_uuid: Some(ds_uuid.clone()),
         id: 44444444,
-        first_name: Some("Eeeee".to_owned()),
-        last_name: Some("Eeeeeeeeee".to_owned()),
-        username: None,
-        phone_number: Some("+7 916 337 53 10".to_owned()), // Taken from contacts list
+        first_name_option: Some("Eeeee".to_owned()),
+        last_name_option: Some("Eeeeeeeeee".to_owned()),
+        username_option: None,
+        phone_number_option: Some("+7 916 337 53 10".to_owned()), // Taken from contacts list
     };
     assert_eq!(dao.users.len(), 2);
     assert_eq!(dao.users.iter().collect_vec(), vec![myself, &member]);

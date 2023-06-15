@@ -15,9 +15,30 @@ extend google.protobuf.FileOptions {
   optional ScalaPbOptions options = 1020;
 }
 
+extend google.protobuf.FieldOptions {
+  // Field-level optionals for ScalaPB.
+  // Extension number officially assigned by protobuf-global-extension-registry@google.com
+  optional FieldOptions field = 1020;
+}
+
 message ScalaPbOptions {
-  string package_name = 1;
-  bool flat_package = 2;
-  bool single_file = 3;
-  bool no_default_values_in_constructor = 4;
+  optional string package_name = 1;
+
+  optional bool flat_package = 2;
+
+  optional bool single_file = 3;
+
+  optional bool no_default_values_in_constructor = 4;
+
+  enum EnumValueNaming {
+    AS_IN_PROTO = 0;
+    CAMEL_CASE = 1;
+  }
+  optional EnumValueNaming enum_value_naming = 5;
+
+  optional bool enum_strip_prefix = 6;
+}
+
+message FieldOptions {
+  optional bool no_box = 1;
 }

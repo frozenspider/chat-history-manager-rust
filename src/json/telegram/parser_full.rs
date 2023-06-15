@@ -34,19 +34,19 @@ pub fn parse(root_obj: &Object,
                     Ok(())
                 })),
                 ("first_name", Box::new(|v: &BorrowedValue| {
-                    myself.first_name = Some(as_string!(v, "first_name"));
+                    myself.first_name_option = Some(as_string!(v, "first_name"));
                     Ok(())
                 })),
                 ("last_name", Box::new(|v: &BorrowedValue| {
-                    myself.last_name = Some(as_string!(v, "last_name"));
+                    myself.last_name_option = Some(as_string!(v, "last_name"));
                     Ok(())
                 })),
                 ("username", Box::new(|v: &BorrowedValue| {
-                    myself.username = Some(as_string!(v, "username"));
+                    myself.username_option = Some(as_string!(v, "username"));
                     Ok(())
                 })),
                 ("phone_number", Box::new(|v: &BorrowedValue| {
-                    myself.phone_number = Some(as_string!(v, "phone_number"));
+                    myself.phone_number_option = Some(as_string!(v, "phone_number"));
                     Ok(())
                 })),
                 ("bio", consume()),

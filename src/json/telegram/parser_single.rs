@@ -19,10 +19,10 @@ pub fn parse(root_obj: &Object,
     let myself_idx = myself_chooser(&users_vec)?;
     let myself2 = users_vec[myself_idx];
     myself.id = myself2.id;
-    myself.first_name = myself2.first_name.clone();
-    myself.last_name = myself2.last_name.clone();
-    myself.username = myself2.username.clone();
-    myself.phone_number = myself2.phone_number.clone();
+    myself.first_name_option = myself2.first_name_option.clone();
+    myself.last_name_option = myself2.last_name_option.clone();
+    myself.username_option = myself2.username_option.clone();
+    myself.phone_number_option = myself2.phone_number_option.clone();
 
     Ok((users, chats_with_messages))
 }
