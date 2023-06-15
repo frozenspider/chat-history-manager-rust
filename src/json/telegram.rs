@@ -228,7 +228,7 @@ fn parse_chat(chat_json: &Object,
         ("", consume()), // No idea how to get rid of it
         ("name", Box::new(|v: &BorrowedValue| {
             if v.value_type() != ValueType::Null {
-                chat.name = as_string_option!(v, "chat.name");
+                chat.name_option = as_string_option!(v, "chat.name");
             }
             Ok(())
         })),
@@ -419,7 +419,7 @@ fn parse_message(bw: &BorrowedValue,
             message.typed = Some(Typed::Regular(regular));
 
             short_user.id = parse_user_id(message_json.field("from_id")?)?;
-            short_user.full_name = match message_json.field_opt("from")? {
+            short_user.full_name_option = match message_json.field_opt("from")? {
                 None => None,
                 Some(from) if from.is_null() => None,
                 Some(from) => Some(as_string!(from, "from")),
@@ -436,7 +436,7 @@ fn parse_message(bw: &BorrowedValue,
             message.typed = Some(Typed::Service(service));
 
             short_user.id = parse_user_id(message_json.field("actor_id")?)?;
-            short_user.full_name = Some(message_json.field_str("actor")?);
+            short_user.full_name_option = Some(message_json.field_str("actor")?);
         }
         etc => return Err(format!("Unknown message type: {}", etc)),
     }
@@ -467,7 +467,7 @@ fn parse_message(bw: &BorrowedValue,
 
         match kr {
             "id" =>
-                message.source_id = Some(as_i64!(v, "id")),
+                message.source_id_option = Some(as_i64!(v, "id")),
             "date_unixtime" => {
                 message.timestamp = parse_timestamp(as_str!(v, "date_unixtime"))?;
             }
@@ -500,16 +500,16 @@ fn parse_regular_message(message_json: &mut MessageJson,
 
     if let Some(ref edited) = message_json.field_opt_str("edited_unixtime")? {
         message_json.add_required("edited");
-        regular_msg.edit_timestamp = Some(parse_timestamp(edited.as_str())?);
+        regular_msg.edit_timestamp_option = Some(parse_timestamp(edited.as_str())?);
     } else if let Some(ref edited) = message_json.field_opt_str("edited")? {
-        regular_msg.edit_timestamp = Some(parse_datetime(edited.as_str())?);
+        regular_msg.edit_timestamp_option = Some(parse_datetime(edited.as_str())?);
     }
-    regular_msg.forward_from_name = match message_json.field_opt("forwarded_from")? {
+    regular_msg.forward_from_name_option = match message_json.field_opt("forwarded_from")? {
         None => None,
         Some(forwarded_from) if forwarded_from.is_null() => Some("<unknown>".to_owned()),
         Some(forwarded_from) => Some(as_string!(forwarded_from, "forwarded_from")),
     };
-    regular_msg.reply_to_message_id = message_json.field_opt_i64("reply_to_message_id")?;
+    regular_msg.reply_to_message_id_option = message_json.field_opt_i64("reply_to_message_id")?;
 
     let media_type_option = message_json.field_opt_str("media_type")?;
     let photo_option = message_json.field_opt_str("photo")?;
@@ -529,35 +529,35 @@ fn parse_regular_message(message_json: &mut MessageJson,
         (None, None, false, false, false, false) => None,
         (Some("sticker"), None, true, false, false, false) =>
             Some(Val::Sticker(ContentSticker {
-                path: message_json.field_opt_path("file")?,
+                path_option: message_json.field_opt_path("file")?,
                 width: message_json.field_i32("width")?,
                 height: message_json.field_i32("height")?,
-                thumbnail_path: message_json.field_opt_path("thumbnail")?,
-                emoji: message_json.field_opt_str("sticker_emoji")?,
+                thumbnail_path_option: message_json.field_opt_path("thumbnail")?,
+                emoji_option: message_json.field_opt_str("sticker_emoji")?,
             })),
         (Some("animation"), None, true, false, false, false) =>
             Some(Val::Animation(ContentAnimation {
-                path: message_json.field_opt_path("file")?,
+                path_option: message_json.field_opt_path("file")?,
                 width: message_json.field_i32("width")?,
                 height: message_json.field_i32("height")?,
                 mime_type: message_json.field_str("mime_type")?,
-                duration_sec: message_json.field_opt_i32("duration_seconds")?,
-                thumbnail_path: message_json.field_opt_path("thumbnail")?,
+                duration_sec_option: message_json.field_opt_i32("duration_seconds")?,
+                thumbnail_path_option: message_json.field_opt_path("thumbnail")?,
             })),
         (Some("video_message"), None, true, false, false, false) =>
             Some(Val::VideoMsg(ContentVideoMsg {
-                path: message_json.field_opt_path("file")?,
+                path_option: message_json.field_opt_path("file")?,
                 width: message_json.field_i32("width")?,
                 height: message_json.field_i32("height")?,
                 mime_type: message_json.field_str("mime_type")?,
-                duration_sec: message_json.field_opt_i32("duration_seconds")?,
-                thumbnail_path: message_json.field_opt_path("thumbnail")?,
+                duration_sec_option: message_json.field_opt_i32("duration_seconds")?,
+                thumbnail_path_option: message_json.field_opt_path("thumbnail")?,
             })),
         (Some("voice_message"), None, true, false, false, false) =>
             Some(Val::VoiceMsg(ContentVoiceMsg {
-                path: message_json.field_opt_path("file")?,
+                path_option: message_json.field_opt_path("file")?,
                 mime_type: message_json.field_str("mime_type")?,
-                duration_sec: message_json.field_opt_i32("duration_seconds")?,
+                duration_sec_option: message_json.field_opt_i32("duration_seconds")?,
             })),
         (Some("video_file"), None, true, false, false, false) |
         (Some("audio_file"), None, true, false, false, false) |
@@ -571,19 +571,19 @@ fn parse_regular_message(message_json: &mut MessageJson,
                 }).to_owned()
             });
             Some(Val::File(ContentFile {
-                path: message_json.field_opt_path("file")?,
+                path_option: message_json.field_opt_path("file")?,
                 title,
-                width: message_json.field_opt_i32("width")?,
-                height: message_json.field_opt_i32("height")?,
-                mime_type: message_json.field_opt_str("mime_type")?,
-                duration_sec: message_json.field_opt_i32("duration_seconds")?,
-                thumbnail_path: message_json.field_opt_path("thumbnail")?,
-                performer: message_json.field_opt_str("performer")?,
+                width_option: message_json.field_opt_i32("width")?,
+                height_option: message_json.field_opt_i32("height")?,
+                mime_type_option: message_json.field_opt_str("mime_type")?,
+                duration_sec_option: message_json.field_opt_i32("duration_seconds")?,
+                thumbnail_path_option: message_json.field_opt_path("thumbnail")?,
+                performer_option: message_json.field_opt_str("performer")?,
             }))
         }
         (None, Some(_), false, false, false, false) =>
             Some(Val::Photo(ContentPhoto {
-                path: message_json.field_opt_path("photo")?,
+                path_option: message_json.field_opt_path("photo")?,
                 width: message_json.field_i32("width")?,
                 height: message_json.field_i32("height")?,
             })),
@@ -595,11 +595,11 @@ fn parse_regular_message(message_json: &mut MessageJson,
                  loc_info.get("longitude").ok_or("longitude not found!")?.to_string())
             };
             Some(Val::Location(ContentLocation {
-                title: message_json.field_opt_str("place_name")?,
-                address: message_json.field_opt_str("address")?,
+                title_option: message_json.field_opt_str("place_name")?,
+                address_option: message_json.field_opt_str("address")?,
                 lat_str,
                 lon_str,
-                duration_sec: message_json.field_opt_i32("live_location_period_seconds")?,
+                duration_sec_option: message_json.field_opt_i32("live_location_period_seconds")?,
             }))
         }
         (None, None, false, false, true, false) => {
@@ -620,15 +620,15 @@ fn parse_regular_message(message_json: &mut MessageJson,
             };
             Some(Val::SharedContact(ContentSharedContact {
                 first_name,
-                last_name: Some(last_name),
-                phone_number: Some(phone_number),
-                vcard_path: message_json.field_opt_path("contact_vcard")?,
+                last_name_option: Some(last_name),
+                phone_number_option: Some(phone_number),
+                vcard_path_option: message_json.field_opt_path("contact_vcard")?,
             }))
         }
         _ => return Err(format!("Couldn't determine content type for '{:?}'", message_json.val))
     };
 
-    regular_msg.content = content_val.map(|v| Content { val: Some(v) });
+    regular_msg.content_option = content_val.map(|v| Content { val: Some(v) });
     Ok(())
 }
 
@@ -640,13 +640,13 @@ fn parse_service_message(message_json: &mut MessageJson,
     let val: Val = match message_json.field_str("action")?.as_str() {
         "phone_call" =>
             Val::PhoneCall(MessageServicePhoneCall {
-                duration_sec: message_json.field_opt_i32("duration_seconds")?,
-                discard_reason: message_json.field_opt_str("discard_reason")?,
+                duration_sec_option: message_json.field_opt_i32("duration_seconds")?,
+                discard_reason_option: message_json.field_opt_str("discard_reason")?,
             }),
         "group_call" => // Treated the same as phone_call
             Val::PhoneCall(MessageServicePhoneCall {
-                duration_sec: None,
-                discard_reason: None,
+                duration_sec_option: None,
+                discard_reason_option: None,
             }),
         "pin_message" =>
             Val::PinMessage(MessageServicePinMessage {
@@ -662,7 +662,7 @@ fn parse_service_message(message_json: &mut MessageJson,
         "edit_group_photo" =>
             Val::GroupEditPhoto(MessageServiceGroupEditPhoto {
                 photo: Some(ContentPhoto {
-                    path: message_json.field_opt_path("photo")?,
+                    path_option: message_json.field_opt_path("photo")?,
                     height: message_json.field_i32("height")?,
                     width: message_json.field_i32("width")?,
                 })
@@ -803,14 +803,14 @@ fn parse_rich_text_object(rte_json: &Box<Object>) -> Res<history::rich_text_elem
             check_keys!(["type", "text", "language"]);
             Val::PrefmtBlock(RtePrefmtBlock {
                 text: get_field_string!(rte_json, "text"),
-                language: str_to_option!(get_field_str!(rte_json, "language")),
+                language_option: str_to_option!(get_field_str!(rte_json, "language")),
             })
         }
         "text_link" => {
             check_keys!(["type", "text", "href"]);
             let text = get_field_str!(rte_json, "text").to_owned();
             Val::Link(RteLink {
-                text: str_to_option!(text.as_str()),
+                text_option: str_to_option!(text.as_str()),
                 href: get_field_string!(rte_json, "href"),
                 hidden: is_whitespace_or_invisible(text.as_str()),
             })
@@ -819,7 +819,7 @@ fn parse_rich_text_object(rte_json: &Box<Object>) -> Res<history::rich_text_elem
             // Link format is hyperlink alone
             check_keys!(["type", "text"]);
             Val::Link(RteLink {
-                text: str_to_option!(get_field_str!(rte_json, "text")),
+                text_option: str_to_option!(get_field_str!(rte_json, "text")),
                 href: get_field_string!(rte_json, "text"),
                 hidden: false,
             })
@@ -855,12 +855,12 @@ fn append_user(short_user: ShortUser,
     } else if let Some(user) = users.id_to_user.get(&short_user.id) {
         Ok(user.id)
     } else {
-        let su_full_name = short_user.full_name.as_ref();
+        let su_full_name_option = short_user.full_name_option.as_ref();
         let found_id =
-            if su_full_name.is_none() || su_full_name.unwrap().is_empty() {
+            if su_full_name_option.is_none() || su_full_name_option.unwrap().is_empty() {
                 None
             } else {
-                let su_full_name = su_full_name.unwrap().as_str();
+                let su_full_name = su_full_name_option.unwrap().as_str();
                 users.pretty_name_to_id.iter().find(|&(pn, _)| {
                     su_full_name.contains(pn)
                 }).map(|(_, id)| *id)

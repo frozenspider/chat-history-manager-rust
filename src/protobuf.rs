@@ -10,18 +10,18 @@ pub type Id = i64;
 #[derive(Debug, Clone, PartialEq)]
 pub struct ShortUser {
     pub id: Id,
-    pub full_name: Option<String>,
+    pub full_name_option: Option<String>,
 }
 
 impl Display for ShortUser {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "ShortUser(id: {}, full_name: {:?})", self.id, self.full_name)
+        write!(f, "ShortUser(id: {}, full_name: {:?})", self.id, self.full_name_option)
     }
 }
 
 impl ShortUser {
-    pub fn new(id: Id, full_name: Option<String>) -> Self {
-        Self { id, full_name }
+    pub fn new(id: Id, full_name_option: Option<String>) -> Self {
+        Self { id, full_name_option }
     }
 
     pub fn new_name_str(id: Id, full_name: &str) -> Self {
@@ -36,7 +36,7 @@ impl ShortUser {
         User {
             ds_uuid: Some(ds_uuid.clone()),
             id: self.id.clone(),
-            first_name_option: self.full_name.clone(),
+            first_name_option: self.full_name_option.clone(),
             last_name_option: None,
             username_option: None,
             phone_number_option: None,

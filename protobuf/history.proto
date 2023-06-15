@@ -67,11 +67,11 @@ message Chat {
   int64 id = 2;
 
   // Can actually be none sometimes
-  optional string name = 3;
+  optional string name_option = 3;
   ChatType tpe = 4;
 
   // Path relative to data root!
-  optional string img_path = 5;
+  optional string img_path_option = 5;
 
   // Always contains myself
   repeated int64 member_ids = 6;
@@ -103,7 +103,7 @@ message Message {
    * Unique within a chat, serves as a persistent ID when merging with older/newer DB version.
    * If it's not useful for this purpose, should be empty.
    */
-  optional int64 source_id = 2;
+  optional int64 source_id_option = 2;
   int64 timestamp = 3;
   int64 fromId = 4;
 
@@ -119,10 +119,10 @@ message Message {
 }
 
 message MessageRegular {
-  optional int64 edit_timestamp = 1;
-  optional string forward_from_name = 2;
-  optional int64 reply_to_message_id = 3;
-  optional Content content = 4;
+  optional int64 edit_timestamp_option = 1;
+  optional string forward_from_name_option = 2;
+  optional int64 reply_to_message_id_option = 3;
+  optional Content content_option = 4;
 }
 
 message MessageService {
@@ -174,7 +174,7 @@ message RteStrikethrough {
 }
 message RteLink {
   // Empty text would mean that this link is hidden - but it can still be hidden even if it's not.
-  optional string text = 1;
+  optional string text_option = 1;
   string href = 2;
   // Some TG chats use text_links with empty/invisible text to be shown as preview but not appear in text.
   bool hidden = 3;
@@ -184,7 +184,7 @@ message RtePrefmtInline {
 }
 message RtePrefmtBlock {
   string text = 1;
-  optional string language = 2;
+  optional string language_option = 2;
 }
 
 //
@@ -207,78 +207,78 @@ message Content {
 
 message ContentSticker {
   // Path relative to data root!
-  optional string path = 1;
+  optional string path_option = 1;
   int32 width = 2;
   int32 height = 3;
 
   // Path relative to data root!
-  optional string thumbnail_path = 4;
-  optional string emoji = 5;
+  optional string thumbnail_path_option = 4;
+  optional string emoji_option = 5;
 }
 
 message ContentPhoto {
   // Path relative to data root!
-  optional string path = 1;
+  optional string path_option = 1;
   int32 width = 2;
   int32 height = 3;
 }
 
 message ContentVoiceMsg {
   // Path relative to data root!
-  optional string path = 1;
+  optional string path_option = 1;
   string mime_type = 2;
-  optional int32 duration_sec = 3;
+  optional int32 duration_sec_option = 3;
 }
 
 message ContentVideoMsg {
   // Path relative to data root!
-  optional string path = 1;
+  optional string path_option = 1;
   int32 width = 2;
   int32 height = 3;
 
   string mime_type = 4;
-  optional int32 duration_sec = 5;
+  optional int32 duration_sec_option = 5;
 
   // Path relative to data root!
-  optional string thumbnail_path = 6;
+  optional string thumbnail_path_option = 6;
 }
 
 message ContentAnimation {
   // Path relative to data root!
-  optional string path = 1;
+  optional string path_option = 1;
   int32 width = 2;
   int32 height = 3;
 
   string mime_type = 4;
-  optional int32 duration_sec = 5;
+  optional int32 duration_sec_option = 5;
 
   // Path relative to data root!
-  optional string thumbnail_path = 6;
+  optional string thumbnail_path_option = 6;
 }
 
 message ContentFile {
   // Path relative to data root!
-  optional string path = 1;
+  optional string path_option = 1;
   string title = 2;
-  optional int32 width = 3;
-  optional int32 height = 4;
+  optional int32 width_option = 3;
+  optional int32 height_option = 4;
 
-  optional string mime_type = 5;
-  optional int32 duration_sec = 6;
+  optional string mime_type_option = 5;
+  optional int32 duration_sec_option = 6;
 
   // Path relative to data root!
-  optional string thumbnail_path = 7;
+  optional string thumbnail_path_option = 7;
 
-  optional string performer = 8;
+  optional string performer_option = 8;
 }
 
 message ContentLocation {
-  optional string title = 1;
-  optional string address = 2;
+  optional string title_option = 1;
+  optional string address_option = 2;
   string lat_str = 3;
   string lon_str = 4;
 
-  optional int32 duration_sec = 5;
+  optional int32 duration_sec_option = 5;
 }
 
 message ContentPoll {
@@ -287,10 +287,10 @@ message ContentPoll {
 
 message ContentSharedContact {
   string first_name = 1;
-  optional string last_name = 2;
-  optional string phone_number = 3;
+  optional string last_name_option = 2;
+  optional string phone_number_option = 3;
   // Path relative to data root!
-  optional string vcard_path = 4;
+  optional string vcard_path_option = 4;
 }
 
 //
@@ -298,8 +298,8 @@ message ContentSharedContact {
 //
 
 message MessageServicePhoneCall {
-  optional int32 duration_sec = 1;
-  optional string discard_reason = 2;
+  optional int32 duration_sec_option = 1;
+  optional string discard_reason_option = 2;
 }
 
 message MessageServicePinMessage {

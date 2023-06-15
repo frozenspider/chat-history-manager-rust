@@ -186,7 +186,7 @@ fn loading_2021_05() {
             .find(|&c| c.chat.unwrap_ref().id == 123123123 + GROUP_CHAT_ID_SHIFT)
             .unwrap();
         let chat = cwm.chat.unwrap_ref();
-        assert_eq!(chat.name, Some("My Group".to_owned()));
+        assert_eq!(chat.name_option, Some("My Group".to_owned()));
         assert_eq!(chat.tpe, ChatType::PrivateGroup as i32);
 
         assert_eq!(chat.member_ids.len(), 4);
@@ -236,7 +236,7 @@ fn loading_2021_07() {
             .find(|&c| c.chat.unwrap_ref().id == 123123123 + GROUP_CHAT_ID_SHIFT)
             .unwrap();
         let chat = cwm.chat.unwrap_ref();
-        assert_eq!(chat.name, Some("My Group".to_owned()));
+        assert_eq!(chat.name_option, Some("My Group".to_owned()));
         assert_eq!(chat.tpe, ChatType::PrivateGroup as i32);
 
         assert_eq!(chat.member_ids.len(), 2);
@@ -251,7 +251,7 @@ fn loading_2021_07() {
         use crate::protobuf::history::message_service::Val;
         assert_eq!(msgs[0], Message {
             internal_id: -1,
-            source_id: Some(111111),
+            source_id_option: Some(111111),
             timestamp: local_date(2021, 07, 03, 22, 38, 58).timestamp(),
             from_id: member.id,
             text: vec![],
@@ -264,7 +264,7 @@ fn loading_2021_07() {
         });
         assert_eq!(msgs[1], Message {
             internal_id: -1,
-            source_id: Some(111112),
+            source_id_option: Some(111112),
             timestamp: local_date(2021, 07, 03, 22, 39, 01).timestamp(),
             from_id: member.id,
             text: vec![],
