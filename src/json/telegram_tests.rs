@@ -27,6 +27,11 @@ fn verify_result<T, E: std::fmt::Display>(r: Result<T, E>) -> T {
     }
 }
 
+fn dt(s: &str) -> DateTime<Local> {
+    let local_tz = Local::now().timezone();
+    NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S").unwrap().and_local_timezone(local_tz).unwrap()
+}
+
 trait ExtOption<T> {
     fn unwrap_ref(&self) -> &T;
 }
@@ -44,13 +49,6 @@ fn expected_myself(ds_uuid: &PbUuid) -> User {
         username_option: Some("@frozenspider".to_owned()),
         phone_number_option: Some("+998 91 1234567".to_owned()),
     }
-}
-
-fn local_date(yr: i32, mh: u32, dy: u32, hr: u32, mn: u32, sc: u32) -> DateTime<Local> {
-    // Utc.with_ymd_and_hms(2021, 07, 03, 22, 38, 58);
-    Local.from_local_datetime(
-        &NaiveDate::from_ymd_opt(yr, mh, dy).unwrap()
-            .and_hms_opt(hr, mn, sc).unwrap()).unwrap()
 }
 
 //
@@ -208,6 +206,110 @@ fn loading_2021_05() {
     }
 }
 
+
+#[test]
+fn loading_2021_06_supergroup() {
+    let dao = verify_result(parse_file(resource("telegram_2021-06_supergroup").as_str(), NO_CHOOSER));
+
+    let ds_uuid = dao.dataset.uuid.unwrap_ref();
+    let myself = &dao.myself;
+    assert_eq!(myself, &expected_myself(ds_uuid));
+
+    // We only know of myself + two users (other's IDs aren't known), as well as service "member".
+    let u222222222 =
+        ShortUser::new_name_str(222222222, "Sssss Pppppp").to_user(ds_uuid);
+    let u333333333 =
+        ShortUser::new_name_str(333333333, "Tttttt Yyyyyyy").to_user(ds_uuid);
+    let u444444444 =
+        ShortUser::new_name_str(444444444, "Vvvvvvvv Bbbbbbb").to_user(ds_uuid);
+
+    {
+        let mut sorted_users = dao.users.iter().collect_vec();
+        sorted_users.sort_by_key(|&u| u.id);
+        assert_eq!(sorted_users.len(), 4);
+        assert_eq!(sorted_users, vec![myself, &u222222222, &u333333333, &u444444444]);
+    }
+
+    assert_eq!(dao.cwm.len(), 1);
+
+    // Group chat
+    {
+        // Chat ID is shifted by 2^33
+        let cwm = dao.cwm.iter()
+            .find(|&c| c.chat.unwrap_ref().id == 1234567890 + GROUP_CHAT_ID_SHIFT)
+            .unwrap();
+        let chat = cwm.chat.unwrap_ref();
+        assert_eq!(chat.name_option, Some("My Supergroup".to_owned()));
+        assert_eq!(chat.tpe, ChatType::PrivateGroup as i32);
+
+        // All users are taken from chat itself
+        assert_eq!(chat.member_ids.len(), 4);
+        assert_eq!(chat.member_ids[0], myself.id);
+        assert_eq!(chat.member_ids[1], u222222222.id);
+        assert_eq!(chat.member_ids[2], u333333333.id);
+        assert_eq!(chat.member_ids[3], u444444444.id);
+
+
+        let msgs: &Vec<Message> = &cwm.messages; // TODO: Ask DAO instead?
+        assert_eq!(msgs.len(), 3);
+        assert_eq!(chat.msg_count, 3);
+
+        assert_eq!(msgs[0], Message {
+            internal_id: -1,
+            source_id_option: Some(-999681092),
+            timestamp: dt("2020-12-22 23:11:21").timestamp(),
+            from_id: u222222222.id,
+            text: vec![],
+            searchable_string: None,
+            typed: Some(Typed::Service(MessageService {
+                val: Some(message_service::Val::GroupInviteMembers(MessageServiceGroupInviteMembers {
+                    members: vec![u444444444.first_name_option.unwrap()]
+                }))
+            })),
+        });
+
+        assert_eq!(msgs[1], Message {
+            internal_id: -1,
+            source_id_option: Some(-999681090),
+            timestamp: dt("2020-12-22 23:12:09").timestamp(),
+            from_id: u333333333.id,
+            text: vec![RichTextElement {
+                searchable_string: None,
+                val: Some(rich_text_element::Val::Plain(RtePlain {
+                    text: "Message text with emoji 🙂".to_owned(),
+                })),
+            }],
+            searchable_string: None,
+            typed: Some(Typed::Regular(MessageRegular {
+                edit_timestamp_option: None,
+                forward_from_name_option: None,
+                reply_to_message_id_option: None,
+                content_option: None,
+            })),
+        });
+
+        assert_eq!(msgs[2], Message {
+            internal_id: -1,
+            source_id_option: Some(-999681087),
+            timestamp: dt("2020-12-22 23:12:51").timestamp(),
+            from_id: u444444444.id,
+            text: vec![RichTextElement {
+                searchable_string: None,
+                val: Some(rich_text_element::Val::Plain(RtePlain {
+                    text: "Message from an added user".to_owned(),
+                })),
+            }],
+            searchable_string: None,
+            typed: Some(Typed::Regular(MessageRegular {
+                edit_timestamp_option: None,
+                forward_from_name_option: None,
+                reply_to_message_id_option: None,
+                content_option: None,
+            })),
+        });
+    }
+}
+
 #[test]
 fn loading_2021_07() {
     let dao = verify_result(parse_file(resource("telegram_2021-07").as_str(), NO_CHOOSER));
@@ -252,7 +354,7 @@ fn loading_2021_07() {
         assert_eq!(msgs[0], Message {
             internal_id: -1,
             source_id_option: Some(111111),
-            timestamp: local_date(2021, 07, 03, 22, 38, 58).timestamp(),
+            timestamp: dt("2021-07-03 22:38:58").timestamp(),
             from_id: member.id,
             text: vec![],
             searchable_string: None,
@@ -265,7 +367,7 @@ fn loading_2021_07() {
         assert_eq!(msgs[1], Message {
             internal_id: -1,
             source_id_option: Some(111112),
-            timestamp: local_date(2021, 07, 03, 22, 39, 01).timestamp(),
+            timestamp: dt("2021-07-03 22:39:01").timestamp(),
             from_id: member.id,
             text: vec![],
             searchable_string: None,

@@ -1,0 +1,56 @@
+{
+  "about": "...whatever...",
+  "personal_information": {
+    "user_id": 11111111,
+    "first_name": "Aaaaa",
+    "last_name": "Aaaaaaaaaaa",
+    "phone_number": "+998 91 1234567",
+    "username": "@frozenspider",
+    "bio": "There should be bio, shouldn't there?"
+  },
+  "profile_pictures": [],
+  "contacts": {
+    "about": "Let's leave this empty, shall we?",
+    "list": []
+  },
+  "chats": {
+    "about": "Just one supergroup here, duh!",
+    "list": [
+      {
+        "name": "My Supergroup",
+        "type": "private_supergroup",
+        "id": 1234567890,
+        "messages": [
+          {
+            "id": -999681092,
+            "type": "service",
+            "date": "2020-12-22T23:11:21",
+            "actor": "Sssss Pppppp",
+            "actor_id": "user222222222",
+            "action": "invite_members",
+            "members": [
+              "Vvvvvvvv Bbbbbbb"
+            ],
+            "text": ""
+          },
+          {
+            "id": -999681090,
+            "type": "message",
+            "date": "2020-12-22T23:12:09",
+            "from": "Tttttt Yyyyyyy",
+            "from_id": "user333333333",
+            "text": "Message text with emoji 🙂"
+          },
+          {
+            "id": -999681087,
+            "type": "message",
+            "date": "2020-12-22T23:12:51",
+            "from": "Vvvvvvvv Bbbbbbb",
+            "from_id": "user444444444",
+            "text": "Message from an added user"
+          }
+        ]
+      }
+    ]
+  }
+}
