@@ -97,9 +97,12 @@ impl Users {
         println!("> Found user: {:?}", existing_user);
         let user = match existing_user {
             None => user,
-            Some(eu) => Self::merge(eu, user),
+            Some(eu) => {
+                let user = Self::merge(eu, user);
+                println!("> Merged into {:?}", user);
+                user
+            }
         };
-        println!("> Merged into {:?}", user);
         let id = user.id;
         if id > 0 {
             println!("> User has valid ID");
@@ -174,6 +177,18 @@ pub fn parse_file(path: &Path, ds_uuid: &Uuid, myself_chooser: MyselfChooser) ->
         println!("Discarding users with no IDs:");
         for (_pretty_name, u) in users.pretty_name_to_idless_users {
             println!("> {:?}", u);
+        }
+    }
+
+    // Sanity check: every chat member is supposed to have an associated user.
+    for cwm in &chats_with_messages {
+        let chat = cwm.chat.as_ref().ok_or("Chat absent!")?;
+        for member_id in &chat.member_ids {
+            if !users.id_to_user.contains_key(member_id) {
+                return Err(format!("No member with id={} found for chat with id={} '{}'",
+                                   member_id, chat.id,
+                                   chat.name_option.as_ref().unwrap_or(&"<unnamed>".to_owned())));
+            }
         }
     }
 
