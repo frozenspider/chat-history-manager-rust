@@ -35,7 +35,6 @@ static GROUP_CHAT_ID_SHIFT: Id = PERSONAL_CHAT_ID_SHIFT * 2;
 #[derive(Default, Debug)]
 pub struct Users {
     id_to_user: HashMap<Id, User>,
-    pretty_name_to_id: HashMap<String, Id>,
     pretty_name_to_idless_users: Vec<(String, User)>,
 }
 
@@ -107,7 +106,6 @@ impl Users {
         if id > 0 {
             println!("> User has valid ID");
             self.id_to_user.insert(id, user);
-            self.pretty_name_to_id.insert(pretty_name, id);
         } else {
             println!("> User has no ID!");
             self.pretty_name_to_idless_users.push((pretty_name, user));
@@ -885,25 +883,10 @@ fn append_user(short_user: ShortUser,
     } else if let Some(user) = users.id_to_user.get(&short_user.id) {
         Ok(user.id)
     } else {
-        let su_full_name_option = short_user.full_name_option.as_ref();
-        let found_id =
-            if su_full_name_option.is_none() || su_full_name_option.unwrap().is_empty() {
-                None
-            } else {
-                let su_full_name = su_full_name_option.unwrap().as_str();
-                users.pretty_name_to_id.iter().find(|&(pn, _)| {
-                    su_full_name.contains(pn)
-                }).map(|(_, id)| *id)
-            };
-        match found_id {
-            Some(id) => Ok(id),
-            None => {
-                let user = short_user.to_user(ds_uuid);
-                let id = user.id;
-                users.insert(user);
-                Ok(id)
-            }
-        }
+        let user = short_user.to_user(ds_uuid);
+        let id = user.id;
+        users.insert(user);
+        Ok(id)
     }
 }
 
