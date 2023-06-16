@@ -106,6 +106,7 @@ message Message {
    * If it's not useful for this purpose, should be empty.
    */
   optional int64 source_id_option = 2;
+  // Number of epoch SECONDS (not millis!)
   int64 timestamp = 3;
   int64 fromId = 4;
 
@@ -121,6 +122,7 @@ message Message {
 }
 
 message MessageRegular {
+  // Number of epoch SECONDS (not millis!)
   optional int64 edit_timestamp_option = 1;
   optional string forward_from_name_option = 2;
   optional int64 reply_to_message_id_option = 3;
