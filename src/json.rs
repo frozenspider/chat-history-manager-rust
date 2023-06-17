@@ -25,9 +25,20 @@ macro_rules! as_i64 {
     };
 }
 
+macro_rules! as_str_option_res {
+    ($v:expr, $txt:expr) => {
+        $v.try_as_str().map_err(|e| format!("{} conversion: {:?}", $txt, e)).map(|s|
+            match s {
+                "" => None,
+                s  => Some(s),
+            }
+        )
+    };
+}
+
 macro_rules! as_str_res {
     ($v:expr, $txt:expr) => {
-        $v.try_as_str().map_err(|e| format!("{} conversion: {:?}", $txt, e))
+        as_str_option_res!($v, $txt)?.ok_or(format!("{} is an empty string", $txt))
     };
 }
 
@@ -45,12 +56,7 @@ macro_rules! as_string {
 
 /// Empty string is None.
 macro_rules! as_string_option {
-    ($v:expr, $txt:expr) => {
-        match as_str!($v, $txt) {
-            "" => None,
-            s  => Some(s.to_owned()),
-        }
-    };
+    ($v:expr, $txt:expr) => {as_str_option_res!($v, $txt)?.map(|s| s.to_owned())};
 }
 
 macro_rules! as_array {
@@ -88,9 +94,10 @@ macro_rules! get_field_string_option {
 
 pub(crate) use as_array;
 pub(crate) use as_i64;
+pub(crate) use as_str_res;
+pub(crate) use as_str_option_res;
 pub(crate) use as_object;
 pub(crate) use as_str;
-pub(crate) use as_str_res;
 pub(crate) use as_string;
 pub(crate) use as_string_option;
 pub(crate) use as_string_res;

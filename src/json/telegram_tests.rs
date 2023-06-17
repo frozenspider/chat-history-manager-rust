@@ -321,7 +321,7 @@ fn loading_2021_06_supergroup() {
                 reply_to_message_id_option: None,
                 content_option: Some(Content {
                     val: Some(content::Val::SharedContact(ContentSharedContact {
-                        first_name: myself.first_name_option.to_owned().unwrap(),
+                        first_name_option: myself.first_name_option.to_owned(),
                         last_name_option: None,
                         phone_number_option: Some(myself.phone_number_option.to_owned().unwrap()),
                         vcard_path_option: None,

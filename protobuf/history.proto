@@ -289,8 +289,9 @@ message ContentPoll {
   string question = 1;
 }
 
+// At least ONE of the fields must be present.
 message ContentSharedContact {
-  string first_name = 1;
+  optional string first_name_option = 1;
   optional string last_name_option = 2;
   optional string phone_number_option = 3;
   // Path relative to data root!
