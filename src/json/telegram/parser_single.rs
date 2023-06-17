@@ -8,7 +8,8 @@ pub fn parse(root_obj: &Object,
     let mut users: Users = Default::default();
     let mut chats_with_messages: Vec<ChatWithMessages> = vec![];
 
-    let mut cwm_option = parse_chat(root_obj, &ds_uuid, &myself.id, &mut users)?;
+    let cwm_option =
+        parse_chat(root_obj, &ds_uuid, &myself.id, &mut users)?;
     match cwm_option {
         None =>
             return Err("Chat was skipped entirely!".to_owned()),

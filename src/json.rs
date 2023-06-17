@@ -17,6 +17,8 @@ type ObjFn<'lt> = dyn FnMut(&BorrowedValue) -> EmptyRes + 'lt;
 type BoxObjFn<'lt> = Box<ObjFn<'lt>>;
 type ActionMap<'lt> = HashMap<&'lt str, BoxObjFn<'lt>>;
 
+// Macros for converting JSON value to X.
+
 macro_rules! as_i64 {
     ($v:expr, $txt:expr) => {
         $v.try_as_i64().map_err(|e| format!("{} conversion: {:?}", $txt, e))?
@@ -40,6 +42,8 @@ macro_rules! as_str {
 macro_rules! as_string {
     ($v:expr, $txt:expr) => {as_str!($v, $txt).to_owned()};
 }
+
+/// Empty string is None.
 macro_rules! as_string_option {
     ($v:expr, $txt:expr) => {
         match as_str!($v, $txt) {
@@ -48,7 +52,6 @@ macro_rules! as_string_option {
         }
     };
 }
-
 
 macro_rules! as_array {
     ($v:expr, $txt:expr) => {
@@ -62,14 +65,25 @@ macro_rules! as_object {
     };
 }
 
-macro_rules! get_field_str {
+// Macros for getting fields out of a JSON object and converting them to X.
+
+macro_rules! get_field {
     ($v:expr, $txt:expr) => {
-        as_str!($v.get($txt).ok_or(format!("{} field not found", $txt)), $txt)
+        $v.get($txt).ok_or(format!("{} field not found", $txt))
     };
 }
 
+macro_rules! get_field_str {
+    ($v:expr, $txt:expr) => {as_str!(get_field!($v, $txt), $txt)};
+}
+
 macro_rules! get_field_string {
-    ($v:expr, $txt:expr) => {get_field_str!($v, $txt).to_owned()};
+    ($v:expr, $txt:expr) => {as_string!(get_field!($v, $txt), $txt)};
+}
+
+/// Empty string is None.
+macro_rules! get_field_string_option {
+    ($v:expr, $txt:expr) => {as_string_option!(get_field!($v, $txt), $txt)};
 }
 
 pub(crate) use as_array;
@@ -80,8 +94,10 @@ pub(crate) use as_str_res;
 pub(crate) use as_string;
 pub(crate) use as_string_option;
 pub(crate) use as_string_res;
+pub(crate) use get_field;
 pub(crate) use get_field_str;
 pub(crate) use get_field_string;
+pub(crate) use get_field_string_option;
 
 fn parse_bw_as_object<'lt>(bw: &BorrowedValue,
                            name: &str,

@@ -637,24 +637,24 @@ fn parse_regular_message(message_json: &mut MessageJson,
         }
         (None, None, false, false, true, false) => {
             let question = {
-                let poll_info = as_object!(message_json.field("poll") ?, "poll");
-                get_field_str!(poll_info, "question").to_owned()
+                let poll_info = as_object!(message_json.field("poll")?, "poll");
+                get_field_string!(poll_info, "question")
             };
             Some(Val::Poll(ContentPoll { question }))
         }
         (None, None, false, false, false, true) => {
-            let (first_name, last_name, phone_number) = {
+            let (first_name, last_name_option, phone_number_option) = {
                 let contact_info =
-                    as_object!(message_json.field("contact_information") ?, "contact_information");
+                    as_object!(message_json.field("contact_information")?, "contact_information");
 
-                (get_field_str!(contact_info, "first_name").to_owned(),
-                 get_field_str!(contact_info, "last_name").to_owned(),
-                 get_field_str!(contact_info, "phone_number").to_owned())
+                (get_field_string!(contact_info, "first_name"),
+                 get_field_string_option!(contact_info, "last_name"),
+                 get_field_string_option!(contact_info, "phone_number"))
             };
             Some(Val::SharedContact(ContentSharedContact {
                 first_name,
-                last_name_option: Some(last_name),
-                phone_number_option: Some(phone_number),
+                last_name_option: last_name_option,
+                phone_number_option: phone_number_option,
                 vcard_path_option: message_json.field_opt_path("contact_vcard")?,
             }))
         }
@@ -836,12 +836,12 @@ fn parse_rich_text_object(rte_json: &Box<Object>) -> Res<history::rich_text_elem
             check_keys!(["type", "text", "language"]);
             Val::PrefmtBlock(RtePrefmtBlock {
                 text: get_field_string!(rte_json, "text"),
-                language_option: str_to_option!(get_field_str!(rte_json, "language")),
+                language_option: get_field_string_option!(rte_json, "language"),
             })
         }
         "text_link" => {
             check_keys!(["type", "text", "href"]);
-            let text = get_field_str!(rte_json, "text").to_owned();
+            let text = get_field_string!(rte_json, "text");
             Val::Link(RteLink {
                 text_option: str_to_option!(text.as_str()),
                 href: get_field_string!(rte_json, "href"),
@@ -852,7 +852,7 @@ fn parse_rich_text_object(rte_json: &Box<Object>) -> Res<history::rich_text_elem
             // Link format is hyperlink alone
             check_keys!(["type", "text"]);
             Val::Link(RteLink {
-                text_option: str_to_option!(get_field_str!(rte_json, "text")),
+                text_option: get_field_string_option!(rte_json, "text"),
                 href: get_field_string!(rte_json, "text"),
                 hidden: false,
             })

@@ -48,6 +48,19 @@
             "from": "Vvvvvvvv Bbbbbbb",
             "from_id": "user444444444",
             "text": "Message from an added user"
+          },
+          {
+            "id": 358000,
+            "type": "message",
+            "date": "2021-03-18T17:50:23",
+            "from": "Aaaaa Aaaaaaaaaaa",
+            "from_id": "user11111111",
+            "contact_information": {
+              "first_name": "Aaaaa",
+              "last_name": "",
+              "phone_number": "+998 91 1234567"
+            },
+            "text": ""
           }
         ]
       }

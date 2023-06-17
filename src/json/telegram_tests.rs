@@ -251,8 +251,8 @@ fn loading_2021_06_supergroup() {
 
 
         let msgs: &Vec<Message> = &cwm.messages; // TODO: Ask DAO instead?
-        assert_eq!(msgs.len(), 3);
-        assert_eq!(chat.msg_count, 3);
+        assert_eq!(msgs.len(), 4);
+        assert_eq!(chat.msg_count, 4);
 
         assert_eq!(msgs[0], Message {
             internal_id: -1,
@@ -305,6 +305,28 @@ fn loading_2021_06_supergroup() {
                 forward_from_name_option: None,
                 reply_to_message_id_option: None,
                 content_option: None,
+            })),
+        });
+
+        assert_eq!(msgs[3], Message {
+            internal_id: -1,
+            source_id_option: Some(358000),
+            timestamp: dt("2021-03-18 17:50:23").timestamp(),
+            from_id: myself.id,
+            text: vec![],
+            searchable_string: None,
+            typed: Some(Typed::Regular(MessageRegular {
+                edit_timestamp_option: None,
+                forward_from_name_option: None,
+                reply_to_message_id_option: None,
+                content_option: Some(Content {
+                    val: Some(content::Val::SharedContact(ContentSharedContact {
+                        first_name: myself.first_name_option.to_owned().unwrap(),
+                        last_name_option: None,
+                        phone_number_option: Some(myself.phone_number_option.to_owned().unwrap()),
+                        vcard_path_option: None,
+                    }))
+                }),
             })),
         });
     }
