@@ -8,11 +8,16 @@ pub fn parse(root_obj: &Object,
     let mut users: Users = Default::default();
     let mut chats_with_messages: Vec<ChatWithMessages> = vec![];
 
-    let mut cwm = parse_chat(root_obj, &ds_uuid, &myself.id, &mut users)?;
-    if let Some(ref mut c) = cwm.chat {
-        c.ds_uuid = Some(ds_uuid.clone());
+    let mut cwm_option = parse_chat(root_obj, &ds_uuid, &myself.id, &mut users)?;
+    match cwm_option {
+        None =>
+            return Err("Chat was skipped entirely!".to_owned()),
+        Some(mut cwm) => {
+            let mut c = cwm.chat.as_mut().unwrap();
+            c.ds_uuid = Some(ds_uuid.clone());
+            chats_with_messages.push(cwm);
+        }
     }
-    chats_with_messages.push(cwm);
 
     // In single chat, self section is not present. As such, myself must be populated from users.
     let users_vec = users.id_to_user.values().collect_vec();

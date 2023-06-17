@@ -69,12 +69,12 @@ pub fn parse(root_obj: &Object,
             .as_array().ok_or(format!("{section} list is not an array!"))?;
 
         for v in chats_arr {
-            let mut cwm =
-                parse_chat(as_object!(v, "chat"), &ds_uuid, myself_id, users)?;
-            if let Some(ref mut c) = cwm.chat {
+            if let Some(mut cwm) = parse_chat(as_object!(v, "chat"),
+                                              &ds_uuid, myself_id, users)? {
+                let mut c = cwm.chat.as_mut().unwrap();
                 c.ds_uuid = Some(ds_uuid.clone());
+                chats_with_messages.push(cwm);
             }
-            chats_with_messages.push(cwm);
         }
 
         Ok(())
@@ -88,13 +88,7 @@ pub fn parse(root_obj: &Object,
         None => return Err(String::from("No chats in dataset!")),
     }
 
-    match root_obj.get("left_chats") {
-        Some(chats_json) => parse_chats_inner(
-            "left_chats", as_object!(chats_json, "left_chats"),
-            &ds_uuid, &myself.id, &mut users, &mut chats_with_messages,
-        )?,
-        None => { /* NOOP, left_chats are optional */ }
-    }
+    // We don't want to import "left_chats" section!
 
     Ok((users, chats_with_messages))
 }

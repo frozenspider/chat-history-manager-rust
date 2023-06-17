@@ -241,10 +241,11 @@ fn parse_contact(bw: &BorrowedValue, name: &str) -> Res<User> {
     Ok(user)
 }
 
+/// Returns None if the chat is skipped (e.g. is saved_messages).
 fn parse_chat(chat_json: &Object,
               ds_uuid: &PbUuid,
               myself_id: &Id,
-              users: &mut Users) -> Res<ChatWithMessages> {
+              users: &mut Users) -> Res<Option<ChatWithMessages>> {
     let mut chat: Chat = Default::default();
     let mut messages: Vec<Message> = vec![];
 
@@ -291,6 +292,10 @@ fn parse_chat(chat_json: &Object,
         })),
     ]))?;
 
+    if is_saved_messages.get() {
+        return Ok(None);
+    }
+
     chat.msg_count = messages.len() as i32;
 
     // Undo the shifts introduced by Telegram 2021-05.
@@ -312,7 +317,7 @@ fn parse_chat(chat_json: &Object,
     member_ids.insert(0, myself_id.clone());
     chat.member_ids = member_ids;
 
-    Ok(ChatWithMessages { chat: Some(chat), messages })
+    Ok(Some(ChatWithMessages { chat: Some(chat), messages }))
 }
 
 //
