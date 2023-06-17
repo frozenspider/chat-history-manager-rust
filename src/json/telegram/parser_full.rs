@@ -70,7 +70,7 @@ pub fn parse(root_obj: &Object,
 
         for v in chats_arr {
             if let Some(mut cwm) = parse_chat(as_object!(v, "chat"),
-                                              &ds_uuid, myself_id, users)? {
+                                              &ds_uuid, Some(myself_id), users)? {
                 let mut c = cwm.chat.as_mut().unwrap();
                 c.ds_uuid = Some(ds_uuid.clone());
                 chats_with_messages.push(cwm);

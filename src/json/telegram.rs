@@ -11,7 +11,7 @@ use regex::Regex;
 use simd_json::{BorrowedValue, StaticNode, Value as JValue};
 use simd_json::borrowed::{Object, Value};
 
-use crate::{EmptyRes, InMemoryDb, Res};
+use crate::{EmptyRes, error_to_string, InMemoryDb, Res};
 use crate::protobuf::*;
 use crate::protobuf::history::{Chat, ChatType, ChatWithMessages, Dataset, Message, MessageRegular, MessageService, RichTextElement, User, PbUuid};
 
@@ -124,7 +124,7 @@ struct ExpectedMessageField<'lt> {
     optional_fields: HashSet<&'lt str>,
 }
 
-pub fn parse_file(path: &Path, ds_uuid: &Uuid, myself_chooser: MyselfChooser) -> Res<InMemoryDb> {
+pub fn parse_file(path: &Path, ds_uuid: &Uuid, myself_chooser: &dyn ChooseMyselfTrait) -> Res<InMemoryDb> {
     let path: PathBuf =
         if !path.ends_with("result.json") {
             path.join("result.json")
@@ -142,9 +142,9 @@ pub fn parse_file(path: &Path, ds_uuid: &Uuid, myself_chooser: MyselfChooser) ->
     let ds_uuid = PbUuid { value: ds_uuid.to_string().to_lowercase() };
 
     let mut file_content = fs::read(&path)
-        .map_err(|e| e.to_string())?;
+        .map_err(error_to_string)?;
     let parsed = simd_json::to_borrowed_value(&mut file_content)
-        .map_err(|e| e.to_string())?;
+        .map_err(error_to_string)?;
 
     println!("Parsed in {} ms", start_time.elapsed().as_millis());
 
@@ -244,7 +244,7 @@ fn parse_contact(bw: &BorrowedValue, name: &str) -> Res<User> {
 /// Returns None if the chat is skipped (e.g. is saved_messages).
 fn parse_chat(chat_json: &Object,
               ds_uuid: &PbUuid,
-              myself_id: &Id,
+              myself_id_option: Option<&Id>,
               users: &mut Users) -> Res<Option<ChatWithMessages>> {
     let mut chat: Chat = Default::default();
     let mut messages: Vec<Message> = vec![];
@@ -283,7 +283,7 @@ fn parse_chat(chat_json: &Object,
             if is_saved_messages.get() { return Ok(()); }
             let messages_json = as_array!(v, "messages");
             for v in messages_json {
-                if let Some(message) = parse_message(v, ds_uuid, myself_id, users,
+                if let Some(message) = parse_message(v, ds_uuid, users,
                                                      &mut member_ids)? {
                     messages.push(message);
                 }
@@ -310,11 +310,15 @@ fn parse_chat(chat_json: &Object,
             return Err(format!("Chat type has no associated enum: {}", chat.tpe))
     }
 
-    // Add myself as a first member (not required by convention but to match existing behaviour).
-    member_ids.remove(myself_id);
+    if let Some(myself_id) = myself_id_option {
+        // Add myself as a first member (not required by convention but to match existing behaviour).
+        member_ids.remove(myself_id);
+    }
     let mut member_ids = member_ids.into_iter().collect_vec();
     member_ids.sort();
-    member_ids.insert(0, myself_id.clone());
+    if let Some(myself_id) = myself_id_option {
+        member_ids.insert(0, myself_id.clone());
+    }
     chat.member_ids = member_ids;
 
     Ok(Some(ChatWithMessages { chat: Some(chat), messages }))
@@ -392,7 +396,7 @@ impl<'lt> MessageJson<'lt> {
 
     fn field_strs(&mut self, name: &'lt str) -> Res<Vec<String>> {
         self.field(name)?
-            .try_as_array().map_err(|e| e.to_string())?
+            .try_as_array().map_err(error_to_string)?
             .into_iter()
             .map(|v| as_string_res!(v, name))
             .collect::<Res<Vec<String>>>()
@@ -410,7 +414,6 @@ impl<'lt> MessageJson<'lt> {
 
 fn parse_message(bw: &BorrowedValue,
                  ds_uuid: &PbUuid,
-                 myself_id: &Id,
                  users: &mut Users,
                  member_ids: &mut HashSet<Id>) -> Res<Option<Message>> {
     use history::message::Typed;
@@ -484,7 +487,7 @@ fn parse_message(bw: &BorrowedValue,
     member_ids.insert(short_user.id);
 
     // Associate it with a real user, or create one if none found.
-    append_user(short_user, users, ds_uuid, myself_id)?;
+    append_user(short_user, users, ds_uuid)?;
 
     let has_unixtime = message_json.val.get("date_unixtime").is_some();
     let has_text_entities = message_json.val.get("text_entities").is_some();
@@ -890,12 +893,9 @@ fn parse_rich_text_object(rte_json: &Box<Object>) -> Res<history::rich_text_elem
 
 fn append_user(short_user: ShortUser,
                users: &mut Users,
-               ds_uuid: &PbUuid,
-               myself_id: &Id) -> Res<Id> {
+               ds_uuid: &PbUuid) -> Res<Id> {
     if short_user.id == 0 || short_user.id == -1 {
         Err(format!("Incorrect ID for a user!"))
-    } else if *myself_id == short_user.id {
-        Ok(myself_id.clone())
     } else if let Some(user) = users.id_to_user.get(&short_user.id) {
         Ok(user.id)
     } else {

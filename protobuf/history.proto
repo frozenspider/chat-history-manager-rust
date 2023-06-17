@@ -13,16 +13,19 @@ option (scalapb.options) = {
   enum_strip_prefix: true
 };
 
-// The book store service definition.
-service JsonLoader {
-  rpc ParseJsonFile(ParseJsonFileRequest) returns (ParseJsonFileResponse) {}
+service HistoryLoader {
+  rpc ParseHistoryFile(ParseHistoryFileRequest) returns (ParseHistoryFileResponse) {}
 }
 
-message ParseJsonFileRequest {
+service MyselfChooser {
+  rpc ChooseMyself(ChooseMyselfRequest) returns (ChooseMyselfResponse) {}
+}
+
+message ParseHistoryFileRequest {
   string path = 1;
 }
 
-message ParseJsonFileResponse {
+message ParseHistoryFileResponse {
   Dataset ds = 1 [(scalapb.field).no_box = true];
 
   string root_file = 2;
@@ -33,6 +36,14 @@ message ParseJsonFileResponse {
   repeated User users = 4;
 
   repeated ChatWithMessages cwm = 5;
+}
+
+message ChooseMyselfRequest {
+  repeated User users = 1;
+}
+
+message ChooseMyselfResponse {
+  int32 picked_option = 1;
 }
 
 message Dataset {

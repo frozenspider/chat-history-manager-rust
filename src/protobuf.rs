@@ -24,6 +24,7 @@ impl ShortUser {
         Self { id, full_name_option }
     }
 
+    #[allow(dead_code)]
     pub fn new_name_str(id: Id, full_name: &str) -> Self {
         Self::new(id, Some(full_name.to_owned()))
     }
@@ -44,10 +45,12 @@ impl ShortUser {
     }
 }
 
+#[allow(dead_code)]
 pub fn unwrap_rich_text(rtes: &Vec<RichTextElement>) -> Vec<&rich_text_element::Val> {
     rtes.iter().map(|rte| rte.val.as_ref().unwrap()).collect_vec()
 }
 
+#[allow(dead_code)]
 pub fn unwrap_rich_text_copy(rtes: &Vec<RichTextElement>) -> Vec<rich_text_element::Val> {
     unwrap_rich_text(rtes).into_iter().map(|v| v.clone()).collect_vec()
 }

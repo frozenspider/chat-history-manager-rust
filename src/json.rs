@@ -9,7 +9,7 @@ use simd_json;
 use simd_json::{BorrowedValue, ValueAccess, ValueType};
 use uuid::Uuid;
 
-use crate::{InMemoryDb, EmptyRes, Res, MyselfChooser};
+use crate::{InMemoryDb, EmptyRes, Res, ChooseMyselfTrait};
 
 mod telegram;
 
@@ -130,7 +130,7 @@ fn consume<'lt>() -> BoxObjFn<'lt> {
     Box::new(|_| Ok(()))
 }
 
-pub fn parse_file(path: &str, myself_chooser: MyselfChooser) -> Res<InMemoryDb> {
+pub fn parse_file(path: &str, choose_myself: &dyn ChooseMyselfTrait) -> Res<InMemoryDb> {
     let uuid = Uuid::new_v4();
 
     // No choice yet.
@@ -140,7 +140,7 @@ pub fn parse_file(path: &str, myself_chooser: MyselfChooser) -> Res<InMemoryDb> 
     let now_str = Local::now().format("%Y-%m-%d");
 
     let mut parsed =
-        telegram::parse_file(Path::new(path), &uuid, myself_chooser);
+        telegram::parse_file(Path::new(path), &uuid, choose_myself);
 
     parsed.iter_mut().for_each(|p| {
         p.dataset.alias = format!("{src_alias} data loaded @ {now_str}");

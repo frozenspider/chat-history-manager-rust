@@ -6,7 +6,7 @@ use crate::json::parse_file;
 use crate::json::telegram::*;
 use crate::protobuf::history::*;
 use crate::protobuf::history::message::*;
-use crate::{NO_CHOOSER, User};
+use crate::{NoChooser, User};
 
 lazy_static! {
     static ref RESOURCES_DIR: String =
@@ -57,7 +57,9 @@ fn expected_myself(ds_uuid: &PbUuid) -> User {
 
 #[test]
 fn loading_2020_01() {
-    let dao = verify_result(parse_file(resource("telegram_2020-01").as_str(), NO_CHOOSER));
+    let dao =
+        verify_result(parse_file(resource("telegram_2020-01").as_str(),
+                                 &NoChooser));
 
     let ds_uuid = dao.dataset.uuid.unwrap_ref();
     let myself = &dao.myself;
@@ -147,7 +149,8 @@ fn loading_2020_01() {
 
 #[test]
 fn loading_2021_05() {
-    let dao = verify_result(parse_file(resource("telegram_2021-05").as_str(), NO_CHOOSER));
+    let dao =
+        verify_result(parse_file(resource("telegram_2021-05").as_str(), &NoChooser));
 
     let ds_uuid = dao.dataset.uuid.unwrap_ref();
     let myself = &dao.myself;
@@ -209,7 +212,7 @@ fn loading_2021_05() {
 
 #[test]
 fn loading_2021_06_supergroup() {
-    let dao = verify_result(parse_file(resource("telegram_2021-06_supergroup").as_str(), NO_CHOOSER));
+    let dao = verify_result(parse_file(resource("telegram_2021-06_supergroup").as_str(), &NoChooser));
 
     let ds_uuid = dao.dataset.uuid.unwrap_ref();
     let myself = &dao.myself;
@@ -334,7 +337,7 @@ fn loading_2021_06_supergroup() {
 
 #[test]
 fn loading_2021_07() {
-    let dao = verify_result(parse_file(resource("telegram_2021-07").as_str(), NO_CHOOSER));
+    let dao = verify_result(parse_file(resource("telegram_2021-07").as_str(), &NoChooser));
 
     let ds_uuid = dao.dataset.uuid.unwrap_ref();
     let myself = &dao.myself;

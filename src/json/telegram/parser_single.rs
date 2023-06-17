@@ -4,12 +4,12 @@ use crate::json::telegram::*;
 pub fn parse(root_obj: &Object,
              ds_uuid: &PbUuid,
              myself: &mut User,
-             myself_chooser: MyselfChooser) -> Res<(Users, Vec<ChatWithMessages>)> {
+             myself_chooser: &dyn ChooseMyselfTrait) -> Res<(Users, Vec<ChatWithMessages>)> {
     let mut users: Users = Default::default();
     let mut chats_with_messages: Vec<ChatWithMessages> = vec![];
 
     let cwm_option =
-        parse_chat(root_obj, &ds_uuid, &myself.id, &mut users)?;
+        parse_chat(root_obj, &ds_uuid, None, &mut users)?;
     match cwm_option {
         None =>
             return Err("Chat was skipped entirely!".to_owned()),
@@ -22,7 +22,7 @@ pub fn parse(root_obj: &Object,
 
     // In single chat, self section is not present. As such, myself must be populated from users.
     let users_vec = users.id_to_user.values().collect_vec();
-    let myself_idx = myself_chooser(&users_vec)?;
+    let myself_idx = myself_chooser.choose_myself(&users_vec)?;
     let myself2 = users_vec[myself_idx];
     myself.id = myself2.id;
     myself.first_name_option = myself2.first_name_option.clone();
