@@ -185,7 +185,7 @@ pub fn parse_file(path: &Path, ds_uuid: &Uuid, myself_chooser: MyselfChooser) ->
             if !users.id_to_user.contains_key(member_id) {
                 return Err(format!("No member with id={} found for chat with id={} '{}'",
                                    member_id, chat.id,
-                                   chat.name_option.as_ref().unwrap_or(&"<unnamed>".to_owned())));
+                                   chat.name_option.as_ref().unwrap_or(&UNNAMED.to_owned())));
             }
         }
     }
@@ -539,7 +539,7 @@ fn parse_regular_message(message_json: &mut MessageJson,
     }
     regular_msg.forward_from_name_option = match message_json.field_opt("forwarded_from")? {
         None => None,
-        Some(forwarded_from) if forwarded_from.is_null() => Some("<unknown>".to_owned()),
+        Some(forwarded_from) if forwarded_from.is_null() => Some(UNKNOWN.to_owned()),
         Some(forwarded_from) => Some(as_string!(forwarded_from, "forwarded_from")),
     };
     regular_msg.reply_to_message_id_option = message_json.field_opt_i64("reply_to_message_id")?;

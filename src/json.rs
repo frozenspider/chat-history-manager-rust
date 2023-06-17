@@ -106,6 +106,9 @@ pub(crate) use get_field_str;
 pub(crate) use get_field_string;
 pub(crate) use get_field_string_option;
 
+const UNNAMED: &str = "[unnamed]";
+const UNKNOWN: &str = "[unknown]";
+
 fn parse_bw_as_object<'lt>(bw: &BorrowedValue,
                            name: &str,
                            actions: ActionMap<'lt>) -> EmptyRes {
