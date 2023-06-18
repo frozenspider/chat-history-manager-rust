@@ -28,7 +28,7 @@ impl HistoryLoader for ChatHistoryManagerServer {
         &self,
         request: Request<ParseHistoryFileRequest>,
     ) -> Result<Response<ParseHistoryFileResponse>, Status> {
-        println!(">>> Request:  {:?}", request.get_ref());
+        log::info!(">>> Request:  {:?}", request.get_ref());
         let myself_chooser_port = self.myself_chooser_port;
 
         let blocking_task = tokio::task::spawn_blocking(move || {
@@ -44,7 +44,7 @@ impl HistoryLoader for ChatHistoryManagerServer {
                         cwm: pr.cwm,
                     })
                     .map(Response::new);
-            println!("{}", truncate_to!(format!("<<< Response: {:?}", response), 200));
+            log::info!("{}", truncate_to!(format!("<<< Response: {:?}", response), 200));
             response
         });
 
@@ -56,17 +56,17 @@ impl HistoryLoader for ChatHistoryManagerServer {
 }
 
 async fn choose_myself_async(port: u16, users: Vec<User>) -> Res<usize> {
-    println!("Connecting to myself chooser at port {}", port);
+    log::info!("Connecting to myself chooser at port {}", port);
     let mut client =
         MyselfChooserClient::connect(format!("http://127.0.0.1:{}", port))
             .await
             .map_err(error_to_string)?;
-    println!("Sending ChooseMyselfRequest");
+    log::info!("Sending ChooseMyselfRequest");
     let len = users.len();
     let request = ChooseMyselfRequest { users };
     let response = client.choose_myself(request).await
         .map_err(error_to_string)?;
-    println!("Got response");
+    log::info!("Got response");
     let response = response.get_ref().picked_option;
     if response < 0 {
         Err("Choice aborted!".to_owned())
@@ -112,7 +112,7 @@ pub async fn start_server(port: u16) -> EmptyRes {
         .build()
         .unwrap();
 
-    println!("JsonServer server listening on {}", addr);
+    log::info!("JsonServer server listening on {}", addr);
 
     Server::builder()
         .add_service(HistoryLoaderServer::new(chm_server))
@@ -123,7 +123,6 @@ pub async fn start_server(port: u16) -> EmptyRes {
     Ok(())
 }
 
-#[allow(dead_code)]
 #[tokio::main]
 pub async fn make_choose_myself_request(port: u16) -> EmptyRes {
     let chooser = ChooseMyselfImpl {
@@ -149,6 +148,6 @@ pub async fn make_choose_myself_request(port: u16) -> EmptyRes {
             phone_number_option: None,
         },
     ])?;
-    println!("Picked: {}", chosen);
+    log::info!("Picked: {}", chosen);
     Ok(())
 }

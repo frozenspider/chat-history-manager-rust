@@ -67,7 +67,7 @@ impl Users {
     }
 
     fn insert(&mut self, user: User) {
-        println!("Inserting user {:?}", user);
+        log::debug!("Inserting user {:?}", user);
 
         let pretty_name = Self::pretty_name(&user);
 
@@ -93,21 +93,21 @@ impl Users {
             });
         let existing_user =
             existing_pos.map(|p| self.pretty_name_to_idless_users.remove(p).1);
-        println!("> Found user: {:?}", existing_user);
+        log::debug!("> Found user: {:?}", existing_user);
         let user = match existing_user {
             None => user,
             Some(eu) => {
                 let user = Self::merge(eu, user);
-                println!("> Merged into {:?}", user);
+                log::debug!("> Merged into {:?}", user);
                 user
             }
         };
         let id = user.id;
         if id > 0 {
-            println!("> User has valid ID");
+            log::debug!("> User has valid ID");
             self.id_to_user.insert(id, user);
         } else {
-            println!("> User has no ID!");
+            log::debug!("> User has no ID!");
             self.pretty_name_to_idless_users.push((pretty_name, user));
         }
     }
@@ -136,7 +136,7 @@ pub fn parse_file(path: &Path, ds_uuid: &Uuid, myself_chooser: &dyn ChooseMyself
         return Err(format!("{} not found!", path.to_str().unwrap()));
     }
 
-    println!("Parsing '{}'", path.to_str().unwrap());
+    log::info!("Parsing '{}'", path.to_str().unwrap());
 
     let start_time = Instant::now();
     let ds_uuid = PbUuid { value: ds_uuid.to_string().to_lowercase() };
@@ -146,7 +146,7 @@ pub fn parse_file(path: &Path, ds_uuid: &Uuid, myself_chooser: &dyn ChooseMyself
     let parsed = simd_json::to_borrowed_value(&mut file_content)
         .map_err(error_to_string)?;
 
-    println!("Parsed in {} ms", start_time.elapsed().as_millis());
+    log::info!("Parsed in {} ms", start_time.elapsed().as_millis());
 
     let start_time = Instant::now();
     let root_obj = as_object!(parsed, "root");
@@ -163,7 +163,7 @@ pub fn parse_file(path: &Path, ds_uuid: &Uuid, myself_chooser: &dyn ChooseMyself
             parser_full::parse(root_obj, &ds_uuid, &mut myself)?
         };
 
-    println!("Processed in {} ms", start_time.elapsed().as_millis());
+    log::info!("Processed in {} ms", start_time.elapsed().as_millis());
 
     let ds = Dataset {
         uuid: Some(ds_uuid.clone()),
@@ -172,9 +172,9 @@ pub fn parse_file(path: &Path, ds_uuid: &Uuid, myself_chooser: &dyn ChooseMyself
     };
 
     if !users.pretty_name_to_idless_users.is_empty() {
-        println!("Discarding users with no IDs:");
+        log::warn!("Discarding users with no IDs:");
         for (_pretty_name, u) in users.pretty_name_to_idless_users {
-            println!("> {:?}", u);
+            log::warn!("> {:?}", u);
         }
     }
 
