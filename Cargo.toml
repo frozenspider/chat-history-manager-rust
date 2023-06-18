@@ -11,6 +11,7 @@ mimalloc = "0.1.37" # As advise by SIMD Json docs
 chrono = "0.4.26"
 regex = "1.8.4"
 lazy_static = "1.4.0"
+hashers = "1.0.1"
 
 # Protobuf and web service
 protobuf = "3.2.0"

@@ -1,9 +1,11 @@
 use std::cell::Cell;
 use std::collections::HashMap;
 use std::fs;
+use std::hash::BuildHasherDefault;
 use std::path::Path;
 use std::time::Instant;
 use chrono::Local;
+use hashers::fx_hash::FxHasher;
 
 use simd_json;
 use simd_json::{BorrowedValue, ValueAccess, ValueType};
@@ -13,9 +15,11 @@ use crate::{InMemoryDb, EmptyRes, Res, ChooseMyselfTrait};
 
 mod telegram;
 
+type Hasher = BuildHasherDefault<FxHasher>;
+
 type ObjFn<'lt> = dyn FnMut(&BorrowedValue) -> EmptyRes + 'lt;
 type BoxObjFn<'lt> = Box<ObjFn<'lt>>;
-type ActionMap<'lt> = HashMap<&'lt str, BoxObjFn<'lt>>;
+type ActionMap<'lt> = HashMap<&'lt str, BoxObjFn<'lt>, Hasher>;
 
 // Macros for converting JSON value to X.
 
@@ -108,6 +112,14 @@ pub(crate) use get_field_string_option;
 
 const UNNAMED: &str = "[unnamed]";
 const UNKNOWN: &str = "[unknown]";
+
+fn hasher() -> Hasher {
+    BuildHasherDefault::<FxHasher>::default()
+}
+
+fn action_map<'lt, const N: usize>(actions: [(&'lt str, BoxObjFn<'lt>); N]) -> ActionMap<'lt> {
+    ActionMap::from_iter(actions)
+}
 
 fn parse_bw_as_object<'lt>(bw: &BorrowedValue,
                            name: &str,

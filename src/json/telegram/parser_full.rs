@@ -7,13 +7,13 @@ pub fn parse(root_obj: &Object,
     let mut users: Users = Default::default();
     let mut chats_with_messages: Vec<ChatWithMessages> = vec!();
 
-    parse_object(root_obj, "root", ActionMap::from([
+    parse_object(root_obj, "root", action_map([
         ("about", consume()),
         ("profile_pictures", consume()),
         ("frequent_contacts", consume()),
         ("other_data", consume()),
         ("contacts", Box::new(|v: &BorrowedValue| {
-            parse_bw_as_object(v, "personal_information", ActionMap::from([
+            parse_bw_as_object(v, "personal_information", action_map([
                 ("about", consume()),
                 ("list", Box::new(|v: &BorrowedValue| {
                     for v in v.as_array().ok_or("contact list is not an array!")? {
@@ -27,7 +27,7 @@ pub fn parse(root_obj: &Object,
             Ok(())
         })),
         ("personal_information", Box::new(|v: &BorrowedValue| {
-            parse_bw_as_object(v, "personal_information", ActionMap::from([
+            parse_bw_as_object(v, "personal_information", action_map([
                 ("about", consume()),
                 ("user_id", Box::new(|v: &BorrowedValue| {
                     myself.id = as_i64!(v, "ID");

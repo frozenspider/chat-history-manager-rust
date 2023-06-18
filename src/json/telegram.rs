@@ -34,7 +34,7 @@ static GROUP_CHAT_ID_SHIFT: Id = PERSONAL_CHAT_ID_SHIFT * 2;
 
 #[derive(Default, Debug)]
 pub struct Users {
-    id_to_user: HashMap<Id, User>,
+    id_to_user: HashMap<Id, User, Hasher>,
     pretty_name_to_idless_users: Vec<(String, User)>,
 }
 
@@ -120,8 +120,8 @@ enum ShouldProceed {
 
 #[derive(Clone)]
 struct ExpectedMessageField<'lt> {
-    required_fields: HashSet<&'lt str>,
-    optional_fields: HashSet<&'lt str>,
+    required_fields: HashSet<&'lt str, Hasher>,
+    optional_fields: HashSet<&'lt str, Hasher>,
 }
 
 pub fn parse_file(path: &Path, ds_uuid: &Uuid, myself_chooser: &dyn ChooseMyselfTrait) -> Res<InMemoryDb> {
@@ -208,7 +208,7 @@ pub fn parse_file(path: &Path, ds_uuid: &Uuid, myself_chooser: &dyn ChooseMyself
 fn parse_contact(bw: &BorrowedValue, name: &str) -> Res<User> {
     let mut user: User = Default::default();
 
-    parse_bw_as_object(bw, name, ActionMap::from([
+    parse_bw_as_object(bw, name, action_map([
         ("date", consume()),
         ("user_id", Box::new(|v: &BorrowedValue| {
             // In older (pre-2021-06) dumps, id field was present but was always 0.
@@ -251,9 +251,10 @@ fn parse_chat(chat_json: &Object,
 
     let is_saved_messages = Cell::from(false);
 
-    let mut member_ids: HashSet<Id> = HashSet::with_capacity(100);
+    let mut member_ids: HashSet<Id, Hasher> =
+        HashSet::with_capacity_and_hasher(100, hasher());
 
-    parse_object(chat_json, "chat", ActionMap::from([
+    parse_object(chat_json, "chat", action_map([
         ("", consume()), // No idea how to get rid of it
         ("name", Box::new(|v: &BorrowedValue| {
             if v.value_type() != ValueType::Null {
@@ -415,11 +416,11 @@ impl<'lt> MessageJson<'lt> {
 fn parse_message(bw: &BorrowedValue,
                  ds_uuid: &PbUuid,
                  users: &mut Users,
-                 member_ids: &mut HashSet<Id>) -> Res<Option<Message>> {
+                 member_ids: &mut HashSet<Id, Hasher>) -> Res<Option<Message>> {
     use history::message::Typed;
 
-    fn as_hash_set<'lt>(arr: &[&'lt str]) -> HashSet<&'lt str> {
-        let mut result = HashSet::with_capacity(100);
+    fn as_hash_set<'lt>(arr: &[&'lt str]) -> HashSet<&'lt str, Hasher> {
+        let mut result = HashSet::with_capacity_and_hasher(100, hasher());
         result.extend(arr);
         result
     }
@@ -798,10 +799,10 @@ fn parse_rich_text_object(rte_json: &Box<Object>) -> Res<history::rich_text_elem
     use history::rich_text_element::Val;
 
     let keys =
-        rte_json.keys().map(|s| s.deref()).collect::<HashSet<&str>>();
+        rte_json.keys().map(|s| s.deref()).collect::<HashSet<&str, Hasher>>();
     macro_rules! check_keys {
         ($keys:expr) => {
-            if keys != HashSet::from($keys) {
+            if keys != HashSet::<&str, Hasher>::from_iter($keys) {
                 return Err(format!("Unexpected keys: {:?}", keys))
             }
         };
