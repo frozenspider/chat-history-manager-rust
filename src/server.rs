@@ -11,7 +11,7 @@ use crate::protobuf::history::history_loader_server::*;
 use crate::protobuf::history::myself_chooser_client::MyselfChooserClient;
 
 pub(crate) const FILE_DESCRIPTOR_SET: &[u8] =
-    tonic::include_file_descriptor_set!("greeter_descriptor");
+    tonic::include_file_descriptor_set!("grpc_reflection_descriptor");
 
 macro_rules! truncate_to {
     ($str:expr, $maxlen:expr) => {$str.graphemes(true).take($maxlen).collect::<String>()};
