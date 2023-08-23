@@ -363,8 +363,7 @@ impl<'lt> MessageJson<'lt> {
     fn field_opt_i32(&mut self, name: &'lt str) -> Res<Option<i32>> {
         match self.field_opt(name)? {
             None => Ok(None),
-            Some(v) => Ok(Some(v.try_as_i32()
-                .map_err(|e| format!("{} conversion: {:?}", name, e))?))
+            Some(v) => Ok(Some(as_i32!(v, name)))
         }
     }
 
@@ -375,8 +374,7 @@ impl<'lt> MessageJson<'lt> {
     fn field_opt_i64(&mut self, name: &'lt str) -> Res<Option<i64>> {
         match self.field_opt(name)? {
             None => Ok(None),
-            Some(v) => Ok(Some(v.try_as_i64()
-                .map_err(|e| format!("{} conversion: {:?}", name, e))?))
+            Some(v) => Ok(Some(as_i64!(v, name)))
         }
     }
 
@@ -387,6 +385,7 @@ impl<'lt> MessageJson<'lt> {
     fn field_opt_str(&mut self, name: &'lt str) -> Res<Option<String>> {
         match self.field_opt(name)? {
             None => Ok(None),
+            Some(v) if v.is_null() => Ok(None),
             Some(v) => Ok(Some(as_string!(v, name)))
         }
     }
@@ -456,11 +455,7 @@ fn parse_message(bw: &BorrowedValue,
             message.typed = Some(Typed::Regular(regular));
 
             short_user.id = parse_user_id(message_json.field("from_id")?)?;
-            short_user.full_name_option = match message_json.field_opt("from")? {
-                None => None,
-                Some(from) if from.is_null() => None,
-                Some(from) => Some(as_string!(from, "from")),
-            };
+            short_user.full_name_option = message_json.field_opt_str("from")?;
         }
         "service" => {
             message_json.expected_fields = Some(SERVICE_MSG_FIELDS.clone());
@@ -473,7 +468,7 @@ fn parse_message(bw: &BorrowedValue,
             message.typed = Some(Typed::Service(service));
 
             short_user.id = parse_user_id(message_json.field("actor_id")?)?;
-            short_user.full_name_option = Some(message_json.field_str("actor")?);
+            short_user.full_name_option = message_json.field_opt_str("actor")?;
         }
         etc => return Err(format!("Unknown message type: {}", etc)),
     }
@@ -837,6 +832,10 @@ fn parse_rich_text_object(rte_json: &Box<Object>) -> Res<history::rich_text_elem
         "strikethrough" => {
             check_keys!(["type", "text"]);
             Val::Strikethrough(RteStrikethrough { text: get_field_string!(rte_json, "text") })
+        }
+        "spoiler" => {
+            check_keys!(["type", "text"]);
+            Val::Spoiler(RteSpoiler { text: get_field_string!(rte_json, "text") })
         }
         "unknown" => {
             // Unknown is rendered as plaintext in telegram

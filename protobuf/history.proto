@@ -166,6 +166,7 @@ message RichTextElement {
     RteLink             link = 6;
     RtePrefmtInline     prefmt_inline = 7;
     RtePrefmtBlock      prefmt_block = 8;
+    RteSpoiler          spoiler = 10;
   }
 
   // String that can be used to search this content. Should not be present during parsing, populated while processing.
@@ -200,6 +201,9 @@ message RtePrefmtInline {
 message RtePrefmtBlock {
   string text = 1;
   optional string language_option = 2;
+}
+message RteSpoiler {
+  string text = 1;
 }
 
 //

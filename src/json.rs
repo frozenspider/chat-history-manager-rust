@@ -23,15 +23,21 @@ type ActionMap<'lt> = HashMap<&'lt str, BoxObjFn<'lt>, Hasher>;
 
 // Macros for converting JSON value to X.
 
+macro_rules! as_i32 {
+    ($v:expr, $txt:expr) => {
+        $v.try_as_i32().map_err(|e| format!("'{}' field conversion: {:?}", $txt, e))?
+    };
+}
+
 macro_rules! as_i64 {
     ($v:expr, $txt:expr) => {
-        $v.try_as_i64().map_err(|e| format!("{} conversion: {:?}", $txt, e))?
+        $v.try_as_i64().map_err(|e| format!("'{}' field conversion: {:?}", $txt, e))?
     };
 }
 
 macro_rules! as_str_option_res {
     ($v:expr, $txt:expr) => {
-        $v.try_as_str().map_err(|e| format!("{} conversion: {:?}", $txt, e)).map(|s|
+        $v.try_as_str().map_err(|e| format!("'{}' field conversion: {:?}", $txt, e)).map(|s|
             match s {
                 "" => None,
                 s  => Some(s),
@@ -65,13 +71,13 @@ macro_rules! as_string_option {
 
 macro_rules! as_array {
     ($v:expr, $txt:expr) => {
-        $v.try_as_array().map_err(|e| format!("{} conversion: {:?}", $txt, e))?
+        $v.try_as_array().map_err(|e| format!("'{}' field conversion: {:?}", $txt, e))?
     };
 }
 
 macro_rules! as_object {
     ($v:expr, $txt:expr) => {
-        $v.try_as_object().map_err(|e| format!("{} conversion: {:?}", $txt, e))?
+        $v.try_as_object().map_err(|e| format!("'{}' field conversion: {:?}", $txt, e))?
     };
 }
 
@@ -97,6 +103,7 @@ macro_rules! get_field_string_option {
 }
 
 pub(crate) use as_array;
+pub(crate) use as_i32;
 pub(crate) use as_i64;
 pub(crate) use as_str_res;
 pub(crate) use as_str_option_res;
