@@ -24,82 +24,92 @@ type ActionMap<'lt> = HashMap<&'lt str, BoxObjFn<'lt>, Hasher>;
 // Macros for converting JSON value to X.
 
 macro_rules! as_i32 {
-    ($v:expr, $txt:expr) => {
-        $v.try_as_i32().map_err(|e| format!("'{}' field conversion: {:?}", $txt, e))?
+    ($v:expr, $path:expr) => {
+        $v.try_as_i32().map_err(|e| format!("'{}' field conversion: {:?}", $path, e))?
     };
+    ($v:expr, $path:expr, $path2:expr) => {as_i32!($v, format!("{}.{}", $path, $path2))};
 }
 
 macro_rules! as_i64 {
-    ($v:expr, $txt:expr) => {
-        $v.try_as_i64().map_err(|e| format!("'{}' field conversion: {:?}", $txt, e))?
+    ($v:expr, $path:expr) => {
+        $v.try_as_i64().map_err(|e| format!("'{}' field conversion: {:?}", $path, e))?
     };
+    ($v:expr, $path:expr, $path2:expr) => {as_i64!($v, format!("{}.{}", $path, $path2))};
 }
 
 macro_rules! as_str_option_res {
-    ($v:expr, $txt:expr) => {
-        $v.try_as_str().map_err(|e| format!("'{}' field conversion: {:?}", $txt, e)).map(|s|
+    ($v:expr, $path:expr) => {
+        $v.try_as_str().map_err(|e| format!("'{}' field conversion: {:?}", $path, e)).map(|s|
             match s {
                 "" => None,
                 s  => Some(s),
             }
         )
     };
+    ($v:expr, $path:expr, $path2:expr) => {as_str_option_res!($v, format!("{}.{}", $path, $path2))};
 }
 
 macro_rules! as_str_res {
-    ($v:expr, $txt:expr) => {
-        as_str_option_res!($v, $txt)?.ok_or(format!("{} is an empty string", $txt))
+    ($v:expr, $path:expr) => {
+        as_str_option_res!($v, $path)?.ok_or(format!("'{}' is an empty string", $path))
     };
+    ($v:expr, $path:expr, $path2:expr) => {as_str_res!($v, format!("{}.{}", $path, $path2))};
 }
 
 macro_rules! as_string_res {
-    ($v:expr, $txt:expr) => {as_str_res!($v, $txt).map(|s| s.to_owned())};
+    ($v:expr, $path:expr) => {as_str_res!($v, $path).map(|s| s.to_owned())};
+    ($v:expr, $path:expr, $path2:expr) => {as_string_res!($v, format!("{}.{}", $path, $path2))};
 }
 
 macro_rules! as_str {
-    ($v:expr, $txt:expr) => {as_str_res!($v, $txt)?};
+    ($v:expr, $path:expr) => {as_str_res!($v, $path)?};
+    ($v:expr, $path:expr, $path2:expr) => {as_str!($v, format!("{}.{}", $path, $path2))};
 }
 
 macro_rules! as_string {
-    ($v:expr, $txt:expr) => {as_str!($v, $txt).to_owned()};
+    ($v:expr, $path:expr) => {as_str!($v, $path).to_owned()};
+    ($v:expr, $path:expr, $path2:expr) => {as_string!($v, format!("{}.{}", $path, $path2))};
 }
 
 /// Empty string is None.
 macro_rules! as_string_option {
-    ($v:expr, $txt:expr) => {as_str_option_res!($v, $txt)?.map(|s| s.to_owned())};
+    ($v:expr, $path:expr) => {as_str_option_res!($v, $path)?.map(|s| s.to_owned())};
+    ($v:expr, $path:expr, $path2:expr) => {as_string_option!($v, format!("{}.{}", $path, $path2))};
 }
 
 macro_rules! as_array {
-    ($v:expr, $txt:expr) => {
-        $v.try_as_array().map_err(|e| format!("'{}' field conversion: {:?}", $txt, e))?
+    ($v:expr, $path:expr) => {
+        $v.try_as_array().map_err(|e| format!("'{}' field conversion: {:?}", $path, e))?
     };
+    ($v:expr, $path:expr, $path2:expr) => {as_array!($v, format!("{}.{}", $path, $path2))};
 }
 
 macro_rules! as_object {
-    ($v:expr, $txt:expr) => {
-        $v.try_as_object().map_err(|e| format!("'{}' field conversion: {:?}", $txt, e))?
+    ($v:expr, $path:expr) => {
+        $v.try_as_object().map_err(|e| format!("'{}' field conversion: {:?}", $path, e))?
     };
+    ($v:expr, $path:expr, $path2:expr) => {as_object!($v, format!("{}.{}", $path, $path2))};
 }
 
 // Macros for getting fields out of a JSON object and converting them to X.
 
 macro_rules! get_field {
-    ($v:expr, $txt:expr) => {
-        $v.get($txt).ok_or(format!("{} field not found", $txt))
+    ($v:expr, $path:expr, $txt:expr) => {
+        $v.get($txt).ok_or(format!("{}.{} field not found", $path, $txt))
     };
 }
 
 macro_rules! get_field_str {
-    ($v:expr, $txt:expr) => {as_str!(get_field!($v, $txt), $txt)};
+    ($v:expr, $path:expr, $txt:expr) => {as_str!(get_field!($v, $path, $txt), format!("{}.{}", $path, $txt))};
 }
 
 macro_rules! get_field_string {
-    ($v:expr, $txt:expr) => {as_string!(get_field!($v, $txt), $txt)};
+    ($v:expr, $path:expr, $txt:expr) => {as_string!(get_field!($v, $path, $txt), format!("{}.{}", $path, $txt))};
 }
 
 /// Empty string is None.
 macro_rules! get_field_string_option {
-    ($v:expr, $txt:expr) => {as_string_option!(get_field!($v, $txt), $txt)};
+    ($v:expr, $path:expr, $txt:expr) => {as_string_option!(get_field!($v, $path, $txt), format!("{}.{}", $path, $txt))};
 }
 
 pub(crate) use as_array;
@@ -129,17 +139,17 @@ fn action_map<'lt, const N: usize>(actions: [(&'lt str, BoxObjFn<'lt>); N]) -> A
 }
 
 fn parse_bw_as_object<'lt>(bw: &BorrowedValue,
-                           name: &str,
+                           path: &str,
                            actions: ActionMap<'lt>) -> EmptyRes {
-    parse_object(as_object!(bw, name), name, actions)
+    parse_object(as_object!(bw, path), path, actions)
 }
 
 fn parse_object<'lt>(obj: &simd_json::borrowed::Object,
-                     name: &str,
+                     path: &str,
                      mut actions: ActionMap<'lt>) -> EmptyRes {
     for (k, v) in obj.iter() {
         let action =
-            actions.get_mut(k.as_ref()).ok_or(format!("Unexpected key: {}.{}", name, k))?;
+            actions.get_mut(k.as_ref()).ok_or(format!("Unexpected key: {}.{}", path, k))?;
         action(v)?
     }
     Ok(())

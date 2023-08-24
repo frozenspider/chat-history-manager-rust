@@ -17,7 +17,7 @@ pub fn parse(root_obj: &Object,
                 ("about", consume()),
                 ("list", Box::new(|v: &BorrowedValue| {
                     for v in v.as_array().ok_or("contact list is not an array!")? {
-                        let mut contact = parse_contact(v, "contact")?;
+                        let mut contact = parse_contact("contact", v)?;
                         contact.ds_uuid = Some(ds_uuid.clone());
                         users.insert(contact);
                     }
@@ -27,26 +27,27 @@ pub fn parse(root_obj: &Object,
             Ok(())
         })),
         ("personal_information", Box::new(|v: &BorrowedValue| {
-            parse_bw_as_object(v, "personal_information", action_map([
+            let json_path = "personal_information";
+            parse_bw_as_object(v, json_path, action_map([
                 ("about", consume()),
                 ("user_id", Box::new(|v: &BorrowedValue| {
-                    myself.id = as_i64!(v, "ID");
+                    myself.id = as_i64!(v, json_path, "user_id");
                     Ok(())
                 })),
                 ("first_name", Box::new(|v: &BorrowedValue| {
-                    myself.first_name_option = Some(as_string!(v, "first_name"));
+                    myself.first_name_option = Some(as_string!(v, json_path, "first_name"));
                     Ok(())
                 })),
                 ("last_name", Box::new(|v: &BorrowedValue| {
-                    myself.last_name_option = Some(as_string!(v, "last_name"));
+                    myself.last_name_option = Some(as_string!(v, json_path, "last_name"));
                     Ok(())
                 })),
                 ("username", Box::new(|v: &BorrowedValue| {
-                    myself.username_option = Some(as_string!(v, "username"));
+                    myself.username_option = Some(as_string!(v, json_path, "username"));
                     Ok(())
                 })),
                 ("phone_number", Box::new(|v: &BorrowedValue| {
-                    myself.phone_number_option = Some(as_string!(v, "phone_number"));
+                    myself.phone_number_option = Some(as_string!(v, json_path, "phone_number"));
                     Ok(())
                 })),
                 ("bio", consume()),
@@ -58,7 +59,7 @@ pub fn parse(root_obj: &Object,
 
     users.insert(myself.clone());
 
-    fn parse_chats_inner(section: &str,
+    fn parse_chats_inner(json_path: &str,
                          chat_json: &Object,
                          ds_uuid: &PbUuid,
                          myself_id: &Id,
@@ -66,10 +67,10 @@ pub fn parse(root_obj: &Object,
                          chats_with_messages: &mut Vec<ChatWithMessages>) -> EmptyRes {
         let chats_arr = chat_json
             .get("list").ok_or("No chats list in dataset!")?
-            .as_array().ok_or(format!("{section} list is not an array!"))?;
+            .as_array().ok_or(format!("{json_path} list is not an array!"))?;
 
         for v in chats_arr {
-            if let Some(mut cwm) = parse_chat(as_object!(v, "chat"),
+            if let Some(mut cwm) = parse_chat(json_path, as_object!(v, json_path, "chat"),
                                               &ds_uuid, Some(myself_id), users)? {
                 let mut c = cwm.chat.as_mut().unwrap();
                 c.ds_uuid = Some(ds_uuid.clone());
