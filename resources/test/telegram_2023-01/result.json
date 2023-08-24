@@ -34,28 +34,10 @@
     "date": "2016-01-08T01:51:40"
    },
    {
-    "first_name": "Vvvvv",
-    "last_name": "Vvvvvvvvv",
-    "phone_number": "+7 951 123 45 67",
-    "date": "2016-08-18T12:20:07"
-   },
-   {
-    "first_name": "Vvvvv",
-    "last_name": "Vvvvvvvvv",
-    "phone_number": "+7 910 765 43 21",
-    "date": "2016-08-18T14:05:26"
-   },
-   {
     "first_name": "Wwwwww",
     "last_name": "Www",
     "phone_number": "+998 90 9998877",
     "date": "2015-12-31T18:27:53"
-   },
-   {
-    "first_name": "Nnnnnnn",
-    "last_name": "",
-    "phone_number": "+998 90 1112233",
-    "date": "2016-10-03T18:51:43"
    }
   ]
  },
@@ -72,41 +54,78 @@
     "type": "private_group",
     "id": 123123123,
     "messages": [
-    {
-      "id": 4720,
-      "type": "service",
-      "date": "2016-11-09T00:26:24",
-      "edited": "1970-01-01T05:00:00",
-      "actor": "Wwwwww Www",
-      "actor_id": "user22222222",
-      "action": "create_group",
-      "title": "My Group",
-      "members": [
-       "Wwwwww Www",
-       "Nnnnnnn",
-       "Aaaaa Aaaaaaaaaaa",
-       "Eeeee Eeeeeeeeee"
-      ],
-      "text": ""
-     },
      {
-      "id": 4721,
-      "type": "service",
-      "date": "2016-11-09T00:26:25",
-      "actor": "My Old Group",
-      "actor_id": "channel8112233",
-      "action": "migrate_from_group",
-      "title": "My Group",
-      "text": ""
-     },
-     {
-      "id": 4730,
+      "id": 111111,
       "type": "message",
-      "date": "2016-11-09T00:36:45",
-      "edited": "1970-01-01T05:00:00",
+      "date": "2016-11-17T17:57:40",
+      "date_unixtime": "1479387460",
       "from": "Eeeee Eeeeeeeeee",
       "from_id": "user44444444",
-      "text": "Hello there!"
+      "text": [
+       "this contains a lot of stuff: ",
+       {
+        "type": "custom_emoji",
+        "text": "😁",
+        "document_id": "chats/chat_004/stickers/sticker (62).webp"
+       },
+       {
+        "type": "link",
+        "text": "http://mylink.org/"
+       },
+       {
+        "type": "spoiler",
+        "text": "HIDE ME"
+       },
+       ""
+      ],
+      "text_entities": [
+       {
+        "type": "plain",
+        "text": "this contains a lot of stuff: "
+       },
+       {
+        "type": "custom_emoji",
+        "text": "😁",
+        "document_id": "chats/chat_004/stickers/sticker (62).webp"
+       },
+       {
+        "type": "link",
+        "text": "http://mylink.org/"
+       },
+       {
+        "type": "spoiler",
+        "text": "HIDE ME"
+       },
+       {
+        "type": "plain",
+        "text": ""
+       }
+      ]
+     },
+     {
+      "id": 111112,
+      "type": "service",
+      "date": "2022-10-17T16:40:09",
+      "date_unixtime": "1666006809",
+      "actor": "Aaaaa Aaaaaaaaaaa",
+      "actor_id": "user11111111",
+      "action": "invite_members",
+      "members": [
+       null
+      ],
+      "text": "",
+      "text_entities": []
+     },
+     {
+      "id": 111113,
+      "type": "service",
+      "date": "2022-10-29T02:39:03",
+      "date_unixtime": "1666993143",
+      "actor": "Aaaaa Aaaaaaaaaaa",
+      "actor_id": "user11111111",
+      "action": "delete_group_photo",
+      "text": "",
+      "text_entities": []
      }
     ]
    }

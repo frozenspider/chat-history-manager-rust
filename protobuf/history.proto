@@ -148,6 +148,7 @@ message MessageService {
     MessageServiceGroupCreate           group_create = 4;
     MessageServiceGroupEditTitle        group_edit_title = 5;
     MessageServiceGroupEditPhoto        group_edit_photo = 6;
+    MessageServiceGroupDeletePhoto      group_delete_photo = 12;
     MessageServiceGroupInviteMembers    group_invite_members = 7;
     MessageServiceGroupRemoveMembers    group_remove_members = 8;
     MessageServiceGroupMigrateFrom      group_migrate_from = 9;
@@ -340,6 +341,9 @@ message MessageServiceGroupEditTitle {
 
 message MessageServiceGroupEditPhoto {
   ContentPhoto photo = 1 [(scalapb.field).no_box = true];
+}
+
+message MessageServiceGroupDeletePhoto {
 }
 
 message MessageServiceGroupInviteMembers {

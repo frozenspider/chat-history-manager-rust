@@ -5,7 +5,7 @@ pub fn parse(root_obj: &Object,
              ds_uuid: &PbUuid,
              myself: &mut User) -> Res<(Users, Vec<ChatWithMessages>)> {
     let mut users: Users = Default::default();
-    let mut chats_with_messages: Vec<ChatWithMessages> = vec!();
+    let mut chats_with_messages: Vec<ChatWithMessages> = vec![];
 
     parse_object(root_obj, "root", action_map([
         ("about", consume()),

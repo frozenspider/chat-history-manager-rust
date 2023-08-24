@@ -27,9 +27,10 @@ fn verify_result<T, E: std::fmt::Display>(r: Result<T, E>) -> T {
     }
 }
 
-fn dt(s: &str) -> DateTime<Local> {
-    let local_tz = Local::now().timezone();
-    NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S").unwrap().and_local_timezone(local_tz).unwrap()
+fn dt(s: &str, offset: Option<&FixedOffset>) -> DateTime<FixedOffset> {
+    let local = Local::now();
+    let offset = offset.unwrap_or(local.offset());
+    offset.from_local_datetime(&NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S").unwrap()).unwrap()
 }
 
 trait ExtOption<T> {
@@ -83,7 +84,7 @@ fn loading_2020_01() {
             first_name_option: Some("Eeeee".to_owned()),
             last_name_option: Some("Eeeeeeeeee".to_owned()),
             username_option: None,
-            phone_number_option: Some("+7 916 337 53 10".to_owned()),
+            phone_number_option: Some("+7 999 333 44 55".to_owned()),
         },
         ShortUser::new_name_str(310242343, "Vlllllll").to_user(ds_uuid),
         ShortUser::new_name_str(333333333, "Ddddddd Uuuuuuuu").to_user(ds_uuid),
@@ -173,7 +174,7 @@ fn loading_2021_05() {
         first_name_option: Some("Eeeee".to_owned()),
         last_name_option: Some("Eeeeeeeeee".to_owned()),
         username_option: None,
-        phone_number_option: Some("+7 916 337 53 10".to_owned()), // Taken from contacts list
+        phone_number_option: Some("+7 999 333 44 55".to_owned()), // Taken from contacts list
     };
     assert_eq!(dao.users.len(), 4);
     assert_eq!(dao.users.iter().collect_vec(), vec![myself, &service_member, &member1, &member2]);
@@ -260,7 +261,7 @@ fn loading_2021_06_supergroup() {
         assert_eq!(msgs[0], Message {
             internal_id: -1,
             source_id_option: Some(-999681092),
-            timestamp: dt("2020-12-22 23:11:21").timestamp(),
+            timestamp: dt("2020-12-22 23:11:21", None).timestamp(),
             from_id: u222222222.id,
             text: vec![],
             searchable_string: None,
@@ -274,7 +275,7 @@ fn loading_2021_06_supergroup() {
         assert_eq!(msgs[1], Message {
             internal_id: -1,
             source_id_option: Some(-999681090),
-            timestamp: dt("2020-12-22 23:12:09").timestamp(),
+            timestamp: dt("2020-12-22 23:12:09", None).timestamp(),
             from_id: u333333333.id,
             text: vec![RichTextElement {
                 searchable_string: None,
@@ -294,7 +295,7 @@ fn loading_2021_06_supergroup() {
         assert_eq!(msgs[2], Message {
             internal_id: -1,
             source_id_option: Some(-999681087),
-            timestamp: dt("2020-12-22 23:12:51").timestamp(),
+            timestamp: dt("2020-12-22 23:12:51", None).timestamp(),
             from_id: u444444444.id,
             text: vec![RichTextElement {
                 searchable_string: None,
@@ -314,7 +315,7 @@ fn loading_2021_06_supergroup() {
         assert_eq!(msgs[3], Message {
             internal_id: -1,
             source_id_option: Some(358000),
-            timestamp: dt("2021-03-18 17:50:23").timestamp(),
+            timestamp: dt("2021-03-18 17:50:23", None).timestamp(),
             from_id: myself.id,
             text: vec![],
             searchable_string: None,
@@ -349,7 +350,7 @@ fn loading_2021_07() {
         first_name_option: Some("Eeeee".to_owned()),
         last_name_option: Some("Eeeeeeeeee".to_owned()),
         username_option: None,
-        phone_number_option: Some("+7 916 337 53 10".to_owned()), // Taken from contacts list
+        phone_number_option: Some("+7 999 333 44 55".to_owned()), // Taken from contacts list
     };
     assert_eq!(dao.users.len(), 2);
     assert_eq!(dao.users.iter().collect_vec(), vec![myself, &member]);
@@ -379,7 +380,7 @@ fn loading_2021_07() {
         assert_eq!(msgs[0], Message {
             internal_id: -1,
             source_id_option: Some(111111),
-            timestamp: dt("2021-07-03 22:38:58").timestamp(),
+            timestamp: dt("2021-07-03 22:38:58", None).timestamp(),
             from_id: member.id,
             text: vec![],
             searchable_string: None,
@@ -392,7 +393,7 @@ fn loading_2021_07() {
         assert_eq!(msgs[1], Message {
             internal_id: -1,
             source_id_option: Some(111112),
-            timestamp: dt("2021-07-03 22:39:01").timestamp(),
+            timestamp: dt("2021-07-03 22:39:01", None).timestamp(),
             from_id: member.id,
             text: vec![],
             searchable_string: None,
@@ -400,6 +401,110 @@ fn loading_2021_07() {
                 val: Some(Val::GroupCall(MessageServiceGroupCall {
                     members: vec!["Myself".to_owned()]
                 }))
+            })),
+        });
+    }
+}
+
+#[test]
+fn loading_2023_01() {
+    let dao = verify_result(parse_file(resource("telegram_2023-01").as_str(), &NoChooser));
+    // Parsing as UTC+5.
+    let offset = FixedOffset::east_opt(5 * 3600).unwrap();
+
+    let ds_uuid = dao.dataset.uuid.unwrap_ref();
+    let myself = &dao.myself;
+    assert_eq!(myself, &expected_myself(ds_uuid));
+
+    let member = User {
+        ds_uuid: Some(ds_uuid.clone()),
+        id: 44444444,
+        first_name_option: Some("Eeeee".to_owned()),
+        last_name_option: Some("Eeeeeeeeee".to_owned()),
+        username_option: None,
+        phone_number_option: Some("+7 999 333 44 55".to_owned()), // Taken from contacts list
+    };
+    assert_eq!(dao.users.len(), 2);
+    assert_eq!(dao.users.iter().collect_vec(), vec![myself, &member]);
+
+    assert_eq!(dao.cwm.len(), 1);
+
+    // Group chat
+    {
+        // Chat ID is shifted by 2^33
+        let cwm = dao.cwm.iter()
+            .find(|&c| c.chat.unwrap_ref().id == 123123123 + GROUP_CHAT_ID_SHIFT)
+            .unwrap();
+        let chat = cwm.chat.unwrap_ref();
+        assert_eq!(chat.name_option, Some("My Group".to_owned()));
+        assert_eq!(chat.tpe, ChatType::PrivateGroup as i32);
+
+        assert_eq!(chat.member_ids.len(), 2);
+        assert_eq!(chat.member_ids[0], myself.id);
+        assert_eq!(chat.member_ids[1], member.id);
+
+        let msgs: &Vec<Message> = &cwm.messages; // TODO: Ask DAO instead?
+        assert_eq!(msgs.len(), 3);
+        assert_eq!(chat.msg_count, 3);
+
+        assert_eq!(msgs[0], Message {
+            internal_id: -1,
+            source_id_option: Some(111111),
+            timestamp: dt("2016-11-17 17:57:40", Some(&offset)).timestamp(),
+            from_id: member.id,
+            text: vec![
+                // Two plaintext elements are concatenated
+                RichTextElement {
+                    searchable_string: None,
+                    val: Some(rich_text_element::Val::Plain(RtePlain {
+                        text: "this contains a lot of stuff: 😁".to_owned(),
+                    })),
+                },
+                RichTextElement {
+                    searchable_string: None,
+                    val: Some(rich_text_element::Val::Link(RteLink {
+                        text_option: Some("http://mylink.org/".to_owned()),
+                        href: "http://mylink.org/".to_owned(),
+                        hidden: false,
+                    })),
+                },
+                RichTextElement {
+                    searchable_string: None,
+                    val: Some(rich_text_element::Val::Spoiler(RteSpoiler {
+                        text: "HIDE ME".to_owned(),
+                    })),
+                },
+            ],
+            searchable_string: None,
+            typed: Some(Typed::Regular(MessageRegular {
+                edit_timestamp_option: None,
+                forward_from_name_option: None,
+                reply_to_message_id_option: None,
+                content_option: None,
+            })),
+        });
+        assert_eq!(msgs[1], Message {
+            internal_id: -1,
+            source_id_option: Some(111112),
+            timestamp: dt("2022-10-17 16:40:09", Some(&offset)).timestamp(),
+            from_id: myself.id,
+            text: vec![],
+            searchable_string: None,
+            typed: Some(Typed::Service(MessageService {
+                val: Some(message_service::Val::GroupInviteMembers(MessageServiceGroupInviteMembers {
+                    members: vec![UNKNOWN.to_owned()]
+                }))
+            })),
+        });
+        assert_eq!(msgs[2], Message {
+            internal_id: -1,
+            source_id_option: Some(111113),
+            timestamp: 1666993143, // Here we put an explicit timestamp, just for fun
+            from_id: myself.id,
+            text: vec![],
+            searchable_string: None,
+            typed: Some(Typed::Service(MessageService {
+                val: Some(message_service::Val::GroupDeletePhoto(MessageServiceGroupDeletePhoto {}))
             })),
         });
     }

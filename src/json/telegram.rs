@@ -210,6 +210,7 @@ fn parse_contact(json_path: &str, bw: &BorrowedValue) -> Res<User> {
 
     parse_bw_as_object(bw, json_path, action_map([
         ("date", consume()),
+        ("date_unixtime", consume()),
         ("user_id", Box::new(|v: &BorrowedValue| {
             // In older (pre-2021-06) dumps, id field was present but was always 0.
             let id = as_i64!(v, json_path, "user_id");
@@ -250,12 +251,18 @@ fn parse_chat(json_path: &str,
     let mut chat: Chat = Default::default();
     let mut messages: Vec<Message> = vec![];
 
-    let is_saved_messages = Cell::from(false);
+    let skip_processing = Cell::from(false);
 
     let mut member_ids: HashSet<Id, Hasher> =
         HashSet::with_capacity_and_hasher(100, hasher());
 
-    let json_path = format!("{json_path}.chat['{}']", get_field!(chat_json, "chat", "name")?);
+    let json_path = format!("{json_path}.chat");
+    // Name will not be present for saved messages
+    let json_path = match get_field!(chat_json, json_path, "name") {
+        Ok(name) => format!("{json_path}[{}]", name),
+        Err(_) => format!("{json_path}[#{}]", get_field!(chat_json, json_path, "id")?)
+    };
+
 
     parse_object(chat_json, json_path.as_str(), action_map([
         ("", consume()), // No idea how to get rid of it
@@ -270,8 +277,8 @@ fn parse_chat(json_path: &str,
                 "personal_chat" => Ok(ChatType::Personal),
                 "private_group" => Ok(ChatType::PrivateGroup),
                 "private_supergroup" => Ok(ChatType::PrivateGroup),
-                "saved_messages" => {
-                    is_saved_messages.set(true);
+                "saved_messages" | "private_channel" => {
+                    skip_processing.set(true);
                     Ok(ChatType::Personal) // Doesn't matter
                 }
                 other => Err(format!("Unknown chat type: {}", other)),
@@ -284,7 +291,7 @@ fn parse_chat(json_path: &str,
             Ok(())
         })),
         ("messages", Box::new(|v: &BorrowedValue| {
-            if is_saved_messages.get() { return Ok(()); }
+            if skip_processing.get() { return Ok(()); }
             let path = format!("{json_path}.messages");
             let messages_json = as_array!(v, path);
             for v in messages_json {
@@ -297,7 +304,7 @@ fn parse_chat(json_path: &str,
         })),
     ]))?;
 
-    if is_saved_messages.get() {
+    if skip_processing.get() {
         return Ok(None);
     }
 
@@ -400,15 +407,6 @@ impl<'lt> MessageJson<'lt> {
         Self::unopt(self.field_opt_str(name), name, self.val)
     }
 
-    fn field_strs(&mut self, name: &'lt str) -> Res<Vec<String>> {
-        let json_path = format!("{}.{}", self.json_path, name);
-        self.field(name)?
-            .try_as_array().map_err(error_to_string)?
-            .into_iter()
-            .map(|v| as_string_res!(v, json_path))
-            .collect::<Res<Vec<String>>>()
-    }
-
     /// Retrieve a RELATIVE path!
     fn field_opt_path(&mut self, name: &'lt str) -> Res<Option<String>> {
         Ok(self.field_opt_str(name)?.and_then(|s| (match s.as_str() {
@@ -439,7 +437,7 @@ fn parse_message(json_path: &str,
 
         static ref SERVICE_MSG_FIELDS: ExpectedMessageField<'static> = ExpectedMessageField {
             required_fields: as_hash_set(&["id", "type", "date", "text", "actor", "actor_id", "action"]),
-            optional_fields: as_hash_set(&["edited"]),
+            optional_fields: as_hash_set(&["date_unixtime", "text_entities", "edited"]),
         };
     }
 
@@ -570,14 +568,17 @@ fn parse_regular_message(message_json: &mut MessageJson,
                                           poll_question_present,
                                           contact_info_present) {
         (None, None, false, false, false, false) => None,
-        (Some("sticker"), None, true, false, false, false) =>
+        (Some("sticker"), None, true, false, false, false) => {
+            // Ignoring animated sticker duration
+            message_json.add_optional("duration_seconds");
             Some(Val::Sticker(ContentSticker {
                 path_option: message_json.field_opt_path("file")?,
                 width: message_json.field_i32("width")?,
                 height: message_json.field_i32("height")?,
                 thumbnail_path_option: message_json.field_opt_path("thumbnail")?,
                 emoji_option: message_json.field_opt_str("sticker_emoji")?,
-            })),
+            }))
+        }
         (Some("animation"), None, true, false, false, false) =>
             Some(Val::Animation(ContentAnimation {
                 path_option: message_json.field_opt_path("file")?,
@@ -691,6 +692,22 @@ fn parse_service_message(message_json: &mut MessageJson,
     use history::*;
     use history::message_service::Val;
 
+    // Null members are added as unknown
+    fn parse_members(message_json: &mut MessageJson) -> Res<Vec<String>> {
+        let json_path = format!("{}.members", message_json.json_path);
+        message_json.field("members")?
+            .try_as_array().map_err(error_to_string)?
+            .into_iter()
+            .map(|v|
+                if v.value_type() != ValueType::Null {
+                    as_string_res!(v, json_path)
+                } else {
+                    Ok(UNKNOWN.to_owned())
+                }
+            )
+            .collect::<Res<Vec<String>>>()
+    }
+
     let val: Val = match message_json.field_str("action")?.as_str() {
         "phone_call" =>
             Val::PhoneCall(MessageServicePhoneCall {
@@ -699,7 +716,7 @@ fn parse_service_message(message_json: &mut MessageJson,
             }),
         "group_call" => // Treated the same as phone_call
             Val::PhoneCall(MessageServicePhoneCall {
-                duration_sec_option: None,
+                duration_sec_option: message_json.field_opt_i32("duration")?,
                 discard_reason_option: None,
             }),
         "pin_message" =>
@@ -711,7 +728,7 @@ fn parse_service_message(message_json: &mut MessageJson,
         "create_group" =>
             Val::GroupCreate(MessageServiceGroupCreate {
                 title: message_json.field_str("title")?,
-                members: message_json.field_strs("members")?,
+                members: parse_members(message_json)?,
             }),
         "edit_group_photo" =>
             Val::GroupEditPhoto(MessageServiceGroupEditPhoto {
@@ -721,17 +738,19 @@ fn parse_service_message(message_json: &mut MessageJson,
                     width: message_json.field_i32("width")?,
                 })
             }),
+        "delete_group_photo" =>
+            Val::GroupDeletePhoto(MessageServiceGroupDeletePhoto {}),
         "edit_group_title" =>
             Val::GroupEditTitle(MessageServiceGroupEditTitle {
                 title: message_json.field_str("title")?
             }),
         "invite_members" =>
             Val::GroupInviteMembers(MessageServiceGroupInviteMembers {
-                members: message_json.field_strs("members")?
+                members: parse_members(message_json)?
             }),
         "remove_members" =>
             Val::GroupRemoveMembers(MessageServiceGroupRemoveMembers {
-                members: message_json.field_strs("members")?
+                members: parse_members(message_json)?
             }),
         "join_group_by_link" => {
             message_json.add_required("inviter");
@@ -747,7 +766,7 @@ fn parse_service_message(message_json: &mut MessageJson,
             Val::GroupMigrateTo(MessageServiceGroupMigrateTo {}),
         "invite_to_group_call" =>
             Val::GroupCall(MessageServiceGroupCall {
-                members: message_json.field_strs("members")?
+                members: parse_members(message_json)?
             }),
         "edit_chat_theme" => {
             // Not really interesting to track.
@@ -768,40 +787,72 @@ fn parse_rich_text(json_path: &str, rt_json: &Value) -> Res<Vec<RichTextElement>
     use history::*;
     use history::rich_text_element::Val;
 
-    match rt_json {
+    fn parse_plain_option(s: &Cow<str>) -> Option<Val> {
+        if s.is_empty() {
+            None
+        } else {
+            Some(Val::Plain(RtePlain { text: s.deref().to_owned() }))
+        }
+    }
+
+    fn wrap_rte(val: Val) -> RichTextElement {
+        RichTextElement { val: Some(val), searchable_string: None }
+    }
+
+    // Empty plain strings are discarded
+    let mut rtes = match rt_json {
         Value::Static(StaticNode::Null) =>
-            Ok(vec!()),
-        Value::String(s) =>
-            if s.is_empty() {
-                Ok(vec!())
+            Ok(vec![]),
+        Value::String(s) => {
+            let plain = parse_plain_option(s);
+            if let Some(plain) = plain {
+                Ok(vec![wrap_rte(plain)])
             } else {
-                Ok(vec![RichTextElement {
-                    val: Some(Val::Plain(RtePlain { text: s.deref().to_owned() })),
-                    searchable_string: None,
-                }])
-            },
+                Ok(vec![])
+            }
+        }
         Value::Array(arr) => {
-            let mut result: Vec<RichTextElement> = vec!();
+            let mut result: Vec<RichTextElement> = vec![];
             for json_el in arr {
-                let val: Val = match json_el {
+                let val: Option<Val> = match json_el {
                     Value::String(s) =>
-                        Val::Plain(RtePlain { text: s.deref().to_owned() }),
+                        parse_plain_option(s),
                     Value::Object(obj) =>
                         parse_rich_text_object(json_path, obj)?,
                     etc =>
                         return Err(format!("Don't know how to parse RichText element '{:?}'", etc))
                 };
-                result.push(RichTextElement { val: Some(val), searchable_string: None })
+                if let Some(val) = val {
+                    result.push(wrap_rte(val))
+                }
             }
             Ok(result)
         }
         etc =>
             Err(format!("Don't know how to parse RichText container '{:?}'", etc))
+    }?;
+
+    // Concatenate consecutive plaintext elements
+    let mut i = 0;
+    while (i + 1) < rtes.len() {
+        let el1 = &rtes[i];
+        let el2 = &rtes[i + 1];
+        if let (Some(Val::Plain(plain1)), Some(Val::Plain(plain2))) = (&el1.val, &el2.val) {
+            let mut new_text = String::new();
+            new_text.push_str(plain1.text.as_str());
+            new_text.push_str(plain2.text.as_str());
+            let new_plain = Val::Plain(RtePlain { text: new_text });
+            rtes.splice(i..=(i + 1), vec![wrap_rte(new_plain)]);
+        } else {
+            i += 1;
+        }
     }
+
+    Ok(rtes)
 }
 
 fn parse_rich_text_object(json_path: &str,
-                          rte_json: &Box<Object>) -> Res<history::rich_text_element::Val> {
+                          rte_json: &Box<Object>) -> Res<Option<history::rich_text_element::Val>> {
     use history::*;
     use history::rich_text_element::Val;
 
@@ -824,74 +875,81 @@ fn parse_rich_text_object(json_path: &str,
         };
     }
 
-    let res: Val = match get_field_str!(rte_json, json_path, "type") {
+    let res: Option<Val> = match get_field_str!(rte_json, json_path, "type") {
         "plain" => {
             check_keys!(["type", "text"]);
-            Val::Plain(RtePlain { text: get_field_string!(rte_json, json_path, "text") })
+            // Empty plain string is discarded
+            get_field_string_option!(rte_json, json_path, "text")
+                .map(|s| Val::Plain(RtePlain { text: s }))
         }
         "bold" => {
             check_keys!(["type", "text"]);
-            Val::Bold(RteBold { text: get_field_string!(rte_json, json_path, "text") })
+            Some(Val::Bold(RteBold { text: get_field_string!(rte_json, json_path, "text") }))
         }
         "italic" => {
             check_keys!(["type", "text"]);
-            Val::Italic(RteItalic { text: get_field_string!(rte_json, json_path, "text") })
+            Some(Val::Italic(RteItalic { text: get_field_string!(rte_json, json_path, "text") }))
         }
         "underline" => {
             check_keys!(["type", "text"]);
-            Val::Underline(RteUnderline { text: get_field_string!(rte_json, json_path, "text") })
+            Some(Val::Underline(RteUnderline { text: get_field_string!(rte_json, json_path, "text") }))
         }
         "strikethrough" => {
             check_keys!(["type", "text"]);
-            Val::Strikethrough(RteStrikethrough { text: get_field_string!(rte_json, json_path, "text") })
+            Some(Val::Strikethrough(RteStrikethrough { text: get_field_string!(rte_json, json_path, "text") }))
         }
         "spoiler" => {
             check_keys!(["type", "text"]);
-            Val::Spoiler(RteSpoiler { text: get_field_string!(rte_json, json_path, "text") })
+            Some(Val::Spoiler(RteSpoiler { text: get_field_string!(rte_json, json_path, "text") }))
         }
         "unknown" => {
             // Unknown is rendered as plaintext in telegram
             check_keys!(["type", "text"]);
-            Val::Plain(RtePlain { text: get_field_string!(rte_json, json_path, "text") })
+            Some(Val::Plain(RtePlain { text: get_field_string!(rte_json, json_path, "text") }))
         }
         "code" => {
             check_keys!(["type", "text"]);
-            Val::PrefmtInline(RtePrefmtInline { text: get_field_string!(rte_json, json_path, "text") })
+            Some(Val::PrefmtInline(RtePrefmtInline { text: get_field_string!(rte_json, json_path, "text") }))
         }
         "pre" => {
             check_keys!(["type", "text", "language"]);
-            Val::PrefmtBlock(RtePrefmtBlock {
+            Some(Val::PrefmtBlock(RtePrefmtBlock {
                 text: get_field_string!(rte_json, json_path, "text"),
                 language_option: get_field_string_option!(rte_json, json_path, "language"),
-            })
+            }))
         }
         "text_link" => {
             check_keys!(["type", "text", "href"]);
             let text = get_field_string!(rte_json, json_path, "text");
-            Val::Link(RteLink {
+            Some(Val::Link(RteLink {
                 text_option: str_to_option!(text.as_str()),
                 href: get_field_string!(rte_json, json_path, "href"),
                 hidden: is_whitespace_or_invisible(text.as_str()),
-            })
+            }))
         }
         "link" => {
             // Link format is hyperlink alone
             check_keys!(["type", "text"]);
-            Val::Link(RteLink {
+            Some(Val::Link(RteLink {
                 text_option: get_field_string_option!(rte_json, json_path, "text"),
                 href: get_field_string!(rte_json, json_path, "text"),
                 hidden: false,
-            })
+            }))
         }
         "mention_name" => {
             // No special treatment for mention_name, but prepent @
             check_keys!(["type", "text", "user_id"]);
-            Val::Plain(RtePlain { text: format!("@{}", get_field_str!(rte_json, json_path, "text")) })
+            Some(Val::Plain(RtePlain { text: format!("@{}", get_field_str!(rte_json, json_path, "text")) }))
         }
         "email" | "mention" | "phone" | "hashtag" | "bot_command" | "bank_card" | "cashtag" => {
             // No special treatment for any of these
             check_keys!(["type", "text"]);
-            Val::Plain(RtePlain { text: get_field_string!(rte_json, json_path, "text") })
+            Some(Val::Plain(RtePlain { text: get_field_string!(rte_json, json_path, "text") }))
+        }
+        "custom_emoji" => {
+            // Just taken as a regular emoji
+            check_keys!(["type", "text", "document_id"]);
+            Some(Val::Plain(RtePlain { text: get_field_string!(rte_json, json_path, "text") }))
         }
         etc =>
             return Err(format!("Don't know how to parse RichText element of type '{etc}' for {:?}", rte_json))
