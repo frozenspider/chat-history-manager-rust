@@ -6,6 +6,8 @@ use crate::json::parse_file;
 use crate::json::telegram::*;
 use crate::protobuf::history::*;
 use crate::protobuf::history::message::*;
+use crate::protobuf::history::message_service::SealedValueOptional::*;
+use crate::protobuf::history::content::SealedValueOptional::*;
 use crate::{NoChooser, User};
 
 lazy_static! {
@@ -202,10 +204,9 @@ fn loading_2021_05() {
         assert_eq!(chat.msg_count, 3);
         let typed = msgs.iter().map(|m| m.typed.unwrap_ref()).collect_vec();
 
-        use crate::protobuf::history::message_service::Val;
         // I wish we could use assert_matches!() already...
-        assert!(matches!(typed[0], Typed::Service(MessageService { val: Some(Val::GroupCreate(_)) })));
-        assert!(matches!(typed[1], Typed::Service(MessageService { val: Some(Val::GroupMigrateFrom(_)) })));
+        assert!(matches!(typed[0], Typed::Service(MessageService { sealed_value_optional: Some(GroupCreate(_)) })));
+        assert!(matches!(typed[1], Typed::Service(MessageService { sealed_value_optional: Some(GroupMigrateFrom(_)) })));
         assert!(matches!(typed[2], Typed::Regular(_)));
     }
 }
@@ -253,7 +254,6 @@ fn loading_2021_06_supergroup() {
         assert_eq!(chat.member_ids[2], u333333333.id);
         assert_eq!(chat.member_ids[3], u444444444.id);
 
-
         let msgs: &Vec<Message> = &cwm.messages; // TODO: Ask DAO instead?
         assert_eq!(msgs.len(), 4);
         assert_eq!(chat.msg_count, 4);
@@ -266,7 +266,7 @@ fn loading_2021_06_supergroup() {
             text: vec![],
             searchable_string: None,
             typed: Some(Typed::Service(MessageService {
-                val: Some(message_service::Val::GroupInviteMembers(MessageServiceGroupInviteMembers {
+                sealed_value_optional: Some(GroupInviteMembers(MessageServiceGroupInviteMembers {
                     members: vec![u444444444.first_name_option.unwrap()]
                 }))
             })),
@@ -324,7 +324,7 @@ fn loading_2021_06_supergroup() {
                 forward_from_name_option: None,
                 reply_to_message_id_option: None,
                 content_option: Some(Content {
-                    val: Some(content::Val::SharedContact(ContentSharedContact {
+                    sealed_value_optional: Some(SharedContact(ContentSharedContact {
                         first_name_option: myself.first_name_option.to_owned(),
                         last_name_option: None,
                         phone_number_option: Some(myself.phone_number_option.to_owned().unwrap()),
@@ -376,7 +376,6 @@ fn loading_2021_07() {
         assert_eq!(chat.msg_count, 2);
         // let typed = msgs.iter().map(|m| m.typed.unwrap_ref()).collect_vec();
 
-        use crate::protobuf::history::message_service::Val;
         assert_eq!(msgs[0], Message {
             internal_id: -1,
             source_id_option: Some(111111),
@@ -385,7 +384,7 @@ fn loading_2021_07() {
             text: vec![],
             searchable_string: None,
             typed: Some(Typed::Service(MessageService {
-                val: Some(Val::GroupCall(MessageServiceGroupCall {
+                sealed_value_optional: Some(GroupCall(MessageServiceGroupCall {
                     members: vec!["Www Wwwwww".to_owned()]
                 }))
             })),
@@ -398,7 +397,7 @@ fn loading_2021_07() {
             text: vec![],
             searchable_string: None,
             typed: Some(Typed::Service(MessageService {
-                val: Some(Val::GroupCall(MessageServiceGroupCall {
+                sealed_value_optional: Some(GroupCall(MessageServiceGroupCall {
                     members: vec!["Myself".to_owned()]
                 }))
             })),
@@ -491,7 +490,7 @@ fn loading_2023_01() {
             text: vec![],
             searchable_string: None,
             typed: Some(Typed::Service(MessageService {
-                val: Some(message_service::Val::GroupInviteMembers(MessageServiceGroupInviteMembers {
+                sealed_value_optional: Some(GroupInviteMembers(MessageServiceGroupInviteMembers {
                     members: vec![UNKNOWN.to_owned()]
                 }))
             })),
@@ -504,7 +503,7 @@ fn loading_2023_01() {
             text: vec![],
             searchable_string: None,
             typed: Some(Typed::Service(MessageService {
-                val: Some(message_service::Val::GroupDeletePhoto(MessageServiceGroupDeletePhoto {}))
+                sealed_value_optional: Some(GroupDeletePhoto(MessageServiceGroupDeletePhoto {}))
             })),
         });
     }

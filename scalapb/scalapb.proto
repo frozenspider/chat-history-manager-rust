@@ -2,12 +2,20 @@
  * This file is only needed for a placeholder, since ScalaPB relies on importing this file
  * (which is provided implicitly).
  * On the Rust side though, this file is not present.
+ *
+ * See https://github.com/scalapb/ScalaPB/blob/master/protobuf/scalapb/scalapb.proto
  */
 syntax = "proto3";
 
 package scalapb;
 
 import "google/protobuf/descriptor.proto";
+
+extend google.protobuf.MessageOptions {
+  // Message-level optionals for ScalaPB.
+  // Extension number officially assigned by protobuf-global-extension-registry@google.com
+  optional MessageOptions message = 1020;
+}
 
 extend google.protobuf.FileOptions {
   // File-level optionals for ScalaPB.
@@ -19,6 +27,10 @@ extend google.protobuf.FieldOptions {
   // Field-level optionals for ScalaPB.
   // Extension number officially assigned by protobuf-global-extension-registry@google.com
   optional FieldOptions field = 1020;
+}
+
+message MessageOptions {
+  optional bool no_box = 7;
 }
 
 message ScalaPbOptions {

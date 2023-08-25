@@ -104,6 +104,8 @@ enum ChatType {
  */
 
 message Message {
+  option (scalapb.message).no_box = true;  // do not wrap in Option
+
   /**
    * Unique ID assigned to this message by a DAO storage engine, should be -1 until saved.
    * No ordering guarantees are provided in general case.
@@ -141,7 +143,7 @@ message MessageRegular {
 }
 
 message MessageService {
-  oneof val {
+  oneof sealed_value_optional {
     MessageServicePhoneCall             phone_call = 1;
     MessageServicePinMessage            pin_message = 2;
     MessageServiceClearHistory          clear_history = 3;
@@ -212,7 +214,7 @@ message RteSpoiler {
 //
 
 message Content {
-  oneof val {
+  oneof sealed_value_optional {
     ContentSticker          sticker = 1;
     ContentPhoto            photo = 2;
     ContentVoiceMsg         voice_msg = 3;

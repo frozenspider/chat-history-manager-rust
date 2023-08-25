@@ -535,7 +535,7 @@ fn parse_message(json_path: &str,
 fn parse_regular_message(message_json: &mut MessageJson,
                          regular_msg: &mut MessageRegular) -> EmptyRes {
     use history::*;
-    use history::content::Val;
+    use history::content::SealedValueOptional;
 
     let json_path = message_json.json_path.clone();
 
@@ -561,17 +561,17 @@ fn parse_regular_message(message_json: &mut MessageJson,
         Some(poll) => as_object!(poll, json_path, "poll").get("question").is_some(),
     };
     let contact_info_present = message_json.field_opt("contact_information")?.is_some();
-    let content_val: Option<Val> = match (media_type_option.as_deref(),
-                                          photo_option.as_deref(),
-                                          file_present,
-                                          loc_present,
-                                          poll_question_present,
-                                          contact_info_present) {
+    let content_val: Option<SealedValueOptional> = match (media_type_option.as_deref(),
+                                                          photo_option.as_deref(),
+                                                          file_present,
+                                                          loc_present,
+                                                          poll_question_present,
+                                                          contact_info_present) {
         (None, None, false, false, false, false) => None,
         (Some("sticker"), None, true, false, false, false) => {
             // Ignoring animated sticker duration
             message_json.add_optional("duration_seconds");
-            Some(Val::Sticker(ContentSticker {
+            Some(SealedValueOptional::Sticker(ContentSticker {
                 path_option: message_json.field_opt_path("file")?,
                 width: message_json.field_i32("width")?,
                 height: message_json.field_i32("height")?,
@@ -580,7 +580,7 @@ fn parse_regular_message(message_json: &mut MessageJson,
             }))
         }
         (Some("animation"), None, true, false, false, false) =>
-            Some(Val::Animation(ContentAnimation {
+            Some(SealedValueOptional::Animation(ContentAnimation {
                 path_option: message_json.field_opt_path("file")?,
                 width: message_json.field_i32("width")?,
                 height: message_json.field_i32("height")?,
@@ -589,7 +589,7 @@ fn parse_regular_message(message_json: &mut MessageJson,
                 thumbnail_path_option: message_json.field_opt_path("thumbnail")?,
             })),
         (Some("video_message"), None, true, false, false, false) =>
-            Some(Val::VideoMsg(ContentVideoMsg {
+            Some(SealedValueOptional::VideoMsg(ContentVideoMsg {
                 path_option: message_json.field_opt_path("file")?,
                 width: message_json.field_i32("width")?,
                 height: message_json.field_i32("height")?,
@@ -598,7 +598,7 @@ fn parse_regular_message(message_json: &mut MessageJson,
                 thumbnail_path_option: message_json.field_opt_path("thumbnail")?,
             })),
         (Some("voice_message"), None, true, false, false, false) =>
-            Some(Val::VoiceMsg(ContentVoiceMsg {
+            Some(SealedValueOptional::VoiceMsg(ContentVoiceMsg {
                 path_option: message_json.field_opt_path("file")?,
                 mime_type: message_json.field_str("mime_type")?,
                 duration_sec_option: message_json.field_opt_i32("duration_seconds")?,
@@ -614,7 +614,7 @@ fn parse_regular_message(message_json: &mut MessageJson,
                     Some(_) => unimplemented!("Unreachable code")
                 }).to_owned()
             });
-            Some(Val::File(ContentFile {
+            Some(SealedValueOptional::File(ContentFile {
                 path_option: message_json.field_opt_path("file")?,
                 title,
                 width_option: message_json.field_opt_i32("width")?,
@@ -626,7 +626,7 @@ fn parse_regular_message(message_json: &mut MessageJson,
             }))
         }
         (None, Some(_), false, false, false, false) =>
-            Some(Val::Photo(ContentPhoto {
+            Some(SealedValueOptional::Photo(ContentPhoto {
                 path_option: message_json.field_opt_path("photo")?,
                 width: message_json.field_i32("width")?,
                 height: message_json.field_i32("height")?,
@@ -638,7 +638,7 @@ fn parse_regular_message(message_json: &mut MessageJson,
                 (loc_info.get("latitude").ok_or("latitude not found!")?.to_string(),
                  loc_info.get("longitude").ok_or("longitude not found!")?.to_string())
             };
-            Some(Val::Location(ContentLocation {
+            Some(SealedValueOptional::Location(ContentLocation {
                 title_option: message_json.field_opt_str("place_name")?,
                 address_option: message_json.field_opt_str("address")?,
                 lat_str,
@@ -651,7 +651,7 @@ fn parse_regular_message(message_json: &mut MessageJson,
                 let poll_info = as_object!(message_json.field("poll")?, json_path, "poll");
                 get_field_string!(poll_info, json_path, "question")
             };
-            Some(Val::Poll(ContentPoll { question }))
+            Some(SealedValueOptional::Poll(ContentPoll { question }))
         }
         (None, None, false, false, false, true) => {
             let (
@@ -673,7 +673,7 @@ fn parse_regular_message(message_json: &mut MessageJson,
             {
                 return Err("Shared contact had no information whatsoever!".to_owned());
             }
-            Some(Val::SharedContact(ContentSharedContact {
+            Some(SealedValueOptional::SharedContact(ContentSharedContact {
                 first_name_option,
                 last_name_option,
                 phone_number_option,
@@ -683,14 +683,14 @@ fn parse_regular_message(message_json: &mut MessageJson,
         _ => return Err(format!("Couldn't determine content type for '{:?}'", message_json.val))
     };
 
-    regular_msg.content_option = content_val.map(|v| Content { val: Some(v) });
+    regular_msg.content_option = content_val.map(|v| Content { sealed_value_optional: Some(v) });
     Ok(())
 }
 
 fn parse_service_message(message_json: &mut MessageJson,
                          service_msg: &mut MessageService) -> Res<ShouldProceed> {
     use history::*;
-    use history::message_service::Val;
+    use history::message_service::SealedValueOptional;
 
     // Null members are added as unknown
     fn parse_members(message_json: &mut MessageJson) -> Res<Vec<String>> {
@@ -708,30 +708,30 @@ fn parse_service_message(message_json: &mut MessageJson,
             .collect::<Res<Vec<String>>>()
     }
 
-    let val: Val = match message_json.field_str("action")?.as_str() {
+    let val: SealedValueOptional = match message_json.field_str("action")?.as_str() {
         "phone_call" =>
-            Val::PhoneCall(MessageServicePhoneCall {
+            SealedValueOptional::PhoneCall(MessageServicePhoneCall {
                 duration_sec_option: message_json.field_opt_i32("duration_seconds")?,
                 discard_reason_option: message_json.field_opt_str("discard_reason")?,
             }),
         "group_call" => // Treated the same as phone_call
-            Val::PhoneCall(MessageServicePhoneCall {
+            SealedValueOptional::PhoneCall(MessageServicePhoneCall {
                 duration_sec_option: message_json.field_opt_i32("duration")?,
                 discard_reason_option: None,
             }),
         "pin_message" =>
-            Val::PinMessage(MessageServicePinMessage {
+            SealedValueOptional::PinMessage(MessageServicePinMessage {
                 message_id: message_json.field_i64("message_id")?
             }),
         "clear_history" =>
-            Val::ClearHistory(MessageServiceClearHistory {}),
+            SealedValueOptional::ClearHistory(MessageServiceClearHistory {}),
         "create_group" =>
-            Val::GroupCreate(MessageServiceGroupCreate {
+            SealedValueOptional::GroupCreate(MessageServiceGroupCreate {
                 title: message_json.field_str("title")?,
                 members: parse_members(message_json)?,
             }),
         "edit_group_photo" =>
-            Val::GroupEditPhoto(MessageServiceGroupEditPhoto {
+            SealedValueOptional::GroupEditPhoto(MessageServiceGroupEditPhoto {
                 photo: Some(ContentPhoto {
                     path_option: message_json.field_opt_path("photo")?,
                     height: message_json.field_i32("height")?,
@@ -739,33 +739,33 @@ fn parse_service_message(message_json: &mut MessageJson,
                 })
             }),
         "delete_group_photo" =>
-            Val::GroupDeletePhoto(MessageServiceGroupDeletePhoto {}),
+            SealedValueOptional::GroupDeletePhoto(MessageServiceGroupDeletePhoto {}),
         "edit_group_title" =>
-            Val::GroupEditTitle(MessageServiceGroupEditTitle {
+            SealedValueOptional::GroupEditTitle(MessageServiceGroupEditTitle {
                 title: message_json.field_str("title")?
             }),
         "invite_members" =>
-            Val::GroupInviteMembers(MessageServiceGroupInviteMembers {
+            SealedValueOptional::GroupInviteMembers(MessageServiceGroupInviteMembers {
                 members: parse_members(message_json)?
             }),
         "remove_members" =>
-            Val::GroupRemoveMembers(MessageServiceGroupRemoveMembers {
+            SealedValueOptional::GroupRemoveMembers(MessageServiceGroupRemoveMembers {
                 members: parse_members(message_json)?
             }),
         "join_group_by_link" => {
             message_json.add_required("inviter");
-            Val::GroupInviteMembers(MessageServiceGroupInviteMembers {
+            SealedValueOptional::GroupInviteMembers(MessageServiceGroupInviteMembers {
                 members: vec![message_json.field_str("actor")?]
             })
         }
         "migrate_from_group" =>
-            Val::GroupMigrateFrom(MessageServiceGroupMigrateFrom {
+            SealedValueOptional::GroupMigrateFrom(MessageServiceGroupMigrateFrom {
                 title: message_json.field_str("title")?
             }),
         "migrate_to_supergroup" =>
-            Val::GroupMigrateTo(MessageServiceGroupMigrateTo {}),
+            SealedValueOptional::GroupMigrateTo(MessageServiceGroupMigrateTo {}),
         "invite_to_group_call" =>
-            Val::GroupCall(MessageServiceGroupCall {
+            SealedValueOptional::GroupCall(MessageServiceGroupCall {
                 members: parse_members(message_json)?
             }),
         "edit_chat_theme" => {
@@ -775,7 +775,7 @@ fn parse_service_message(message_json: &mut MessageJson,
         etc =>
             return Err(format!("Don't know how to parse service message for action '{etc}'")),
     };
-    service_msg.val = Some(val);
+    service_msg.sealed_value_optional = Some(val);
     Ok(ShouldProceed::Proceed)
 }
 
