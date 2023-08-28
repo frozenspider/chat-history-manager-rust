@@ -423,8 +423,16 @@ fn loading_2023_01() {
         username_option: None,
         phone_number_option: Some("+7 999 333 44 55".to_owned()), // Taken from contacts list
     };
-    assert_eq!(dao.users.len(), 2);
-    assert_eq!(dao.users.iter().collect_vec(), vec![myself, &member]);
+    let channel_user = User {
+        ds_uuid: Some(ds_uuid.clone()),
+        id: 123123123,
+        first_name_option: Some("My Group".to_owned()),
+        last_name_option:None,
+        username_option: None,
+        phone_number_option: None
+    };
+    assert_eq!(dao.users.len(), 3);
+    assert_eq!(dao.users.iter().collect_vec(), vec![myself, &member, &channel_user]);
 
     assert_eq!(dao.cwm.len(), 1);
 
@@ -438,15 +446,41 @@ fn loading_2023_01() {
         assert_eq!(chat.name_option, Some("My Group".to_owned()));
         assert_eq!(chat.tpe, ChatType::PrivateGroup as i32);
 
-        assert_eq!(chat.member_ids.len(), 2);
+        assert_eq!(chat.member_ids.len(), 3);
         assert_eq!(chat.member_ids[0], myself.id);
         assert_eq!(chat.member_ids[1], member.id);
+        assert_eq!(chat.member_ids[2], channel_user.id);
 
         let msgs: &Vec<Message> = &cwm.messages; // TODO: Ask DAO instead?
-        assert_eq!(msgs.len(), 3);
-        assert_eq!(chat.msg_count, 3);
+        assert_eq!(msgs.len(), 5);
+        assert_eq!(chat.msg_count, 5);
 
+        // Order of these two is swapped by Telegram
         assert_eq!(msgs[0], Message {
+            internal_id: -1,
+            source_id_option: Some(1),
+            timestamp: dt("2016-02-10 21:55:02", Some(&offset)).timestamp(),
+            from_id: channel_user.id,
+            text: vec![],
+            searchable_string: None,
+            typed: Some(Typed::Service(MessageService {
+                sealed_value_optional: Some(GroupMigrateFrom(MessageServiceGroupMigrateFrom {
+                    title: "My Group".to_owned()
+                }))
+            })),
+        });
+        assert_eq!(msgs[1], Message {
+            internal_id: -1,
+            source_id_option: Some(-999999999),
+            timestamp: dt("2016-02-10 21:55:03", Some(&offset)).timestamp(),
+            from_id: member.id,
+            text: vec![],
+            searchable_string: None,
+            typed: Some(Typed::Service(MessageService {
+                sealed_value_optional: Some(GroupMigrateTo(MessageServiceGroupMigrateTo {}))
+            })),
+        });
+        assert_eq!(msgs[2], Message {
             internal_id: -1,
             source_id_option: Some(111111),
             timestamp: dt("2016-11-17 17:57:40", Some(&offset)).timestamp(),
@@ -482,7 +516,7 @@ fn loading_2023_01() {
                 content_option: None,
             })),
         });
-        assert_eq!(msgs[1], Message {
+        assert_eq!(msgs[3], Message {
             internal_id: -1,
             source_id_option: Some(111112),
             timestamp: dt("2022-10-17 16:40:09", Some(&offset)).timestamp(),
@@ -495,7 +529,7 @@ fn loading_2023_01() {
                 }))
             })),
         });
-        assert_eq!(msgs[2], Message {
+        assert_eq!(msgs[4], Message {
             internal_id: -1,
             source_id_option: Some(111113),
             timestamp: 1666993143, // Here we put an explicit timestamp, just for fun

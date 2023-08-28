@@ -308,6 +308,8 @@ fn parse_chat(json_path: &str,
         return Ok(None);
     }
 
+    messages.sort_by_key(|m| (m.timestamp, m.internal_id));
+
     chat.msg_count = messages.len() as i32;
 
     // Undo the shifts introduced by Telegram 2021-05.
@@ -412,6 +414,7 @@ impl<'lt> MessageJson<'lt> {
         Ok(self.field_opt_str(name)?.and_then(|s| (match s.as_str() {
             "" => None,
             "(File not included. Change data exporting settings to download.)" => None,
+            "(File exceeds maximum size. Change data exporting settings to download.)" => None,
             _ => Some(s)
         })))
     }

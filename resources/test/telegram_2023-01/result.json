@@ -55,6 +55,29 @@
     "id": 123123123,
     "messages": [
      {
+      "id": -999999999,
+      "type": "service",
+      "date": "2016-02-10T21:55:03",
+      "date_unixtime": "1455123303",
+      "actor": "Eeeee Eeeeeeeeee",
+      "actor_id": "user44444444",
+      "action": "migrate_to_supergroup",
+      "text": "",
+      "text_entities": []
+     },
+     {
+      "id": 1,
+      "type": "service",
+      "date": "2016-02-10T21:55:02",
+      "date_unixtime": "1455123302",
+      "actor": "My Group",
+      "actor_id": "channel123123123",
+      "action": "migrate_from_group",
+      "title": "My Group",
+      "text": "",
+      "text_entities": []
+     },
+     {
       "id": 111111,
       "type": "message",
       "date": "2016-11-17T17:57:40",
