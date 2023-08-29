@@ -264,7 +264,7 @@ fn parse_chat(json_path: &str,
     };
 
 
-    parse_object(chat_json, json_path.as_str(), action_map([
+    parse_object(chat_json, &json_path, action_map([
         ("", consume()), // No idea how to get rid of it
         ("name", Box::new(|v: &BorrowedValue| {
             if v.value_type() != ValueType::Null {
@@ -295,7 +295,7 @@ fn parse_chat(json_path: &str,
             let path = format!("{json_path}.messages");
             let messages_json = as_array!(v, path);
             for v in messages_json {
-                if let Some(message) = parse_message(path.as_str(), v, ds_uuid, users,
+                if let Some(message) = parse_message(&path, v, ds_uuid, users,
                                                      &mut member_ids)? {
                     messages.push(message);
                 }
@@ -517,10 +517,10 @@ fn parse_message(json_path: &str,
                 message.timestamp = parse_datetime(as_str!(v, message_json.json_path, "date"))?;
             }
             "text_entities" => {
-                message.text = parse_rich_text(format!("{}.text_entities", message_json.json_path).as_str(), v)?;
+                message.text = parse_rich_text(&format!("{}.text_entities", message_json.json_path), v)?;
             }
             "text" if !has_text_entities => {
-                message.text = parse_rich_text(format!("{}.text", message_json.json_path).as_str(), v)?;
+                message.text = parse_rich_text(&format!("{}.text", message_json.json_path), v)?;
             }
             _ => { /* Ignore, already consumed */ }
         }
@@ -544,9 +544,9 @@ fn parse_regular_message(message_json: &mut MessageJson,
 
     if let Some(ref edited) = message_json.field_opt_str("edited_unixtime")? {
         message_json.add_required("edited");
-        regular_msg.edit_timestamp_option = Some(parse_timestamp(edited.as_str())?);
+        regular_msg.edit_timestamp_option = Some(parse_timestamp(&edited)?);
     } else if let Some(ref edited) = message_json.field_opt_str("edited")? {
-        regular_msg.edit_timestamp_option = Some(parse_datetime(edited.as_str())?);
+        regular_msg.edit_timestamp_option = Some(parse_datetime(&edited)?);
     }
     regular_msg.forward_from_name_option = match message_json.field_opt("forwarded_from")? {
         None => None,
@@ -726,6 +726,14 @@ fn parse_service_message(message_json: &mut MessageJson,
             SealedValueOptional::PinMessage(MessageServicePinMessage {
                 message_id: message_json.field_i64("message_id")?
             }),
+        "suggest_profile_photo" =>
+            SealedValueOptional::SuggestProfilePhoto(MessageServiceSuggestProfilePhoto {
+                photo: Some(ContentPhoto {
+                    path_option: message_json.field_opt_path("photo")?,
+                    height: message_json.field_i32("height")?,
+                    width: message_json.field_i32("width")?,
+                })
+            }),
         "clear_history" =>
             SealedValueOptional::ClearHistory(MessageServiceClearHistory {}),
         "create_group" =>
@@ -842,8 +850,8 @@ fn parse_rich_text(json_path: &str, rt_json: &Value) -> Res<Vec<RichTextElement>
         let el2 = &rtes[i + 1];
         if let (Some(Val::Plain(plain1)), Some(Val::Plain(plain2))) = (&el1.val, &el2.val) {
             let mut new_text = String::new();
-            new_text.push_str(plain1.text.as_str());
-            new_text.push_str(plain2.text.as_str());
+            new_text.push_str(&plain1.text);
+            new_text.push_str(&plain2.text);
             let new_plain = Val::Plain(RtePlain { text: new_text });
             rtes.splice(i..=(i + 1), vec![wrap_rte(new_plain)]);
         } else {
@@ -927,7 +935,7 @@ fn parse_rich_text_object(json_path: &str,
             Some(Val::Link(RteLink {
                 text_option: str_to_option!(text.as_str()),
                 href: get_field_string!(rte_json, json_path, "href"),
-                hidden: is_whitespace_or_invisible(text.as_str()),
+                hidden: is_whitespace_or_invisible(&text),
             }))
         }
         "link" => {
@@ -992,7 +1000,7 @@ fn parse_user_id(bw: &BorrowedValue) -> Res<Id> {
         Value::Static(StaticNode::I64(i)) => Ok(*i),
         Value::Static(StaticNode::U64(u)) => Ok(*u as Id),
         Value::String(Cow::Borrowed(s)) => parse_str(s),
-        Value::String(Cow::Owned(s)) => parse_str(s.as_str()),
+        Value::String(Cow::Owned(s)) => parse_str(&s),
         _ => Err(err_msg)
     }
 }

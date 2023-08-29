@@ -61,8 +61,7 @@ fn expected_myself(ds_uuid: &PbUuid) -> User {
 #[test]
 fn loading_2020_01() {
     let dao =
-        verify_result(parse_file(resource("telegram_2020-01").as_str(),
-                                 &NoChooser));
+        verify_result(parse_file(&resource("telegram_2020-01"), &NoChooser));
 
     let ds_uuid = dao.dataset.uuid.unwrap_ref();
     let myself = &dao.myself;
@@ -153,7 +152,7 @@ fn loading_2020_01() {
 #[test]
 fn loading_2021_05() {
     let dao =
-        verify_result(parse_file(resource("telegram_2021-05").as_str(), &NoChooser));
+        verify_result(parse_file(&resource("telegram_2021-05"), &NoChooser));
 
     let ds_uuid = dao.dataset.uuid.unwrap_ref();
     let myself = &dao.myself;
@@ -214,7 +213,7 @@ fn loading_2021_05() {
 
 #[test]
 fn loading_2021_06_supergroup() {
-    let dao = verify_result(parse_file(resource("telegram_2021-06_supergroup").as_str(), &NoChooser));
+    let dao = verify_result(parse_file(&resource("telegram_2021-06_supergroup"), &NoChooser));
 
     let ds_uuid = dao.dataset.uuid.unwrap_ref();
     let myself = &dao.myself;
@@ -338,7 +337,7 @@ fn loading_2021_06_supergroup() {
 
 #[test]
 fn loading_2021_07() {
-    let dao = verify_result(parse_file(resource("telegram_2021-07").as_str(), &NoChooser));
+    let dao = verify_result(parse_file(&resource("telegram_2021-07"), &NoChooser));
 
     let ds_uuid = dao.dataset.uuid.unwrap_ref();
     let myself = &dao.myself;
@@ -407,7 +406,7 @@ fn loading_2021_07() {
 
 #[test]
 fn loading_2023_01() {
-    let dao = verify_result(parse_file(resource("telegram_2023-01").as_str(), &NoChooser));
+    let dao = verify_result(parse_file(&resource("telegram_2023-01"), &NoChooser));
     // Parsing as UTC+5.
     let offset = FixedOffset::east_opt(5 * 3600).unwrap();
 
@@ -452,8 +451,8 @@ fn loading_2023_01() {
         assert_eq!(chat.member_ids[2], channel_user.id);
 
         let msgs: &Vec<Message> = &cwm.messages; // TODO: Ask DAO instead?
-        assert_eq!(msgs.len(), 5);
-        assert_eq!(chat.msg_count, 5);
+        assert_eq!(msgs.len(), 6);
+        assert_eq!(chat.msg_count, 6);
 
         // Order of these two is swapped by Telegram
         assert_eq!(msgs[0], Message {
@@ -538,6 +537,23 @@ fn loading_2023_01() {
             searchable_string: None,
             typed: Some(Typed::Service(MessageService {
                 sealed_value_optional: Some(GroupDeletePhoto(MessageServiceGroupDeletePhoto {}))
+            })),
+        });
+        assert_eq!(msgs[5], Message {
+            internal_id: -1,
+            source_id_option: Some(111114),
+            timestamp: 1676732102, // Here we put an explicit timestamp, just for fun
+            from_id: myself.id,
+            text: vec![],
+            searchable_string: None,
+            typed: Some(Typed::Service(MessageService {
+                sealed_value_optional: Some(SuggestProfilePhoto(MessageServiceSuggestProfilePhoto {
+                    photo: Some(ContentPhoto {
+                        path_option: None,
+                        width: 640,
+                        height: 640
+                    })
+                }))
             })),
         });
     }

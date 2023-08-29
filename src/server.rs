@@ -34,7 +34,7 @@ impl HistoryLoader for ChatHistoryManagerServer {
         let blocking_task = tokio::task::spawn_blocking(move || {
             let myself_chooser = ChooseMyselfImpl { myself_chooser_port };
             let response =
-                json::parse_file(request.get_ref().path.as_str(), &myself_chooser)
+                json::parse_file(&request.get_ref().path, &myself_chooser)
                     .map_err(|s| Status::new(Code::Internal, s))
                     .map(|pr| ParseHistoryFileResponse {
                         ds: Some(pr.dataset),

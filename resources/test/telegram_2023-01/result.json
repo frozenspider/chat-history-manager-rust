@@ -149,6 +149,20 @@
       "action": "delete_group_photo",
       "text": "",
       "text_entities": []
+     },
+     {
+      "id": 111114,
+      "type": "service",
+      "date": "2023-02-18T19:55:02",
+      "date_unixtime": "1676732102",
+      "actor": "Aaaaa Aaaaaaaaaaa",
+      "actor_id": "user11111111",
+      "action": "suggest_profile_photo",
+      "photo": "(File not included. Change data exporting settings to download.)",
+      "width": 640,
+      "height": 640,
+      "text": "",
+      "text_entities": []
      }
     ]
    }

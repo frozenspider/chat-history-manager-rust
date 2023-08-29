@@ -44,10 +44,10 @@ impl ChooseMyselfTrait for NoChooser {
 
 fn error_to_string<E: Error>(e: E) -> String {
     let mut s = String::new();
-    s += e.to_string().as_str();
+    s += &e.to_string();
     if let Some(src_e) = e.source() {
         s += " (caused by: ";
-        s += error_to_string(src_e).as_str();
+        s += &error_to_string(src_e);
         s += ")";
     }
     s
@@ -69,7 +69,7 @@ fn main() {
         }
         Some("parse") => {
             let path = args.next().unwrap();
-            let parsed = json::parse_file(path.as_str(), &NoChooser).unwrap();
+            let parsed = json::parse_file(&path, &NoChooser).unwrap();
             let size: usize = parsed.deep_size_of();
             log::debug!("Size of parsed in-memory DB: {} MB ({} B)", size / 1024 / 1024, size);
         }

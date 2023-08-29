@@ -145,6 +145,7 @@ message MessageRegular {
 message MessageService {
   oneof sealed_value_optional {
     MessageServicePhoneCall             phone_call = 1;
+    MessageServiceSuggestProfilePhoto   suggest_profile_photo = 13;
     MessageServicePinMessage            pin_message = 2;
     MessageServiceClearHistory          clear_history = 3;
     MessageServiceGroupCreate           group_create = 4;
@@ -323,6 +324,10 @@ message ContentSharedContact {
 message MessageServicePhoneCall {
   optional int32 duration_sec_option = 1;
   optional string discard_reason_option = 2;
+}
+
+message MessageServiceSuggestProfilePhoto {
+  ContentPhoto photo = 1 [(scalapb.field).no_box = true];
 }
 
 message MessageServicePinMessage {
