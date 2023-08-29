@@ -415,6 +415,7 @@ impl<'lt> MessageJson<'lt> {
             "" => None,
             "(File not included. Change data exporting settings to download.)" => None,
             "(File exceeds maximum size. Change data exporting settings to download.)" => None,
+            // "(File unavailable, please try again later)" => None, <-- this one may involve other kind of corruption?
             _ => Some(s)
         })))
     }
@@ -766,7 +767,7 @@ fn parse_service_message(message_json: &mut MessageJson,
         "join_group_by_link" => {
             message_json.add_required("inviter");
             SealedValueOptional::GroupInviteMembers(MessageServiceGroupInviteMembers {
-                members: vec![message_json.field_str("actor")?]
+                members: vec![message_json.field_opt_str("actor")?.unwrap_or(UNNAMED.to_owned())]
             })
         }
         "migrate_from_group" =>

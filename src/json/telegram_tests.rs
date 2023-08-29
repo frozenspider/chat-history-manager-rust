@@ -558,3 +558,88 @@ fn loading_2023_01() {
         });
     }
 }
+
+#[test]
+fn loading_2023_08() {
+    let dao = verify_result(parse_file(&resource("telegram_2023-08"), &NoChooser));
+
+    let ds_uuid = dao.dataset.uuid.unwrap_ref();
+    let myself = &dao.myself;
+    assert_eq!(myself, &expected_myself(ds_uuid));
+
+    // let member = User {
+    //     ds_uuid: Some(ds_uuid.clone()),
+    //     id: 44444444,
+    //     first_name_option: Some("Eeeee".to_owned()),
+    //     last_name_option: Some("Eeeeeeeeee".to_owned()),
+    //     username_option: None,
+    //     phone_number_option: Some("+7 999 333 44 55".to_owned()), // Taken from contacts list
+    // };
+    let unnamed_user = User {
+        ds_uuid: Some(ds_uuid.clone()),
+        id: 5555555555 - USER_ID_SHIFT,
+        first_name_option: None,
+        last_name_option:None,
+        username_option: None,
+        phone_number_option: None
+    };
+    assert_eq!(dao.users.len(), 2);
+    assert_eq!(dao.users.iter().collect_vec(), vec![myself, &unnamed_user]);
+
+    assert_eq!(dao.cwm.len(), 1);
+
+    // Group chat
+    {
+        // Chat ID is shifted by 2^33
+        let cwm = dao.cwm.iter()
+            .find(|&c| c.chat.unwrap_ref().id == 123123123 + GROUP_CHAT_ID_SHIFT)
+            .unwrap();
+        let chat = cwm.chat.unwrap_ref();
+        assert_eq!(chat.name_option, Some("My Group".to_owned()));
+        assert_eq!(chat.tpe, ChatType::PrivateGroup as i32);
+
+        assert_eq!(chat.member_ids.len(), 2);
+        assert_eq!(chat.member_ids[0], myself.id);
+        assert_eq!(chat.member_ids[1], unnamed_user.id);
+
+        let msgs: &Vec<Message> = &cwm.messages;
+        assert_eq!(msgs.len(), 2);
+        assert_eq!(chat.msg_count, 2);
+
+        // Order of these two is swapped by Telegram
+        assert_eq!(msgs[0], Message {
+            internal_id: -1,
+            source_id_option: Some(11111),
+            timestamp: 1664352868,
+            from_id: unnamed_user.id,
+            text: vec![],
+            searchable_string: None,
+            typed: Some(Typed::Service(MessageService {
+                sealed_value_optional: Some(GroupInviteMembers(MessageServiceGroupInviteMembers {
+                    members: vec![UNNAMED.to_owned()]
+                }))
+            })),
+        });
+        assert_eq!(msgs[1], Message {
+            internal_id: -1,
+            source_id_option: Some(11112),
+            timestamp: 1665499755,
+            from_id: unnamed_user.id,
+            text: vec![
+                RichTextElement {
+                    searchable_string: None,
+                    val: Some(rich_text_element::Val::Plain(RtePlain {
+                        text: "My message!".to_owned(),
+                    })),
+                },
+            ],
+            searchable_string: None,
+            typed: Some(Typed::Regular(MessageRegular {
+                edit_timestamp_option: None,
+                forward_from_name_option: None,
+                reply_to_message_id_option: None,
+                content_option: None,
+            })),
+        });
+    }
+}
