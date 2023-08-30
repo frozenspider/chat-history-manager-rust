@@ -411,13 +411,22 @@ impl<'lt> MessageJson<'lt> {
 
     /// Retrieve a RELATIVE path!
     fn field_opt_path(&mut self, name: &'lt str) -> Res<Option<String>> {
-        Ok(self.field_opt_str(name)?.and_then(|s| (match s.as_str() {
+        let field_opt = self.field_opt_str(name)?;
+
+        // A temporary fix while it's not clean what that really signifies.
+        // So far looks like it may mean timed photo.
+        if let Some(ref x) = field_opt {
+            if x.as_str() == "(File unavailable, please try again later)" {
+                return Err("Found \"File unavailable\"!".to_owned())
+            }
+        }
+
+        Ok(field_opt.map(|s| (match s.as_str() {
             "" => None,
             "(File not included. Change data exporting settings to download.)" => None,
             "(File exceeds maximum size. Change data exporting settings to download.)" => None,
-            // "(File unavailable, please try again later)" => None, <-- this one may involve other kind of corruption?
             _ => Some(s)
-        })))
+        })).flatten())
     }
 }
 
@@ -784,6 +793,12 @@ fn parse_service_message(message_json: &mut MessageJson,
             // Not really interesting to track.
             return Ok(ShouldProceed::Skip);
         }
+        // "topic_created" => {
+        //     return Ok(ShouldProceed::Skip);
+        // }
+        // "topic_edit" => {
+        //     return Ok(ShouldProceed::Skip);
+        // }
         etc =>
             return Err(format!("Don't know how to parse service message for action '{etc}'")),
     };

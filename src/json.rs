@@ -172,7 +172,7 @@ pub fn parse_file(path: &str, choose_myself: &dyn ChooseMyselfTrait) -> Res<InMe
         telegram::parse_file(Path::new(path), &uuid, choose_myself);
 
     parsed.iter_mut().for_each(|p| {
-        p.dataset.alias = format!("{src_alias} data loaded @ {now_str}");
+        p.dataset.alias = format!("{src_alias}, loaded @ {now_str}");
         p.dataset.source_type = src_type.to_owned();
     });
 
