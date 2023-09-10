@@ -130,6 +130,10 @@ pub(crate) use get_field_string_option;
 const UNNAMED: &str = "[unnamed]";
 const UNKNOWN: &str = "[unknown]";
 
+fn name_or_unnamed(name_option: &Option<String>) -> String {
+    name_option.as_ref().map(|s| s.clone()).unwrap_or(UNNAMED.to_owned())
+}
+
 fn hasher() -> Hasher {
     BuildHasherDefault::<FxHasher>::default()
 }

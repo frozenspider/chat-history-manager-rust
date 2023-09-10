@@ -1,4 +1,5 @@
 use std::borrow::Cow;
+use std::cell::RefCell;
 use std::collections::HashSet;
 use std::num::ParseIntError;
 use std::ops::Deref;
@@ -114,8 +115,15 @@ impl Users {
 }
 
 enum ShouldProceed {
-    Proceed,
-    Skip,
+    ProceedMessage,
+    SkipMessage,
+    SkipChat
+}
+
+enum ParsedMessage {
+    Ok(Message),
+    SkipMessage,
+    SkipChat,
 }
 
 #[derive(Clone)]
@@ -184,8 +192,7 @@ pub fn parse_file(path: &Path, ds_uuid: &Uuid, myself_chooser: &dyn ChooseMyself
         for member_id in &chat.member_ids {
             if !users.id_to_user.contains_key(member_id) {
                 return Err(format!("No member with id={} found for chat with id={} '{}'",
-                                   member_id, chat.id,
-                                   chat.name_option.as_ref().unwrap_or(&UNNAMED.to_owned())));
+                                   member_id, chat.id, name_or_unnamed(&chat.name_option)));
             }
         }
     }
@@ -263,12 +270,13 @@ fn parse_chat(json_path: &str,
         Err(_) => format!("{json_path}[#{}]", get_field!(chat_json, json_path, "id")?)
     };
 
+    let chat_name: RefCell<Option<String>> = RefCell::from(None);
 
     parse_object(chat_json, &json_path, action_map([
         ("", consume()), // No idea how to get rid of it
         ("name", Box::new(|v: &BorrowedValue| {
             if v.value_type() != ValueType::Null {
-                chat.name_option = as_string_option!(v, json_path, "name");
+                chat_name.replace(as_string_option!(v, json_path, "name"));
             }
             Ok(())
         })),
@@ -295,14 +303,24 @@ fn parse_chat(json_path: &str,
             let path = format!("{json_path}.messages");
             let messages_json = as_array!(v, path);
             for v in messages_json {
-                if let Some(message) = parse_message(&path, v, ds_uuid, users,
-                                                     &mut member_ids)? {
-                    messages.push(message);
+                let parsed = parse_message(&path, v, ds_uuid, users, &mut member_ids)?;
+                match parsed {
+                    ParsedMessage::Ok(msg) =>
+                        messages.push(msg),
+                    ParsedMessage::SkipMessage =>
+                        { /* NOOP */ }
+                    ParsedMessage::SkipChat => {
+                        log::warn!("Skipping chat '{}' because it contains topics!", name_or_unnamed(&chat_name.borrow()));
+                        skip_processing.set(true);
+                        break;
+                    }
                 }
             }
             Ok(())
         })),
     ]))?;
+
+    chat.name_option = chat_name.borrow().clone();
 
     if skip_processing.get() {
         return Ok(None);
@@ -434,7 +452,7 @@ fn parse_message(json_path: &str,
                  bw: &BorrowedValue,
                  ds_uuid: &PbUuid,
                  users: &mut Users,
-                 member_ids: &mut HashSet<Id, Hasher>) -> Res<Option<Message>> {
+                 member_ids: &mut HashSet<Id, Hasher>) -> Res<ParsedMessage> {
     use history::message::Typed;
 
     fn as_hash_set<'lt>(arr: &[&'lt str]) -> HashSet<&'lt str, Hasher> {
@@ -482,9 +500,14 @@ fn parse_message(json_path: &str,
 
             let mut service: MessageService = Default::default();
             let proceed = parse_service_message(&mut message_json, &mut service)?;
-            if matches!(proceed, ShouldProceed::Skip) {
-                return Ok(None);
-            }
+            match proceed {
+                ShouldProceed::ProceedMessage =>
+                    { /* NOOP */ }
+                ShouldProceed::SkipMessage =>
+                    return Ok(ParsedMessage::SkipMessage),
+                ShouldProceed::SkipChat =>
+                    return Ok(ParsedMessage::SkipChat)
+            };
             message.typed = Some(Typed::Service(service));
 
             short_user.id = parse_user_id(message_json.field("actor_id")?)?;
@@ -542,7 +565,7 @@ fn parse_message(json_path: &str,
         }
     }
 
-    Ok(Some(message))
+    Ok(ParsedMessage::Ok(message))
 }
 
 fn parse_regular_message(message_json: &mut MessageJson,
@@ -776,7 +799,7 @@ fn parse_service_message(message_json: &mut MessageJson,
         "join_group_by_link" => {
             message_json.add_required("inviter");
             SealedValueOptional::GroupInviteMembers(MessageServiceGroupInviteMembers {
-                members: vec![message_json.field_opt_str("actor")?.unwrap_or(UNNAMED.to_owned())]
+                members: vec![name_or_unnamed(&message_json.field_opt_str("actor")?).to_owned()]
             })
         }
         "migrate_from_group" =>
@@ -791,19 +814,18 @@ fn parse_service_message(message_json: &mut MessageJson,
             }),
         "edit_chat_theme" => {
             // Not really interesting to track.
-            return Ok(ShouldProceed::Skip);
+            return Ok(ShouldProceed::SkipMessage);
         }
-        // "topic_created" => {
-        //     return Ok(ShouldProceed::Skip);
-        // }
-        // "topic_edit" => {
-        //     return Ok(ShouldProceed::Skip);
-        // }
+        "topic_created" | "topic_edit" => {
+            // Topic-level division is implemented via repies to "topic_created" messages.
+            // This is a questionable approach that I don't want to track at the moment.
+            return Ok(ShouldProceed::SkipChat);
+        }
         etc =>
             return Err(format!("Don't know how to parse service message for action '{etc}'")),
     };
     service_msg.sealed_value_optional = Some(val);
-    Ok(ShouldProceed::Proceed)
+    Ok(ShouldProceed::ProceedMessage)
 }
 
 //
