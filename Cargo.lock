@@ -161,6 +161,7 @@ dependencies = [
  "mimalloc",
  "prost",
  "protobuf",
+ "rand",
  "regex",
  "simd-json",
  "tokio",

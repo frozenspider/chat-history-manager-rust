@@ -4,7 +4,6 @@ use std::fs;
 use std::hash::BuildHasherDefault;
 use std::path::Path;
 use std::time::Instant;
-use chrono::Local;
 use hashers::fx_hash::FxHasher;
 
 use simd_json;
@@ -127,8 +126,7 @@ pub(crate) use get_field_str;
 pub(crate) use get_field_string;
 pub(crate) use get_field_string_option;
 
-const UNNAMED: &str = "[unnamed]";
-const UNKNOWN: &str = "[unknown]";
+use crate::entities::*;
 
 fn name_or_unnamed(name_option: &Option<String>) -> String {
     name_option.as_ref().map(|s| s.clone()).unwrap_or(UNNAMED.to_owned())
@@ -165,20 +163,5 @@ fn consume<'lt>() -> BoxObjFn<'lt> {
 
 pub fn parse_file(path: &str, choose_myself: &dyn ChooseMyselfTrait) -> Res<InMemoryDb> {
     let uuid = Uuid::new_v4();
-
-    // No choice yet.
-    let src_alias = "Telegram";
-    let src_type = "telegram";
-
-    let now_str = Local::now().format("%Y-%m-%d");
-
-    let mut parsed =
-        telegram::parse_file(Path::new(path), &uuid, choose_myself);
-
-    parsed.iter_mut().for_each(|p| {
-        p.dataset.alias = format!("{src_alias}, loaded @ {now_str}");
-        p.dataset.source_type = src_type.to_owned();
-    });
-
-    parsed
+    telegram::parse_file(Path::new(path), &uuid, choose_myself)
 }

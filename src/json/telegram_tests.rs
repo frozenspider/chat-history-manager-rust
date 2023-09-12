@@ -9,6 +9,8 @@ use crate::protobuf::history::message::*;
 use crate::protobuf::history::message_service::SealedValueOptional::*;
 use crate::protobuf::history::content::SealedValueOptional::*;
 use crate::{NoChooser, User};
+use crate::entities::*;
+use crate::test_utils::*;
 
 lazy_static! {
     static ref RESOURCES_DIR: String =
@@ -27,12 +29,6 @@ fn verify_result<T, E: std::fmt::Display>(r: Result<T, E>) -> T {
 {}"#, e)
         }
     }
-}
-
-fn dt(s: &str, offset: Option<&FixedOffset>) -> DateTime<FixedOffset> {
-    let local = Local::now();
-    let offset = offset.unwrap_or(local.offset());
-    offset.from_local_datetime(&NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S").unwrap()).unwrap()
 }
 
 trait ExtOption<T> {
@@ -111,11 +107,11 @@ fn loading_2020_01() {
     assert_eq!(dao.users.len(), 9);
     assert_eq!(dao.users, expected_users);
 
-    assert_eq!(dao.cwm.len(), 4);
+    assert_eq!(dao.cwms.len(), 4);
 
     // "Ordered" chat
     {
-        let cwm = dao.cwm.iter()
+        let cwm = dao.cwms.iter()
             .find(|&c| c.chat.unwrap_ref().id == 4321012345)
             .unwrap();
         let chat = cwm.chat.unwrap_ref();
@@ -180,12 +176,12 @@ fn loading_2021_05() {
     assert_eq!(dao.users.len(), 4);
     assert_eq!(dao.users.iter().collect_vec(), vec![myself, &service_member, &member1, &member2]);
 
-    assert_eq!(dao.cwm.len(), 1);
+    assert_eq!(dao.cwms.len(), 1);
 
     // Group chat
     {
         // Chat ID is shifted by 2^33
-        let cwm = dao.cwm.iter()
+        let cwm = dao.cwms.iter()
             .find(|&c| c.chat.unwrap_ref().id == 123123123 + GROUP_CHAT_ID_SHIFT)
             .unwrap();
         let chat = cwm.chat.unwrap_ref();
@@ -234,12 +230,12 @@ fn loading_2021_06_supergroup() {
         assert_eq!(sorted_users, vec![myself, &u222222222, &u333333333, &u444444444]);
     }
 
-    assert_eq!(dao.cwm.len(), 1);
+    assert_eq!(dao.cwms.len(), 1);
 
     // Group chat
     {
         // Chat ID is shifted by 2^33
-        let cwm = dao.cwm.iter()
+        let cwm = dao.cwms.iter()
             .find(|&c| c.chat.unwrap_ref().id == 1234567890 + GROUP_CHAT_ID_SHIFT)
             .unwrap();
         let chat = cwm.chat.unwrap_ref();
@@ -263,7 +259,7 @@ fn loading_2021_06_supergroup() {
             timestamp: dt("2020-12-22 23:11:21", None).timestamp(),
             from_id: u222222222.id,
             text: vec![],
-            searchable_string: None,
+            searchable_string: "Vvvvvvvv Bbbbbbb".to_owned(),
             typed: Some(Typed::Service(MessageService {
                 sealed_value_optional: Some(GroupInviteMembers(MessageServiceGroupInviteMembers {
                     members: vec![u444444444.first_name_option.unwrap()]
@@ -277,12 +273,12 @@ fn loading_2021_06_supergroup() {
             timestamp: dt("2020-12-22 23:12:09", None).timestamp(),
             from_id: u333333333.id,
             text: vec![RichTextElement {
-                searchable_string: None,
+                searchable_string: "Message text with emoji 🙂".to_owned(),
                 val: Some(rich_text_element::Val::Plain(RtePlain {
                     text: "Message text with emoji 🙂".to_owned(),
                 })),
             }],
-            searchable_string: None,
+            searchable_string: "Message text with emoji 🙂".to_owned(),
             typed: Some(Typed::Regular(MessageRegular {
                 edit_timestamp_option: None,
                 forward_from_name_option: None,
@@ -297,12 +293,12 @@ fn loading_2021_06_supergroup() {
             timestamp: dt("2020-12-22 23:12:51", None).timestamp(),
             from_id: u444444444.id,
             text: vec![RichTextElement {
-                searchable_string: None,
+                searchable_string: "Message from an added user".to_owned(),
                 val: Some(rich_text_element::Val::Plain(RtePlain {
                     text: "Message from an added user".to_owned(),
                 })),
             }],
-            searchable_string: None,
+            searchable_string: "Message from an added user".to_owned(),
             typed: Some(Typed::Regular(MessageRegular {
                 edit_timestamp_option: None,
                 forward_from_name_option: None,
@@ -310,14 +306,13 @@ fn loading_2021_06_supergroup() {
                 content_option: None,
             })),
         });
-
         assert_eq!(msgs[3], Message {
             internal_id: -1,
             source_id_option: Some(358000),
             timestamp: dt("2021-03-18 17:50:23", None).timestamp(),
             from_id: myself.id,
             text: vec![],
-            searchable_string: None,
+            searchable_string: format!("{} {}", myself.first_name_option.as_ref().unwrap(), &myself.phone_number_option.as_ref().unwrap()),
             typed: Some(Typed::Regular(MessageRegular {
                 edit_timestamp_option: None,
                 forward_from_name_option: None,
@@ -354,12 +349,12 @@ fn loading_2021_07() {
     assert_eq!(dao.users.len(), 2);
     assert_eq!(dao.users.iter().collect_vec(), vec![myself, &member]);
 
-    assert_eq!(dao.cwm.len(), 1);
+    assert_eq!(dao.cwms.len(), 1);
 
     // Group chat
     {
         // Chat ID is shifted by 2^33
-        let cwm = dao.cwm.iter()
+        let cwm = dao.cwms.iter()
             .find(|&c| c.chat.unwrap_ref().id == 123123123 + GROUP_CHAT_ID_SHIFT)
             .unwrap();
         let chat = cwm.chat.unwrap_ref();
@@ -381,7 +376,7 @@ fn loading_2021_07() {
             timestamp: dt("2021-07-03 22:38:58", None).timestamp(),
             from_id: member.id,
             text: vec![],
-            searchable_string: None,
+            searchable_string: "Www Wwwwww".to_owned(),
             typed: Some(Typed::Service(MessageService {
                 sealed_value_optional: Some(GroupCall(MessageServiceGroupCall {
                     members: vec!["Www Wwwwww".to_owned()]
@@ -394,7 +389,7 @@ fn loading_2021_07() {
             timestamp: dt("2021-07-03 22:39:01", None).timestamp(),
             from_id: member.id,
             text: vec![],
-            searchable_string: None,
+            searchable_string: "Myself".to_owned(),
             typed: Some(Typed::Service(MessageService {
                 sealed_value_optional: Some(GroupCall(MessageServiceGroupCall {
                     members: vec!["Myself".to_owned()]
@@ -433,12 +428,12 @@ fn loading_2023_01() {
     assert_eq!(dao.users.len(), 3);
     assert_eq!(dao.users.iter().collect_vec(), vec![myself, &member, &channel_user]);
 
-    assert_eq!(dao.cwm.len(), 1);
+    assert_eq!(dao.cwms.len(), 1);
 
     // Group chat
     {
         // Chat ID is shifted by 2^33
-        let cwm = dao.cwm.iter()
+        let cwm = dao.cwms.iter()
             .find(|&c| c.chat.unwrap_ref().id == 123123123 + GROUP_CHAT_ID_SHIFT)
             .unwrap();
         let chat = cwm.chat.unwrap_ref();
@@ -461,7 +456,7 @@ fn loading_2023_01() {
             timestamp: dt("2016-02-10 21:55:02", Some(&offset)).timestamp(),
             from_id: channel_user.id,
             text: vec![],
-            searchable_string: None,
+            searchable_string: "My Group".to_owned(),
             typed: Some(Typed::Service(MessageService {
                 sealed_value_optional: Some(GroupMigrateFrom(MessageServiceGroupMigrateFrom {
                     title: "My Group".to_owned()
@@ -474,7 +469,7 @@ fn loading_2023_01() {
             timestamp: dt("2016-02-10 21:55:03", Some(&offset)).timestamp(),
             from_id: member.id,
             text: vec![],
-            searchable_string: None,
+            searchable_string: "".to_owned(),
             typed: Some(Typed::Service(MessageService {
                 sealed_value_optional: Some(GroupMigrateTo(MessageServiceGroupMigrateTo {}))
             })),
@@ -487,13 +482,13 @@ fn loading_2023_01() {
             text: vec![
                 // Two plaintext elements are concatenated
                 RichTextElement {
-                    searchable_string: None,
+                    searchable_string: "this contains a lot of stuff: 😁".to_owned(),
                     val: Some(rich_text_element::Val::Plain(RtePlain {
                         text: "this contains a lot of stuff: 😁".to_owned(),
                     })),
                 },
                 RichTextElement {
-                    searchable_string: None,
+                    searchable_string: "http://mylink.org/".to_owned(),
                     val: Some(rich_text_element::Val::Link(RteLink {
                         text_option: Some("http://mylink.org/".to_owned()),
                         href: "http://mylink.org/".to_owned(),
@@ -501,13 +496,13 @@ fn loading_2023_01() {
                     })),
                 },
                 RichTextElement {
-                    searchable_string: None,
+                    searchable_string: "HIDE ME".to_owned(),
                     val: Some(rich_text_element::Val::Spoiler(RteSpoiler {
                         text: "HIDE ME".to_owned(),
                     })),
                 },
             ],
-            searchable_string: None,
+            searchable_string: "this contains a lot of stuff: 😁 http://mylink.org/ HIDE ME".to_owned(),
             typed: Some(Typed::Regular(MessageRegular {
                 edit_timestamp_option: None,
                 forward_from_name_option: None,
@@ -521,7 +516,7 @@ fn loading_2023_01() {
             timestamp: dt("2022-10-17 16:40:09", Some(&offset)).timestamp(),
             from_id: myself.id,
             text: vec![],
-            searchable_string: None,
+            searchable_string: UNKNOWN.to_owned(),
             typed: Some(Typed::Service(MessageService {
                 sealed_value_optional: Some(GroupInviteMembers(MessageServiceGroupInviteMembers {
                     members: vec![UNKNOWN.to_owned()]
@@ -534,7 +529,7 @@ fn loading_2023_01() {
             timestamp: 1666993143, // Here we put an explicit timestamp, just for fun
             from_id: myself.id,
             text: vec![],
-            searchable_string: None,
+            searchable_string: "".to_owned(),
             typed: Some(Typed::Service(MessageService {
                 sealed_value_optional: Some(GroupDeletePhoto(MessageServiceGroupDeletePhoto {}))
             })),
@@ -545,7 +540,7 @@ fn loading_2023_01() {
             timestamp: 1676732102, // Here we put an explicit timestamp, just for fun
             from_id: myself.id,
             text: vec![],
-            searchable_string: None,
+            searchable_string: "".to_owned(),
             typed: Some(Typed::Service(MessageService {
                 sealed_value_optional: Some(SuggestProfilePhoto(MessageServiceSuggestProfilePhoto {
                     photo: Some(ContentPhoto {
@@ -586,12 +581,12 @@ fn loading_2023_08() {
     assert_eq!(dao.users.len(), 2);
     assert_eq!(dao.users.iter().collect_vec(), vec![myself, &unnamed_user]);
 
-    assert_eq!(dao.cwm.len(), 1);
+    assert_eq!(dao.cwms.len(), 1);
 
     // Group chat
     {
         // Chat ID is shifted by 2^33
-        let cwm = dao.cwm.iter()
+        let cwm = dao.cwms.iter()
             .find(|&c| c.chat.unwrap_ref().id == 123123123 + GROUP_CHAT_ID_SHIFT)
             .unwrap();
         let chat = cwm.chat.unwrap_ref();
@@ -613,7 +608,7 @@ fn loading_2023_08() {
             timestamp: 1664352868,
             from_id: unnamed_user.id,
             text: vec![],
-            searchable_string: None,
+            searchable_string: UNNAMED.to_owned(),
             typed: Some(Typed::Service(MessageService {
                 sealed_value_optional: Some(GroupInviteMembers(MessageServiceGroupInviteMembers {
                     members: vec![UNNAMED.to_owned()]
@@ -627,13 +622,13 @@ fn loading_2023_08() {
             from_id: unnamed_user.id,
             text: vec![
                 RichTextElement {
-                    searchable_string: None,
+                    searchable_string: "My message!".to_owned(),
                     val: Some(rich_text_element::Val::Plain(RtePlain {
                         text: "My message!".to_owned(),
                     })),
                 },
             ],
-            searchable_string: None,
+            searchable_string: "My message!".to_owned(),
             typed: Some(Typed::Regular(MessageRegular {
                 edit_timestamp_option: None,
                 forward_from_name_option: None,

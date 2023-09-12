@@ -1,5 +1,3 @@
-extern crate core;
-
 use std::env::args;
 use std::error::Error;
 use std::path::PathBuf;
@@ -13,6 +11,10 @@ use crate::protobuf::history::{ChatWithMessages, Dataset, User};
 mod protobuf;
 mod json;
 mod server;
+mod entities;
+
+#[cfg(test)]
+mod test_utils;
 
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;
@@ -27,7 +29,7 @@ pub struct InMemoryDb {
     ds_root: PathBuf,
     myself: User,
     users: Vec<User>,
-    cwm: Vec<ChatWithMessages>,
+    cwms: Vec<ChatWithMessages>,
 }
 
 pub trait ChooseMyselfTrait {
@@ -71,7 +73,7 @@ fn main() {
             let path = args.next().unwrap();
             let parsed = json::parse_file(&path, &NoChooser).unwrap();
             let size: usize = parsed.deep_size_of();
-            log::debug!("Size of parsed in-memory DB: {} MB ({} B)", size / 1024 / 1024, size);
+            log::info!("Size of parsed in-memory DB: {} MB ({} B)", size / 1024 / 1024, size);
         }
         Some("request_myself") => {
             server::make_choose_myself_request(server_port + 1).unwrap();

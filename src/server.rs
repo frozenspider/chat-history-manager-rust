@@ -6,7 +6,7 @@ use tonic::{Code, Request, Response, Status, transport::Server};
 use unicode_segmentation::UnicodeSegmentation;
 
 use crate::*;
-use crate::protobuf::history::{ChooseMyselfRequest, ParseHistoryFileRequest, ParseHistoryFileResponse, PbUuid};
+use crate::protobuf::history::{ChooseMyselfRequest, ParseHistoryFileRequest, ParseHistoryFileResponse, PbUuid, User};
 use crate::protobuf::history::history_loader_server::*;
 use crate::protobuf::history::myself_chooser_client::MyselfChooserClient;
 
@@ -36,13 +36,15 @@ impl HistoryLoader for ChatHistoryManagerServer {
             let response =
                 json::parse_file(&request.get_ref().path, &myself_chooser)
                     .map_err(|s| Status::new(Code::Internal, s))
-                    .map(|pr| ParseHistoryFileResponse {
-                        ds: Some(pr.dataset),
-                        root_file: String::from(pr.ds_root.to_str().unwrap()),
-                        myself: Some(pr.myself),
-                        users: pr.users,
-                        cwm: pr.cwm,
-                    })
+                    .map(|dao|
+                        ParseHistoryFileResponse {
+                            ds: Some(dao.dataset),
+                            root_file: String::from(dao.ds_root.to_str().unwrap()),
+                            myself: Some(dao.myself),
+                            users: dao.users,
+                            cwms: dao.cwms,
+                        }
+                    )
                     .map(Response::new);
             log::info!("{}", truncate_to!(format!("<<< Response: {:?}", response), 200));
             response

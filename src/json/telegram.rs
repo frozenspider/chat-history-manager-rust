@@ -13,8 +13,9 @@ use simd_json::{BorrowedValue, StaticNode, Value as JValue};
 use simd_json::borrowed::{Object, Value};
 
 use crate::{EmptyRes, error_to_string, InMemoryDb, Res};
+use crate::entities::*;
 use crate::protobuf::*;
-use crate::protobuf::history::{Chat, ChatType, ChatWithMessages, Dataset, Message, MessageRegular, MessageService, RichTextElement, User, PbUuid};
+use crate::protobuf::history::*;
 
 use super::*;
 
@@ -25,13 +26,18 @@ mod parser_single;
 mod tests;
 
 /// Starting with Telegram 2020-10, user IDs are shifted by this value
-static USER_ID_SHIFT: Id = 0x100000000_i64;
+const USER_ID_SHIFT: Id = 0x100000000_i64;
 
 /// Starting with Telegram 2021-05, personal chat IDs are un-shifted by this value
-static PERSONAL_CHAT_ID_SHIFT: Id = 0x100000000_i64;
+const PERSONAL_CHAT_ID_SHIFT: Id = 0x100000000_i64;
 
 /// Starting with Telegram 2021-05, personal chat IDs are un-shifted by this value
-static GROUP_CHAT_ID_SHIFT: Id = PERSONAL_CHAT_ID_SHIFT * 2;
+const GROUP_CHAT_ID_SHIFT: Id = PERSONAL_CHAT_ID_SHIFT * 2;
+
+const SRC_ALIAS: &str = "Telegram";
+
+const SRC_TYPE: &str = "telegram";
+
 
 #[derive(Default, Debug)]
 pub struct Users {
@@ -117,7 +123,7 @@ impl Users {
 enum ShouldProceed {
     ProceedMessage,
     SkipMessage,
-    SkipChat
+    SkipChat,
 }
 
 enum ParsedMessage {
@@ -143,6 +149,8 @@ pub fn parse_file(path: &Path, ds_uuid: &Uuid, myself_chooser: &dyn ChooseMyself
     if !path.exists() {
         return Err(format!("{} not found!", path.to_str().unwrap()));
     }
+
+    let now_str = Local::now().format("%Y-%m-%d");
 
     log::info!("Parsing '{}'", path.to_str().unwrap());
 
@@ -175,8 +183,8 @@ pub fn parse_file(path: &Path, ds_uuid: &Uuid, myself_chooser: &dyn ChooseMyself
 
     let ds = Dataset {
         uuid: Some(ds_uuid.clone()),
-        alias: String::new(), // Will be set by caller.
-        source_type: String::new(), // Will be set by caller.
+        alias: format!("{SRC_ALIAS}, loaded @ {now_str}"),
+        source_type: SRC_TYPE.to_owned(),
     };
 
     if !users.pretty_name_to_idless_users.is_empty() {
@@ -207,7 +215,7 @@ pub fn parse_file(path: &Path, ds_uuid: &Uuid, myself_chooser: &dyn ChooseMyself
         ds_root: path.parent().unwrap().to_path_buf(),
         myself: myself,
         users: users,
-        cwm: chats_with_messages,
+        cwms: chats_with_messages,
     })
 }
 
@@ -435,7 +443,7 @@ impl<'lt> MessageJson<'lt> {
         // So far looks like it may mean timed photo.
         if let Some(ref x) = field_opt {
             if x.as_str() == "(File unavailable, please try again later)" {
-                return Err("Found \"File unavailable\"!".to_owned())
+                return Err("Found \"File unavailable\"!".to_owned());
             }
         }
 
@@ -479,7 +487,7 @@ fn parse_message(json_path: &str,
     };
 
     let mut message: Message = Default::default();
-    message.internal_id = -1;
+    message.internal_id = NO_INTERNAL_ID;
 
     // Determine message type an parse short user from it.
     let mut short_user: ShortUser = ShortUser::default();
@@ -564,6 +572,8 @@ fn parse_message(json_path: &str,
             return Err(format!("Message fields not found: {:?}", ef.required_fields));
         }
     }
+
+    message.searchable_string = make_searchable_string(&message.text, message.typed.as_ref().unwrap());
 
     Ok(ParsedMessage::Ok(message))
 }
@@ -833,19 +843,12 @@ fn parse_service_message(message_json: &mut MessageJson,
 //
 
 fn parse_rich_text(json_path: &str, rt_json: &Value) -> Res<Vec<RichTextElement>> {
-    use history::*;
-    use history::rich_text_element::Val;
-
-    fn parse_plain_option(s: &Cow<str>) -> Option<Val> {
+    fn parse_plain_option(s: &Cow<str>) -> Option<RichTextElement> {
         if s.is_empty() {
             None
         } else {
-            Some(Val::Plain(RtePlain { text: s.deref().to_owned() }))
+            Some(RichText::make_plain(s.deref().to_owned()))
         }
-    }
-
-    fn wrap_rte(val: Val) -> RichTextElement {
-        RichTextElement { val: Some(val), searchable_string: None }
     }
 
     // Empty plain strings are discarded
@@ -853,17 +856,12 @@ fn parse_rich_text(json_path: &str, rt_json: &Value) -> Res<Vec<RichTextElement>
         Value::Static(StaticNode::Null) =>
             Ok(vec![]),
         Value::String(s) => {
-            let plain = parse_plain_option(s);
-            if let Some(plain) = plain {
-                Ok(vec![wrap_rte(plain)])
-            } else {
-                Ok(vec![])
-            }
+            Ok(parse_plain_option(s).map(|plain| vec![plain]).unwrap_or(vec![]))
         }
         Value::Array(arr) => {
             let mut result: Vec<RichTextElement> = vec![];
             for json_el in arr {
-                let val: Option<Val> = match json_el {
+                let val: Option<RichTextElement> = match json_el {
                     Value::String(s) =>
                         parse_plain_option(s),
                     Value::Object(obj) =>
@@ -872,7 +870,7 @@ fn parse_rich_text(json_path: &str, rt_json: &Value) -> Res<Vec<RichTextElement>
                         return Err(format!("Don't know how to parse RichText element '{:?}'", etc))
                 };
                 if let Some(val) = val {
-                    result.push(wrap_rte(val))
+                    result.push(val)
                 }
             }
             Ok(result)
@@ -884,14 +882,16 @@ fn parse_rich_text(json_path: &str, rt_json: &Value) -> Res<Vec<RichTextElement>
     // Concatenate consecutive plaintext elements
     let mut i = 0;
     while (i + 1) < rtes.len() {
+        use rich_text_element::Val;
+
         let el1 = &rtes[i];
         let el2 = &rtes[i + 1];
         if let (Some(Val::Plain(plain1)), Some(Val::Plain(plain2))) = (&el1.val, &el2.val) {
             let mut new_text = String::new();
             new_text.push_str(&plain1.text);
             new_text.push_str(&plain2.text);
-            let new_plain = Val::Plain(RtePlain { text: new_text });
-            rtes.splice(i..=(i + 1), vec![wrap_rte(new_plain)]);
+            let new_plain = RichText::make_plain(new_text);
+            rtes.splice(i..=(i + 1), vec![new_plain]);
         } else {
             i += 1;
         }
@@ -901,10 +901,7 @@ fn parse_rich_text(json_path: &str, rt_json: &Value) -> Res<Vec<RichTextElement>
 }
 
 fn parse_rich_text_object(json_path: &str,
-                          rte_json: &Box<Object>) -> Res<Option<history::rich_text_element::Val>> {
-    use history::*;
-    use history::rich_text_element::Val;
-
+                          rte_json: &Box<Object>) -> Res<Option<RichTextElement>> {
     let keys =
         rte_json.keys().map(|s| s.deref()).collect::<HashSet<&str, Hasher>>();
     macro_rules! check_keys {
@@ -924,81 +921,81 @@ fn parse_rich_text_object(json_path: &str,
         };
     }
 
-    let res: Option<Val> = match get_field_str!(rte_json, json_path, "type") {
+    let res: Option<RichTextElement> = match get_field_str!(rte_json, json_path, "type") {
         "plain" => {
             check_keys!(["type", "text"]);
             // Empty plain string is discarded
             get_field_string_option!(rte_json, json_path, "text")
-                .map(|s| Val::Plain(RtePlain { text: s }))
+                .map(RichText::make_plain)
         }
         "bold" => {
             check_keys!(["type", "text"]);
-            Some(Val::Bold(RteBold { text: get_field_string!(rte_json, json_path, "text") }))
+            Some(RichText::make_bold(get_field_string!(rte_json, json_path, "text")))
         }
         "italic" => {
             check_keys!(["type", "text"]);
-            Some(Val::Italic(RteItalic { text: get_field_string!(rte_json, json_path, "text") }))
+            Some(RichText::make_italic(get_field_string!(rte_json, json_path, "text")))
         }
         "underline" => {
             check_keys!(["type", "text"]);
-            Some(Val::Underline(RteUnderline { text: get_field_string!(rte_json, json_path, "text") }))
+            Some(RichText::make_underline(get_field_string!(rte_json, json_path, "text")))
         }
         "strikethrough" => {
             check_keys!(["type", "text"]);
-            Some(Val::Strikethrough(RteStrikethrough { text: get_field_string!(rte_json, json_path, "text") }))
+            Some(RichText::make_strikethrough(get_field_string!(rte_json, json_path, "text")))
         }
         "spoiler" => {
             check_keys!(["type", "text"]);
-            Some(Val::Spoiler(RteSpoiler { text: get_field_string!(rte_json, json_path, "text") }))
+            Some(RichText::make_spoiler(get_field_string!(rte_json, json_path, "text")))
         }
         "unknown" => {
             // Unknown is rendered as plaintext in telegram
             check_keys!(["type", "text"]);
-            Some(Val::Plain(RtePlain { text: get_field_string!(rte_json, json_path, "text") }))
+            Some(RichText::make_plain(get_field_string!(rte_json, json_path, "text")))
         }
         "code" => {
             check_keys!(["type", "text"]);
-            Some(Val::PrefmtInline(RtePrefmtInline { text: get_field_string!(rte_json, json_path, "text") }))
+            Some(RichText::make_prefmt_inline(get_field_string!(rte_json, json_path, "text")))
         }
         "pre" => {
             check_keys!(["type", "text", "language"]);
-            Some(Val::PrefmtBlock(RtePrefmtBlock {
-                text: get_field_string!(rte_json, json_path, "text"),
-                language_option: get_field_string_option!(rte_json, json_path, "language"),
-            }))
+            Some(RichText::make_prefmt_block(
+                get_field_string!(rte_json, json_path, "text"),
+                get_field_string_option!(rte_json, json_path, "language"),
+            ))
         }
         "text_link" => {
             check_keys!(["type", "text", "href"]);
             let text = get_field_string!(rte_json, json_path, "text");
-            Some(Val::Link(RteLink {
-                text_option: str_to_option!(text.as_str()),
-                href: get_field_string!(rte_json, json_path, "href"),
-                hidden: is_whitespace_or_invisible(&text),
-            }))
+            Some(RichText::make_link(
+                str_to_option!(text.as_str()),
+                get_field_string!(rte_json, json_path, "href"),
+                is_whitespace_or_invisible(&text),
+            ))
         }
         "link" => {
             // Link format is hyperlink alone
             check_keys!(["type", "text"]);
-            Some(Val::Link(RteLink {
-                text_option: get_field_string_option!(rte_json, json_path, "text"),
-                href: get_field_string!(rte_json, json_path, "text"),
-                hidden: false,
-            }))
+            Some(RichText::make_link(
+                get_field_string_option!(rte_json, json_path, "text"),
+                get_field_string!(rte_json, json_path, "text"),
+                false,
+            ))
         }
         "mention_name" => {
             // No special treatment for mention_name, but prepent @
             check_keys!(["type", "text", "user_id"]);
-            Some(Val::Plain(RtePlain { text: format!("@{}", get_field_str!(rte_json, json_path, "text")) }))
+            Some(RichText::make_plain(format!("@{}", get_field_str!(rte_json, json_path, "text"))))
         }
         "email" | "mention" | "phone" | "hashtag" | "bot_command" | "bank_card" | "cashtag" => {
             // No special treatment for any of these
             check_keys!(["type", "text"]);
-            Some(Val::Plain(RtePlain { text: get_field_string!(rte_json, json_path, "text") }))
+            Some(RichText::make_plain(get_field_string!(rte_json, json_path, "text")))
         }
         "custom_emoji" => {
             // Just taken as a regular emoji
             check_keys!(["type", "text", "document_id"]);
-            Some(Val::Plain(RtePlain { text: get_field_string!(rte_json, json_path, "text") }))
+            Some(RichText::make_plain(get_field_string!(rte_json, json_path, "text")))
         }
         etc =>
             return Err(format!("Don't know how to parse RichText element of type '{etc}' for {:?}", rte_json))

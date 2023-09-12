@@ -12,6 +12,7 @@ chrono = "0.4.26"
 regex = "1.8.4"
 lazy_static = "1.4.0"
 hashers = "1.0.1"
+rand = "0.8.5"
 
 # Protobuf and web service
 protobuf = "3.2.0"
