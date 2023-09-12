@@ -12,7 +12,8 @@ use regex::Regex;
 use simd_json::{BorrowedValue, StaticNode, Value as JValue};
 use simd_json::borrowed::{Object, Value};
 
-use crate::{EmptyRes, error_to_string, InMemoryDb, Res};
+use crate::{EmptyRes, error_to_string, Res};
+use crate::dao::in_memory_dao::InMemoryDao;
 use crate::entities::*;
 use crate::protobuf::*;
 use crate::protobuf::history::*;
@@ -138,7 +139,7 @@ struct ExpectedMessageField<'lt> {
     optional_fields: HashSet<&'lt str, Hasher>,
 }
 
-pub fn parse_file(path: &Path, ds_uuid: &Uuid, myself_chooser: &dyn ChooseMyselfTrait) -> Res<InMemoryDb> {
+pub fn parse_file(path: &Path, ds_uuid: &Uuid, myself_chooser: &dyn ChooseMyselfTrait) -> Res<InMemoryDao> {
     let path: PathBuf =
         if !path.ends_with("result.json") {
             path.join("result.json")
@@ -210,13 +211,15 @@ pub fn parse_file(path: &Path, ds_uuid: &Uuid, myself_chooser: &dyn ChooseMyself
     // Set myself to be a first member (not required by convention but to match existing behaviour).
     users.sort_by_key(|u| if u.id == myself.id { Id::MIN } else { u.id });
 
-    Ok(InMemoryDb {
-        dataset: ds,
-        ds_root: path.parent().unwrap().to_path_buf(),
-        myself: myself,
-        users: users,
-        cwms: chats_with_messages,
-    })
+    let parent_name = path.parent().unwrap().file_name().unwrap();
+    Ok(InMemoryDao::new(
+        format!("Telegram ({})", parent_name.to_os_string().into_string().unwrap()),
+        ds,
+        path.parent().unwrap().to_path_buf(),
+        myself,
+        users,
+        chats_with_messages,
+    ))
 }
 
 /** Returns a partially filled user. */

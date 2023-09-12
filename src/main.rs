@@ -1,16 +1,16 @@
 use std::env::args;
 use std::error::Error;
-use std::path::PathBuf;
 
 use deepsize::DeepSizeOf;
 use log::LevelFilter;
 use mimalloc::MiMalloc;
 
-use crate::protobuf::history::{ChatWithMessages, Dataset, User};
+use crate::protobuf::history::User;
 
 mod protobuf;
 mod json;
 mod server;
+mod dao;
 mod entities;
 
 #[cfg(test)]
@@ -23,15 +23,6 @@ static GLOBAL: MiMalloc = MiMalloc;
 pub type Res<T> = Result<T, String>;
 pub type EmptyRes = Res<()>;
 
-#[derive(DeepSizeOf)]
-pub struct InMemoryDb {
-    dataset: Dataset,
-    ds_root: PathBuf,
-    myself: User,
-    users: Vec<User>,
-    cwms: Vec<ChatWithMessages>,
-}
-
 pub trait ChooseMyselfTrait {
     fn choose_myself(&self, users: &Vec<&User>) -> Res<usize>;
 }
@@ -42,17 +33,6 @@ impl ChooseMyselfTrait for NoChooser {
     fn choose_myself(&self, _pretty_names: &Vec<&User>) -> Res<usize> {
         Err("No way to choose myself!".to_owned())
     }
-}
-
-fn error_to_string<E: Error>(e: E) -> String {
-    let mut s = String::new();
-    s += &e.to_string();
-    if let Some(src_e) = e.source() {
-        s += " (caused by: ";
-        s += &error_to_string(src_e);
-        s += ")";
-    }
-    s
 }
 
 /** Starts a server by default. If an argument is provided, it's used as a path and parsed. */
@@ -82,4 +62,15 @@ fn main() {
             panic!("Unrecognized command: {etc}")
         }
     }
+}
+
+fn error_to_string<E: Error>(e: E) -> String {
+    let mut s = String::new();
+    s += &e.to_string();
+    if let Some(src_e) = e.source() {
+        s += " (caused by: ";
+        s += &error_to_string(src_e);
+        s += ")";
+    }
+    s
 }

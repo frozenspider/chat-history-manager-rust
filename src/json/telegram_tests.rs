@@ -1,3 +1,5 @@
+#![allow(unused_imports)]
+
 use chrono::prelude::*;
 use itertools::Itertools;
 use lazy_static::lazy_static;

@@ -10,7 +10,7 @@ use simd_json;
 use simd_json::{BorrowedValue, ValueAccess, ValueType};
 use uuid::Uuid;
 
-use crate::{InMemoryDb, EmptyRes, Res, ChooseMyselfTrait};
+use crate::{EmptyRes, Res, ChooseMyselfTrait};
 
 mod telegram;
 
@@ -126,6 +126,7 @@ pub(crate) use get_field_str;
 pub(crate) use get_field_string;
 pub(crate) use get_field_string_option;
 
+use crate::dao::in_memory_dao::InMemoryDao;
 use crate::entities::*;
 
 fn name_or_unnamed(name_option: &Option<String>) -> String {
@@ -161,7 +162,7 @@ fn consume<'lt>() -> BoxObjFn<'lt> {
     Box::new(|_| Ok(()))
 }
 
-pub fn parse_file(path: &str, choose_myself: &dyn ChooseMyselfTrait) -> Res<InMemoryDb> {
+pub fn parse_file(path: &str, choose_myself: &dyn ChooseMyselfTrait) -> Res<InMemoryDao> {
     let uuid = Uuid::new_v4();
     telegram::parse_file(Path::new(path), &uuid, choose_myself)
 }

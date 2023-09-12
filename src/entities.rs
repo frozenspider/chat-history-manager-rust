@@ -1,3 +1,5 @@
+use std::path::Path;
+
 use itertools::Itertools;
 use lazy_static::lazy_static;
 use regex::Regex;
@@ -5,10 +7,64 @@ use regex::Regex;
 use crate::protobuf::history::*;
 use crate::protobuf::history::message_service::SealedValueOptional;
 
+// TODO: Replace with some sort of tagget types?
+pub type DatasetRoot = Path;
+pub type MessageSourceId = i64;
+pub type MessageInternalId = i64;
+pub type Timestamp = i64;
+
 pub const UNNAMED: &str = "[unnamed]";
 pub const UNKNOWN: &str = "[unknown]";
 
-pub const NO_INTERNAL_ID: i64 = -1;
+pub const NO_INTERNAL_ID: MessageInternalId = -1;
+
+pub struct ChatWithDetails {
+    pub chat: Chat,
+    pub last_msg_option: Option<Message>,
+    /** First element MUST be myself, the rest should be in some fixed order. */
+    pub members: Vec<User>,
+}
+
+impl ChatWithDetails {
+    pub fn ds_uuid(&self) -> &PbUuid {
+        self.chat.ds_uuid.as_ref().unwrap()
+    }
+
+    /** Used to resolve plaintext members */
+    pub fn resolve_member_index(&self, member_name: &str) -> Option<usize> {
+        self.members.iter().position(|m| m.pretty_name() == member_name)
+    }
+
+    /** Used to resolve plaintext members */
+    pub fn resolve_member(&self, member_name: &str) -> Option<&User> {
+        self.resolve_member_index(member_name).map(|i| &self.members[i])
+    }
+
+    pub fn resolve_members(&self, member_names: Vec<String>) -> Vec<Option<&User>> {
+        member_names.iter().map(|mn| self.resolve_member(mn)).collect_vec()
+    }
+}
+
+impl Chat {
+    /// Unfortunately needed heler due to rust-protobuf code generation strategy.
+    pub fn ds_uuid(&self) -> &PbUuid {
+        self.ds_uuid.as_ref().unwrap()
+    }
+
+    fn name_or_unnamed(&self) -> String {
+        self.name_option.clone().unwrap_or_else(|| UNNAMED.to_owned())
+    }
+
+    pub fn qualified_name(&self) -> String {
+        format!("'{}' (#${})", self.name_or_unnamed(), self.id)
+    }
+}
+
+impl User {
+    pub fn pretty_name(&self) -> String {
+        unimplemented!()
+    }
+}
 
 pub struct RichText {}
 
