@@ -1,10 +1,8 @@
-use std::collections::Bound;
-use std::ops::RangeBounds;
-
 use chrono::Duration;
 use rand::Rng;
 
 use crate::test_utils::*;
+use crate::utils::*;
 
 use super::*;
 
@@ -39,26 +37,26 @@ fn messages_first_last_scroll() {
     let msgs = &dao.cwms[0].messages;
     let len = msgs.len();
 
-    assert_eq!(dao.first_messages(&chat, 1), split(msgs, ..=0));
-    assert_eq!(dao.first_messages(&chat, 2), split(msgs, ..=1));
-    assert_eq!(dao.first_messages(&chat, 1000), split(msgs, ..));
-    assert_eq!(dao.first_messages(&chat, len), split(msgs, ..));
+    assert_eq!(dao.first_messages(&chat, 1), msgs.smart_slice(..=0));
+    assert_eq!(dao.first_messages(&chat, 2), msgs.smart_slice(..=1));
+    assert_eq!(dao.first_messages(&chat, 1000), msgs.smart_slice(..));
+    assert_eq!(dao.first_messages(&chat, len), msgs.smart_slice(..));
 
-    assert_eq!(dao.last_messages(&chat, 1), split(msgs, -1..));
-    assert_eq!(dao.last_messages(&chat, 2), split(msgs, -2..));
-    assert_eq!(dao.last_messages(&chat, 1000), split(msgs, ..));
-    assert_eq!(dao.last_messages(&chat, len), split(msgs, ..));
+    assert_eq!(dao.last_messages(&chat, 1), msgs.smart_slice(-1..));
+    assert_eq!(dao.last_messages(&chat, 2), msgs.smart_slice(-2..));
+    assert_eq!(dao.last_messages(&chat, 1000), msgs.smart_slice(..));
+    assert_eq!(dao.last_messages(&chat, len), msgs.smart_slice(..));
 
     assert_eq!(dao.scroll_messages(&chat, 0, 0), vec![]);
     assert_eq!(dao.scroll_messages(&chat, 1000, 0), vec![]);
     assert_eq!(dao.scroll_messages(&chat, 1000, 1000), vec![]);
 
-    assert_eq!(dao.scroll_messages(&chat, 0, 1), split(msgs, ..=0));
-    assert_eq!(dao.scroll_messages(&chat, len - 1, 1), split(msgs, -1..));
-    assert_eq!(dao.scroll_messages(&chat, len - 2, 2), split(msgs, -2..));
-    assert_eq!(dao.scroll_messages(&chat, 0, 1000), split(msgs, ..));
-    assert_eq!(dao.scroll_messages(&chat, 0, len), split(msgs, ..));
-    assert_eq!(dao.scroll_messages(&chat, 1, len - 2), split(msgs, 1..-1));
+    assert_eq!(dao.scroll_messages(&chat, 0, 1), msgs.smart_slice(..=0));
+    assert_eq!(dao.scroll_messages(&chat, len - 1, 1), msgs.smart_slice(-1..));
+    assert_eq!(dao.scroll_messages(&chat, len - 2, 2), msgs.smart_slice(-2..));
+    assert_eq!(dao.scroll_messages(&chat, 0, 1000), msgs.smart_slice(..));
+    assert_eq!(dao.scroll_messages(&chat, 0, len), msgs.smart_slice(..));
+    assert_eq!(dao.scroll_messages(&chat, 1, len - 2), msgs.smart_slice(1..-1));
 }
 
 #[test]
@@ -69,30 +67,30 @@ fn messages_befoer_after_between() -> Res<()> {
     let msgs = &dao.cwms[0].messages;
     let len = msgs.len();
 
-    assert_eq!(dao.messages_after(&chat, &msgs[0], 1)?, split(msgs, ..=0));
-    assert_eq!(dao.messages_after(&chat, &msgs[0], 2)?, split(msgs, ..=1));
-    assert_eq!(dao.messages_after(&chat, &msgs[1], 1)?, split(msgs, 1..=1));
-    assert_eq!(dao.messages_after(&chat, &msgs[0], 1000)?, split(msgs, ..));
-    assert_eq!(dao.messages_after(&chat, &msgs[0], len)?, split(msgs, ..));
-    assert_eq!(dao.messages_after(&chat, &msgs[1], 1000)?, split(msgs, 1..));
-    assert_eq!(dao.messages_after(&chat, &msgs[1], len - 2)?, split(msgs, 1..-1));
-    assert_eq!(dao.messages_after(&chat, &msgs[len - 1], 1000)?, split(msgs, -1..));
+    assert_eq!(dao.messages_after(&chat, &msgs[0], 1)?, msgs.smart_slice(..=0));
+    assert_eq!(dao.messages_after(&chat, &msgs[0], 2)?, msgs.smart_slice(..=1));
+    assert_eq!(dao.messages_after(&chat, &msgs[1], 1)?, msgs.smart_slice(1..=1));
+    assert_eq!(dao.messages_after(&chat, &msgs[0], 1000)?, msgs.smart_slice(..));
+    assert_eq!(dao.messages_after(&chat, &msgs[0], len)?, msgs.smart_slice(..));
+    assert_eq!(dao.messages_after(&chat, &msgs[1], 1000)?, msgs.smart_slice(1..));
+    assert_eq!(dao.messages_after(&chat, &msgs[1], len - 2)?, msgs.smart_slice(1..-1));
+    assert_eq!(dao.messages_after(&chat, &msgs[len - 1], 1000)?, msgs.smart_slice(-1..));
 
-    assert_eq!(dao.messages_before(&chat, &msgs[len - 1], 1)?, split(msgs, -1..));
-    assert_eq!(dao.messages_before(&chat, &msgs[len - 1], 2)?, split(msgs, -2..));
-    assert_eq!(dao.messages_before(&chat, &msgs[len - 2], 1)?, split(msgs, -2..-1));
-    assert_eq!(dao.messages_before(&chat, &msgs[len - 1], 1000)?, split(msgs, ..));
-    assert_eq!(dao.messages_before(&chat, &msgs[len - 1], len)?, split(msgs, ..));
-    assert_eq!(dao.messages_before(&chat, &msgs[len - 2], 1000)?, split(msgs, ..-1));
-    assert_eq!(dao.messages_before(&chat, &msgs[len - 2], len - 2)?, split(msgs, 1..-1));
-    assert_eq!(dao.messages_before(&chat, &msgs[0], 1000)?, split(msgs, ..=0));
+    assert_eq!(dao.messages_before(&chat, &msgs[len - 1], 1)?, msgs.smart_slice(-1..));
+    assert_eq!(dao.messages_before(&chat, &msgs[len - 1], 2)?, msgs.smart_slice(-2..));
+    assert_eq!(dao.messages_before(&chat, &msgs[len - 2], 1)?, msgs.smart_slice(-2..-1));
+    assert_eq!(dao.messages_before(&chat, &msgs[len - 1], 1000)?, msgs.smart_slice(..));
+    assert_eq!(dao.messages_before(&chat, &msgs[len - 1], len)?, msgs.smart_slice(..));
+    assert_eq!(dao.messages_before(&chat, &msgs[len - 2], 1000)?, msgs.smart_slice(..-1));
+    assert_eq!(dao.messages_before(&chat, &msgs[len - 2], len - 2)?, msgs.smart_slice(1..-1));
+    assert_eq!(dao.messages_before(&chat, &msgs[0], 1000)?, msgs.smart_slice(..=0));
 
-    assert_eq!(dao.messages_between(&chat, &msgs[0], &msgs[0])?, split(msgs, ..=0));
-    assert_eq!(dao.messages_between(&chat, &msgs[0], &msgs[1])?, split(msgs, ..=1));
-    assert_eq!(dao.messages_between(&chat, &msgs[0], &msgs[len - 1])?, split(msgs, ..));
-    assert_eq!(dao.messages_between(&chat, &msgs[1], &msgs[len - 2])?, split(msgs, 1..-1));
-    assert_eq!(dao.messages_between(&chat, &msgs[len - 1], &msgs[len - 1])?, split(msgs, -1..));
-    assert_eq!(dao.messages_between(&chat, &msgs[len - 2], &msgs[len - 1])?, split(msgs, -2..));
+    assert_eq!(dao.messages_between(&chat, &msgs[0], &msgs[0])?, msgs.smart_slice(..=0));
+    assert_eq!(dao.messages_between(&chat, &msgs[0], &msgs[1])?, msgs.smart_slice(..=1));
+    assert_eq!(dao.messages_between(&chat, &msgs[0], &msgs[len - 1])?, msgs.smart_slice(..));
+    assert_eq!(dao.messages_between(&chat, &msgs[1], &msgs[len - 2])?, msgs.smart_slice(1..-1));
+    assert_eq!(dao.messages_between(&chat, &msgs[len - 1], &msgs[len - 1])?, msgs.smart_slice(-1..));
+    assert_eq!(dao.messages_between(&chat, &msgs[len - 2], &msgs[len - 1])?, msgs.smart_slice(-2..));
 
     assert_eq!(dao.count_messages_between(&chat, &msgs[0], &msgs[0]), 0);
     assert_eq!(dao.count_messages_between(&chat, &msgs[0], &msgs[1]), 0);
@@ -124,22 +122,22 @@ fn messages_around() -> Res<()> {
         assert_eq!(actual.1, right);
     }
 
-    assert_split(dao.messages_around_date(&chat, START, 1), none, split(msgs, ..=0));
-    assert_split(dao.messages_around_date(&chat, START, 1000), none, split(msgs, ..));
+    assert_split(dao.messages_around_date(&chat, START, 1), none, msgs.smart_slice(..=0));
+    assert_split(dao.messages_around_date(&chat, START, 1000), none, msgs.smart_slice(..));
 
-    assert_split(dao.messages_around_date(&chat, END, 1), split(msgs, -1..), none);
-    assert_split(dao.messages_around_date(&chat, END, 1000), split(msgs, ..), none);
+    assert_split(dao.messages_around_date(&chat, END, 1), msgs.smart_slice(-1..), none);
+    assert_split(dao.messages_around_date(&chat, END, 1000), msgs.smart_slice(..), none);
 
 
-    assert_split(dao.messages_around_date(&chat, msgs[0].timestamp, 1), none, split(msgs, ..=0));
-    assert_split(dao.messages_around_date(&chat, msgs[1].timestamp, 1), split(msgs, ..=0), split(msgs, 1..=1));
-    assert_split(dao.messages_around_date(&chat, msgs[2].timestamp, 2), split(msgs, ..=1), split(msgs, 2..=3));
-    assert_split(dao.messages_around_date(&chat, msgs[2].timestamp, 4), split(msgs, ..=1), split(msgs, 2..=5));
+    assert_split(dao.messages_around_date(&chat, msgs[0].timestamp, 1), none, msgs.smart_slice(..=0));
+    assert_split(dao.messages_around_date(&chat, msgs[1].timestamp, 1), msgs.smart_slice(..=0), msgs.smart_slice(1..=1));
+    assert_split(dao.messages_around_date(&chat, msgs[2].timestamp, 2), msgs.smart_slice(..=1), msgs.smart_slice(2..=3));
+    assert_split(dao.messages_around_date(&chat, msgs[2].timestamp, 4), msgs.smart_slice(..=1), msgs.smart_slice(2..=5));
 
-    assert_split(dao.messages_around_date(&chat, msgs[len - 1].timestamp, 1), split(msgs, -2..=-2), split(msgs, -1..));
-    assert_split(dao.messages_around_date(&chat, msgs[len - 2].timestamp, 1), split(msgs, -3..=-3), split(msgs, -2..=-2));
-    assert_split(dao.messages_around_date(&chat, msgs[len - 2].timestamp, 2), split(msgs, -4..=-3), split(msgs, -2..));
-    assert_split(dao.messages_around_date(&chat, msgs[len - 2].timestamp, 4), split(msgs, -6..=-3), split(msgs, -2..));
+    assert_split(dao.messages_around_date(&chat, msgs[len - 1].timestamp, 1), msgs.smart_slice(-2..=-2), msgs.smart_slice(-1..));
+    assert_split(dao.messages_around_date(&chat, msgs[len - 2].timestamp, 1), msgs.smart_slice(-3..=-3), msgs.smart_slice(-2..=-2));
+    assert_split(dao.messages_around_date(&chat, msgs[len - 2].timestamp, 2), msgs.smart_slice(-4..=-3), msgs.smart_slice(-2..));
+    assert_split(dao.messages_around_date(&chat, msgs[len - 2].timestamp, 4), msgs.smart_slice(-6..=-3), msgs.smart_slice(-2..));
 
     // Timestamp between N-1 and N
     let n = len / 2;
@@ -147,7 +145,7 @@ fn messages_around() -> Res<()> {
     let n = n as i32;
 
     assert_split(dao.messages_around_date(&chat, mid_ts, 1),
-                 split(msgs, (n - 1)..n), split(msgs, n..=n));
+                 msgs.smart_slice((n - 1)..n), msgs.smart_slice(n..=n));
 
     Ok(())
 }
@@ -155,24 +153,6 @@ fn messages_around() -> Res<()> {
 //
 // Helpers
 //
-
-fn split<T, R: RangeBounds<i32>>(vec: &Vec<T>, range: R) -> &[T] {
-    let lower_inc: usize = match range.start_bound() {
-        Bound::Included(&idx) if idx < 0 => vec.len() - (-idx as usize),
-        Bound::Included(&idx) => idx as usize,
-        Bound::Excluded(&idx) if idx < 0 => vec.len() - (-idx as usize) + 1,
-        Bound::Excluded(&idx) => (idx + 1) as usize,
-        Bound::Unbounded => 0
-    };
-    let upper_inc: usize = match range.end_bound() {
-        Bound::Included(&idx) if idx < 0 => vec.len() - (-idx as usize),
-        Bound::Included(&idx) => idx as usize,
-        Bound::Excluded(&idx) if idx < 0 => vec.len() - (-idx as usize) - 1,
-        Bound::Excluded(&idx) => (idx - 1) as usize,
-        Bound::Unbounded => vec.len() - 1
-    };
-    &vec[lower_inc..=upper_inc]
-}
 
 fn create_regular_message(idx: i64, user_id: i64) -> Message {
     let mut rng = rand::thread_rng();

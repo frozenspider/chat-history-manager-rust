@@ -1,41 +1,15 @@
 use std::env::args;
-use std::error::Error;
 
 use deepsize::DeepSizeOf;
 use log::LevelFilter;
 use mimalloc::MiMalloc;
 
-use crate::protobuf::history::User;
-
-mod protobuf;
-mod json;
-mod server;
-mod dao;
-mod entities;
-
-#[cfg(test)]
-mod test_utils;
+use chat_history_manager_rust::*;
 
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;
 
-// Use Result<T, Box<dyn std::error::Error>> maybe?
-pub type Res<T> = Result<T, String>;
-pub type EmptyRes = Res<()>;
-
-pub trait ChooseMyselfTrait {
-    fn choose_myself(&self, users: &Vec<&User>) -> Res<usize>;
-}
-
-pub struct NoChooser;
-
-impl ChooseMyselfTrait for NoChooser {
-    fn choose_myself(&self, _pretty_names: &Vec<&User>) -> Res<usize> {
-        Err("No way to choose myself!".to_owned())
-    }
-}
-
-/** Starts a server by default. If an argument is provided, it's used as a path and parsed. */
+/** Starts a server by default. */
 fn main() {
     env_logger::Builder::new()
         .filter(None, LevelFilter::Info)
@@ -45,32 +19,21 @@ fn main() {
 
     let mut args = args();
     args.next(); // Consume first argument, which is a command itself.
-    match args.next().as_deref() {
+    match args.next().map(|s| s.to_lowercase()).as_deref() {
         None => {
-            server::start_server(server_port).unwrap();
+            start_server(server_port).unwrap();
         }
         Some("parse") => {
             let path = args.next().unwrap();
-            let parsed = json::parse_file(&path, &NoChooser).unwrap();
+            let parsed = parse_file(&path).unwrap();
             let size: usize = parsed.deep_size_of();
             log::info!("Size of parsed in-memory DB: {} MB ({} B)", size / 1024 / 1024, size);
         }
         Some("request_myself") => {
-            server::make_choose_myself_request(server_port + 1).unwrap();
+            debug_request_myself(server_port + 1).unwrap();
         }
         Some(etc) => {
             panic!("Unrecognized command: {etc}")
         }
     }
-}
-
-fn error_to_string<E: Error>(e: E) -> String {
-    let mut s = String::new();
-    s += &e.to_string();
-    if let Some(src_e) = e.source() {
-        s += " (caused by: ";
-        s += &error_to_string(src_e);
-        s += ")";
-    }
-    s
 }

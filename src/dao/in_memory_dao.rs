@@ -1,4 +1,4 @@
-use std::cmp::{max, min};
+use std::cmp;
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
@@ -91,7 +91,7 @@ impl ChatHistoryDao for InMemoryDao {
           m   <- firstMessages(cwd.chat, Int.MaxValue)
         } yield m.files(dsRoot)
         chatImgFiles ++ msgFiles.toSet.flatten
-         */
+        */
         todo!()
     }
 
@@ -186,7 +186,7 @@ impl ChatHistoryDao for InMemoryDao {
                 let mut size = between.len() as i32;
                 if between.first().unwrap().internal_id == msg1.internal_id { size -= 1; }
                 if between.last().unwrap().internal_id == msg2.internal_id { size -= 1; }
-                max(size, 0) as usize
+                cmp::max(size, 0) as usize
             }
         }
     }
@@ -227,7 +227,7 @@ impl ChatHistoryDao for InMemoryDao {
 
 fn cutout<T: Clone>(slice: &[T], start_inc: i32, end_exc: i32) -> Vec<T> {
     fn sanitize<T>(idx: i32, slice: &[T]) -> usize {
-        min(max(idx, 0), slice.len() as i32) as usize
+        cmp::min(cmp::max(idx, 0), slice.len() as i32) as usize
     }
     slice[sanitize(start_inc, slice)..sanitize(end_exc, slice)].to_vec()
 }

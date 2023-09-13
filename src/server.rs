@@ -126,7 +126,7 @@ pub async fn start_server(port: u16) -> EmptyRes {
 }
 
 #[tokio::main]
-pub async fn make_choose_myself_request(port: u16) -> EmptyRes {
+pub async fn debug_request_myself(port: u16) -> Res<usize> {
     let chooser = ChooseMyselfImpl {
         myself_chooser_port: port,
     };
@@ -150,6 +150,5 @@ pub async fn make_choose_myself_request(port: u16) -> EmptyRes {
             phone_number_option: None,
         },
     ])?;
-    log::info!("Picked: {}", chosen);
-    Ok(())
+    Ok(chosen)
 }
