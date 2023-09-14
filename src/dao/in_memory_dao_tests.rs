@@ -2,7 +2,6 @@ use chrono::Duration;
 use rand::Rng;
 
 use crate::*;
-use crate::test_utils::*;
 
 use super::*;
 
@@ -60,7 +59,7 @@ fn messages_first_last_scroll() {
 }
 
 #[test]
-fn messages_befoer_after_between() -> Res<()> {
+fn messages_befoer_after_between() -> Result<()> {
     let dao = create_dao();
     let ds_uuid = dao.datasets().remove(0).uuid.unwrap();
     let chat = dao.chats(&ds_uuid).remove(0).chat;
@@ -104,7 +103,7 @@ fn messages_befoer_after_between() -> Res<()> {
 }
 
 #[test]
-fn messages_around() -> Res<()> {
+fn messages_around() -> Result<()> {
     let dao = create_dao();
     let ds_uuid = dao.datasets().remove(0).uuid.unwrap();
     let chat = dao.chats(&ds_uuid).remove(0).chat;

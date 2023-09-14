@@ -1,6 +1,23 @@
 use std::collections::Bound;
-use std::error::Error;
+use std::fmt::Debug;
 use std::ops::RangeBounds;
+
+pub use error_chain::{bail, error_chain};
+
+error_chain! {
+    types {
+        Error, ErrorKind, ResultExt, Result;
+    }
+
+    foreign_links {
+        Io(std::io::Error);
+        ParseInt(::std::num::ParseIntError);
+        Json(simd_json::Error);
+        JsonTryType(simd_json::TryTypeError);
+        NetworkTransport(tonic::transport::Error);
+        TaskJoin(tokio::task::JoinError);
+    }
+}
 
 pub trait SmartSlice {
     type Item;
@@ -34,14 +51,23 @@ impl<T> SmartSlice for Vec<T> {
     }
 }
 
-// Use Result<T, Box<dyn std::error::Error>> maybe?
-pub type Res<T> = Result<T, String>;
-pub type EmptyRes = Res<()>;
+pub type EmptyRes = Result<()>;
 
-pub fn error_to_string<E: Error>(e: E) -> String {
-    let mut s = e.to_string();
-    if let Some(src_e) = e.source() {
-        s.push_str(&format!(" (caused by: {})", error_to_string(src_e)))
+#[macro_export]
+macro_rules! err {
+    ($($arg:tt)*) => {{
+        Err(Error::from(format!($($arg)*)))
+    }}
+}
+
+pub fn error_to_string(e: &Error) -> String {
+    let mut s = String::new();
+    for (level, err) in e.iter().enumerate() {
+        if level > 0 {
+            s.push_str("  └> ");
+        }
+        s.push_str(&err.to_string());
+        s.push_str("\n");
     }
     s
 }

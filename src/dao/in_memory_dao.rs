@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 
 use deepsize::DeepSizeOf;
 
+use crate::*;
 use crate::entities::*;
 
 use super::*;
@@ -135,12 +136,12 @@ impl ChatHistoryDao for InMemoryDao {
             .unwrap_or(vec![])
     }
 
-    fn messages_before_impl(&self, chat: &Chat, msg: &Message, limit: usize) -> Res<Vec<Message>> {
+    fn messages_before_impl(&self, chat: &Chat, msg: &Message, limit: usize) -> Result<Vec<Message>> {
         let msgs = self.messages_option(chat.id).unwrap();
         let limit = limit as i32;
         let idx = msgs.iter().rposition(|m| m.internal_id <= msg.internal_id);
         match idx {
-            None => Err("Message not found!".to_owned()),
+            None => err!("Message not found!"),
             Some(idx) => {
                 let idx = idx as i32;
                 Ok(cutout(msgs, idx - limit + 1, idx + 1))
@@ -148,12 +149,12 @@ impl ChatHistoryDao for InMemoryDao {
         }
     }
 
-    fn messages_after_impl(&self, chat: &Chat, msg: &Message, limit: usize) -> Res<Vec<Message>> {
+    fn messages_after_impl(&self, chat: &Chat, msg: &Message, limit: usize) -> Result<Vec<Message>> {
         let msgs = self.messages_option(chat.id).unwrap();
         let limit = limit as i32;
         let idx = msgs.iter().position(|m| m.internal_id >= msg.internal_id);
         match idx {
-            None => Err("Message not found!".to_owned()),
+            None => err!("Message not found!"),
             Some(idx) => {
                 let idx = idx as i32;
                 Ok(cutout(msgs, idx, idx + limit))
@@ -161,13 +162,13 @@ impl ChatHistoryDao for InMemoryDao {
         }
     }
 
-    fn messages_between_impl(&self, chat: &Chat, msg1: &Message, msg2: &Message) -> Res<Vec<Message>> {
+    fn messages_between_impl(&self, chat: &Chat, msg1: &Message, msg2: &Message) -> Result<Vec<Message>> {
         let msgs = self.messages_option(chat.id).unwrap();
         let idx1 = msgs.iter().position(|m| m.internal_id >= msg1.internal_id);
         let idx2 = msgs.iter().rposition(|m| m.internal_id <= msg2.internal_id);
         match (idx1, idx2) {
-            (None, _) => Err("Message 1 not found!".to_owned()),
-            (_, None) => Err("Message 2 not found!".to_owned()),
+            (None, _) => err!("Message 1 not found!"),
+            (_, None) => err!("Message 2 not found!"),
             (Some(idx1), Some(idx2)) => {
                 assert!(idx2 >= idx1);
                 Ok(msgs[idx1..=idx2].to_vec())
@@ -217,8 +218,6 @@ impl ChatHistoryDao for InMemoryDao {
         self.messages_option(chat.id).unwrap()
             .iter().find(|m| m.internal_id == *internal_id).cloned()
     }
-
-    fn close(&self) { /* NOOP */ }
 
     fn is_loaded(&self, storage_path: &Path) -> bool {
         self.ds_root.as_path() == storage_path

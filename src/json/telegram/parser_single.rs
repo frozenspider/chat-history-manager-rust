@@ -4,7 +4,7 @@ use crate::json::telegram::*;
 pub fn parse(root_obj: &Object,
              ds_uuid: &PbUuid,
              myself: &mut User,
-             myself_chooser: &dyn ChooseMyselfTrait) -> Res<(Users, Vec<ChatWithMessages>)> {
+             myself_chooser: &dyn ChooseMyselfTrait) -> Result<(Users, Vec<ChatWithMessages>)> {
     let mut users: Users = Default::default();
     let mut chats_with_messages: Vec<ChatWithMessages> = vec![];
 
@@ -12,7 +12,7 @@ pub fn parse(root_obj: &Object,
         parse_chat("<root>", root_obj, ds_uuid, None, &mut users)?;
     match cwm_option {
         None =>
-            return Err("Chat was skipped entirely!".to_owned()),
+            bail!("Chat was skipped entirely!"),
         Some(mut cwm) => {
             let mut c = cwm.chat.as_mut().unwrap();
             c.ds_uuid = Some(ds_uuid.clone());

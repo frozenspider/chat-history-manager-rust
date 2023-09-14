@@ -27,7 +27,7 @@ impl HistoryLoader for ChatHistoryManagerServer {
     async fn parse_history_file(
         &self,
         request: Request<ParseHistoryFileRequest>,
-    ) -> Result<Response<ParseHistoryFileResponse>, Status> {
+    ) -> std::result::Result<Response<ParseHistoryFileResponse>, Status> {
         log::info!(">>> Request:  {:?}", request.get_ref());
         let myself_chooser_port = self.myself_chooser_port;
 
@@ -35,7 +35,7 @@ impl HistoryLoader for ChatHistoryManagerServer {
             let myself_chooser = ChooseMyselfImpl { myself_chooser_port };
             let response =
                 json::parse_file(&request.get_ref().path, &myself_chooser)
-                    .map_err(|s| Status::new(Code::Internal, s))
+                    .map_err(|err| Status::new(Code::Internal, error_to_string(&err)))
                     .map(|dao|
                         ParseHistoryFileResponse {
                             ds: Some(dao.dataset),
@@ -57,23 +57,22 @@ impl HistoryLoader for ChatHistoryManagerServer {
     }
 }
 
-async fn choose_myself_async(port: u16, users: Vec<User>) -> Res<usize> {
+async fn choose_myself_async(port: u16, users: Vec<User>) -> Result<usize> {
     log::info!("Connecting to myself chooser at port {}", port);
     let mut client =
         MyselfChooserClient::connect(format!("http://127.0.0.1:{}", port))
-            .await
-            .map_err(error_to_string)?;
+            .await?;
     log::info!("Sending ChooseMyselfRequest");
     let len = users.len();
     let request = ChooseMyselfRequest { users };
     let response = client.choose_myself(request).await
-        .map_err(error_to_string)?;
+        .map_err(|status| Error::from(status.message()))?;
     log::info!("Got response");
     let response = response.get_ref().picked_option;
     if response < 0 {
-        Err("Choice aborted!".to_owned())
+        err!("Choice aborted!")
     } else if response as usize >= len {
-        Err("Choice out of range!".to_owned())
+        err!("Choice out of range!")
     } else {
         Ok(response as usize)
     }
@@ -84,7 +83,7 @@ struct ChooseMyselfImpl {
 }
 
 impl ChooseMyselfTrait for ChooseMyselfImpl {
-    fn choose_myself(&self, users: &[&User]) -> Res<usize> {
+    fn choose_myself(&self, users: &[&User]) -> Result<usize> {
         // let mut pool = LocalPool::new();
         // let spawner = pool.spawner();
 
@@ -95,9 +94,14 @@ impl ChooseMyselfTrait for ChooseMyselfImpl {
         //     spawner.spawn_local_with_handle(async_chooser).map_err(error_to_string)?;
         // Ok(pool.run_until(handle)?)
         let handle = Handle::current();
+        // let spawned = handle.spawn_blocking(|| {
+        //     choose_myself_async(self.myself_chooser_port,
+        //                         users.iter().map(|&u| u.clone()).collect_vec())
+        // });
+
         let spawned = handle.spawn(async_chooser);
 
-        Ok(handle.block_on(spawned).map_err(error_to_string)??)
+        Ok(handle.block_on(spawned)??)
     }
 }
 
@@ -126,7 +130,7 @@ pub async fn start_server(port: u16) -> EmptyRes {
 }
 
 #[tokio::main]
-pub async fn debug_request_myself(port: u16) -> Res<usize> {
+pub async fn debug_request_myself(port: u16) -> Result<usize> {
     let chooser = ChooseMyselfImpl {
         myself_chooser_port: port,
     };

@@ -1,4 +1,5 @@
 use std::env::args;
+use std::process;
 
 use deepsize::DeepSizeOf;
 use log::LevelFilter;
@@ -25,7 +26,13 @@ fn main() {
         }
         Some("parse") => {
             let path = args.next().unwrap();
-            let parsed = parse_file(&path).unwrap();
+            let parsed = match parse_file(&path) {
+                Ok(res) => res,
+                Err(why) => {
+                    eprintln!("Parsing failed!\n{}", error_to_string(&why));
+                    process::exit(1);
+                }
+            };
             let size: usize = parsed.deep_size_of();
             log::info!("Size of parsed in-memory DB: {} MB ({} B)", size / 1024 / 1024, size);
         }

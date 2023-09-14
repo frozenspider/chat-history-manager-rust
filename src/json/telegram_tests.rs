@@ -13,7 +13,6 @@ use crate::protobuf::history::*;
 use crate::protobuf::history::content::SealedValueOptional::*;
 use crate::protobuf::history::message::*;
 use crate::protobuf::history::message_service::SealedValueOptional::*;
-use crate::test_utils::*;
 
 lazy_static! {
     static ref RESOURCES_DIR: String =

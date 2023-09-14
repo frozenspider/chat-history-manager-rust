@@ -5,7 +5,7 @@ use itertools::Itertools;
 
 use crate::protobuf::history::*;
 use crate::entities::*;
-use crate::Res;
+use crate::*;
 
 pub mod in_memory_dao;
 
@@ -13,9 +13,7 @@ pub mod in_memory_dao;
  * Everything except for messages should be pre-cached and readily available.
  * Should support equality.
  */
-pub trait ChatHistoryDao /*extends AutoCloseable*/ {
-    // sys.addShutdownHook(close())
-
+pub trait ChatHistoryDao {
     /** User-friendly name of a loaded data */
     fn name(&self) -> &str;
 
@@ -54,8 +52,8 @@ pub trait ChatHistoryDao /*extends AutoCloseable*/ {
      * Return N messages before the given one (inclusive).
      * Message must be present, so the result would contain at least one element.
      */
-    fn messages_before(&self, chat: &Chat, msg: &Message, limit: usize) -> Res<Vec<Message>> {
-        if limit == 0 { return Err("Limit is zero!".to_owned()); }
+    fn messages_before(&self, chat: &Chat, msg: &Message, limit: usize) -> Result<Vec<Message>> {
+        if limit == 0 { bail!("Limit is zero!"); }
         let result = self.messages_before_impl(chat, msg, limit)?;
         assert!(!result.is_empty());
         assert!(result.len() <= limit);
@@ -64,14 +62,14 @@ pub trait ChatHistoryDao /*extends AutoCloseable*/ {
         Ok(result)
     }
 
-    fn messages_before_impl(&self, chat: &Chat, msg: &Message, limit: usize) -> Res<Vec<Message>>;
+    fn messages_before_impl(&self, chat: &Chat, msg: &Message, limit: usize) -> Result<Vec<Message>>;
 
     /**
      * Return N messages after the given one (inclusive).
      * Message must be present, so the result would contain at least one element.
      */
-    fn messages_after(&self, chat: &Chat, msg: &Message, limit: usize) -> Res<Vec<Message>> {
-        if limit == 0 { return Err("Limit is zero!".to_owned()); }
+    fn messages_after(&self, chat: &Chat, msg: &Message, limit: usize) -> Result<Vec<Message>> {
+        if limit == 0 { bail!("Limit is zero!"); }
         let result = self.messages_after_impl(chat, msg, limit)?;
         assert!(!result.is_empty());
         assert!(result.len() <= limit);
@@ -80,13 +78,13 @@ pub trait ChatHistoryDao /*extends AutoCloseable*/ {
         Ok(result)
     }
 
-    fn messages_after_impl(&self, chat: &Chat, msg: &Message, limit: usize) -> Res<Vec<Message>>;
+    fn messages_after_impl(&self, chat: &Chat, msg: &Message, limit: usize) -> Result<Vec<Message>>;
 
     /**
      * Return N messages between the given ones (inclusive).
      * Messages must be present, so the result would contain at least one element (if both are the same message).
      */
-    fn messages_between(&self, chat: &Chat, msg1: &Message, msg2: &Message) -> Res<Vec<Message>> {
+    fn messages_between(&self, chat: &Chat, msg1: &Message, msg2: &Message) -> Result<Vec<Message>> {
         let result = self.messages_between_impl(chat, msg1, msg2)?;
         assert!(!result.is_empty());
         assert_eq!(result[0].source_id_option, msg1.source_id_option);
@@ -96,7 +94,7 @@ pub trait ChatHistoryDao /*extends AutoCloseable*/ {
         Ok(result)
     }
 
-    fn messages_between_impl(&self, chat: &Chat, msg1: &Message, msg2: &Message) -> Res<Vec<Message>>;
+    fn messages_between_impl(&self, chat: &Chat, msg1: &Message, msg2: &Message) -> Result<Vec<Message>>;
 
     /**
      * Count messages between the given ones (exclusive, unlike messages_between).
@@ -110,8 +108,6 @@ pub trait ChatHistoryDao /*extends AutoCloseable*/ {
     fn message_option(&self, chat: &Chat, source_id: MessageSourceId) -> Option<Message>;
 
     fn message_option_by_internal_id(&self, chat: &Chat, internal_id: MessageInternalId) -> Option<Message>;
-
-    fn close(&self);
 
     /** Whether given data path is the one loaded in this DAO */
     fn is_loaded(&self, storage_path: &Path) -> bool;

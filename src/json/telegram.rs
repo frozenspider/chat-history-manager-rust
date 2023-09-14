@@ -140,7 +140,7 @@ struct ExpectedMessageField<'lt> {
     optional_fields: HashSet<&'lt str, Hasher>,
 }
 
-pub fn parse_file(path: &Path, ds_uuid: &Uuid, myself_chooser: &dyn ChooseMyselfTrait) -> Res<Box<InMemoryDao>> {
+pub fn parse_file(path: &Path, ds_uuid: &Uuid, myself_chooser: &dyn ChooseMyselfTrait) -> Result<Box<InMemoryDao>> {
     let path: PathBuf =
         if !path.ends_with("result.json") {
             path.join("result.json")
@@ -149,7 +149,7 @@ pub fn parse_file(path: &Path, ds_uuid: &Uuid, myself_chooser: &dyn ChooseMyself
         };
 
     if !path.exists() {
-        return Err(format!("{} not found!", path.to_str().unwrap()));
+        return err!("{} not found!", path.to_str().unwrap());
     }
 
     let now_str = Local::now().format("%Y-%m-%d");
@@ -159,10 +159,8 @@ pub fn parse_file(path: &Path, ds_uuid: &Uuid, myself_chooser: &dyn ChooseMyself
     let start_time = Instant::now();
     let ds_uuid = PbUuid { value: ds_uuid.to_string().to_lowercase() };
 
-    let mut file_content = fs::read(&path)
-        .map_err(error_to_string)?;
-    let parsed = simd_json::to_borrowed_value(&mut file_content)
-        .map_err(error_to_string)?;
+    let mut file_content = fs::read(&path)?;
+    let parsed = simd_json::to_borrowed_value(&mut file_content)?;
 
     log::info!("Parsed in {} ms", start_time.elapsed().as_millis());
 
@@ -203,8 +201,8 @@ pub fn parse_file(path: &Path, ds_uuid: &Uuid, myself_chooser: &dyn ChooseMyself
         let chat = cwm.chat.as_ref().ok_or("Chat absent!")?;
         for member_id in &chat.member_ids {
             if !users.id_to_user.contains_key(member_id) {
-                return Err(format!("No member with id={} found for chat with id={} '{}'",
-                                   member_id, chat.id, name_or_unnamed(&chat.name_option)));
+                return err!("No member with id={} found for chat with id={} '{}'",
+                            member_id, chat.id, name_or_unnamed(&chat.name_option));
             }
         }
     }
@@ -226,7 +224,7 @@ pub fn parse_file(path: &Path, ds_uuid: &Uuid, myself_chooser: &dyn ChooseMyself
 }
 
 /** Returns a partially filled user. */
-fn parse_contact(json_path: &str, bw: &BorrowedValue) -> Res<User> {
+fn parse_contact(json_path: &str, bw: &BorrowedValue) -> Result<User> {
     let mut user: User = Default::default();
 
     parse_bw_as_object(bw, json_path, |CB { key, value: v, wrong_key_action }| match key {
@@ -238,7 +236,7 @@ fn parse_contact(json_path: &str, bw: &BorrowedValue) -> Res<User> {
             if id == 0 {
                 Ok(())
             } else {
-                Err("ID was an actual value and not zero!".to_owned())
+                err!("ID was an actual value and not zero!")
             }
         }
         "first_name" => {
@@ -269,7 +267,7 @@ fn parse_chat(json_path: &str,
               chat_json: &Object,
               ds_uuid: &PbUuid,
               myself_id_option: Option<&Id>,
-              users: &mut Users) -> Res<Option<ChatWithMessages>> {
+              users: &mut Users) -> Result<Option<ChatWithMessages>> {
     let mut chat: Chat = Default::default();
     let mut messages: Vec<Message> = vec![];
 
@@ -303,7 +301,7 @@ fn parse_chat(json_path: &str,
                     skip_processing.set(true);
                     Ok(ChatType::Personal) // Doesn't matter
                 }
-                other => Err(format!("Unknown chat type: {}", other)),
+                other => err!("Unknown chat type: {}", other),
             }?;
             chat.tpe = tpe as i32;
             Ok(())
@@ -354,7 +352,7 @@ fn parse_chat(json_path: &str,
         Some(_etc) =>
             { /* Don't change anything. */ }
         None =>
-            return Err(format!("Chat type has no associated enum: {}", chat.tpe))
+            return err!("Chat type has no associated enum: {}", chat.tpe)
     }
 
     if let Some(myself_id) = myself_id_option {
@@ -382,9 +380,9 @@ struct MessageJson<'lt> {
 }
 
 impl<'lt> MessageJson<'lt> {
-    fn unopt<T>(v: Res<Option<T>>, name: &str, val: &Object) -> Res<T> {
+    fn unopt<T>(v: Result<Option<T>>, name: &str, val: &Object) -> Result<T> {
         match v? {
-            None => Err(format!("message.{name} not found for message {:?}", val)),
+            None => err!("message.{name} not found for message {:?}", val),
             Some(v) => Ok(v),
         }
     }
@@ -397,39 +395,39 @@ impl<'lt> MessageJson<'lt> {
         self.expected_fields.as_mut().map(|ef| ef.optional_fields.insert(name));
     }
 
-    fn field_opt(&mut self, name: &'lt str) -> Res<Option<&BorrowedValue>> {
+    fn field_opt(&mut self, name: &'lt str) -> Result<Option<&BorrowedValue>> {
         self.add_optional(name);
         Ok(self.val.get(name))
     }
 
-    fn field(&mut self, name: &'lt str) -> Res<&BorrowedValue> {
+    fn field(&mut self, name: &'lt str) -> Result<&BorrowedValue> {
         self.add_required(name);
         Self::unopt(Ok(self.val.get(name)), name, self.val)
     }
 
-    fn field_opt_i32(&mut self, name: &'lt str) -> Res<Option<i32>> {
+    fn field_opt_i32(&mut self, name: &'lt str) -> Result<Option<i32>> {
         match self.field_opt(name)? {
             None => Ok(None),
             Some(v) => Ok(Some(as_i32!(v, self.json_path, name)))
         }
     }
 
-    fn field_i32(&mut self, name: &'lt str) -> Res<i32> {
+    fn field_i32(&mut self, name: &'lt str) -> Result<i32> {
         Self::unopt(self.field_opt_i32(name), name, self.val)
     }
 
-    fn field_opt_i64(&mut self, name: &'lt str) -> Res<Option<i64>> {
+    fn field_opt_i64(&mut self, name: &'lt str) -> Result<Option<i64>> {
         match self.field_opt(name)? {
             None => Ok(None),
             Some(v) => Ok(Some(as_i64!(v, self.json_path, name)))
         }
     }
 
-    fn field_i64(&mut self, name: &'lt str) -> Res<i64> {
+    fn field_i64(&mut self, name: &'lt str) -> Result<i64> {
         Self::unopt(self.field_opt_i64(name), name, self.val)
     }
 
-    fn field_opt_str(&mut self, name: &'lt str) -> Res<Option<String>> {
+    fn field_opt_str(&mut self, name: &'lt str) -> Result<Option<String>> {
         let json_path = format!("{}.{}", self.json_path, name);
         match self.field_opt(name)? {
             None => Ok(None),
@@ -438,19 +436,19 @@ impl<'lt> MessageJson<'lt> {
         }
     }
 
-    fn field_str(&mut self, name: &'lt str) -> Res<String> {
+    fn field_str(&mut self, name: &'lt str) -> Result<String> {
         Self::unopt(self.field_opt_str(name), name, self.val)
     }
 
     /// Retrieve a RELATIVE path!
-    fn field_opt_path(&mut self, name: &'lt str) -> Res<Option<String>> {
+    fn field_opt_path(&mut self, name: &'lt str) -> Result<Option<String>> {
         let field_opt = self.field_opt_str(name)?;
 
         // A temporary fix while it's not clean what that really signifies.
         // So far looks like it may mean timed photo.
         if let Some(ref x) = field_opt {
             if x.as_str() == "(File unavailable, please try again later)" {
-                return Err("Found \"File unavailable\"!".to_owned());
+                bail!("Found \"File unavailable\"!");
             }
         }
 
@@ -467,7 +465,7 @@ fn parse_message(json_path: &str,
                  bw: &BorrowedValue,
                  ds_uuid: &PbUuid,
                  users: &mut Users,
-                 member_ids: &mut HashSet<Id, Hasher>) -> Res<ParsedMessage> {
+                 member_ids: &mut HashSet<Id, Hasher>) -> Result<ParsedMessage> {
     use history::message::Typed;
 
     fn as_hash_set<'lt>(arr: &[&'lt str]) -> HashSet<&'lt str, Hasher> {
@@ -530,7 +528,7 @@ fn parse_message(json_path: &str,
             short_user.id = parse_user_id(message_json.field("actor_id")?)?;
             short_user.full_name_option = message_json.field_opt_str("actor")?;
         }
-        etc => return Err(format!("Unknown message type: {}", etc)),
+        etc => return err!("Unknown message type: {}", etc),
     }
 
     // Normalize user ID.
@@ -553,7 +551,7 @@ fn parse_message(json_path: &str,
         if let Some(ref mut ef) = message_json.expected_fields {
             if !ef.required_fields.remove(kr) &&
                 !ef.optional_fields.remove(kr) {
-                return Err(format!("Unexpected message field '{kr}' for {:?}", message));
+                return err!("Unexpected message field '{kr}' for {:?}", message);
             }
         }
 
@@ -578,7 +576,7 @@ fn parse_message(json_path: &str,
 
     if let Some(ref ef) = message_json.expected_fields {
         if !ef.required_fields.is_empty() {
-            return Err(format!("Message fields not found: {:?}", ef.required_fields));
+            return err!("Message fields not found: {:?}", ef.required_fields);
         }
     }
 
@@ -726,7 +724,7 @@ fn parse_regular_message(message_json: &mut MessageJson,
             if first_name_option.is_none() && last_name_option.is_none() &&
                 phone_number_option.is_none() && vcard_path_option.is_none()
             {
-                return Err("Shared contact had no information whatsoever!".to_owned());
+                bail!("Shared contact had no information whatsoever!");
             }
             Some(SealedValueOptional::SharedContact(ContentSharedContact {
                 first_name_option,
@@ -735,7 +733,7 @@ fn parse_regular_message(message_json: &mut MessageJson,
                 vcard_path_option,
             }))
         }
-        _ => return Err(format!("Couldn't determine content type for '{:?}'", message_json.val))
+        _ => return err!("Couldn't determine content type for '{:?}'", message_json.val)
     };
 
     regular_msg.content_option = content_val.map(|v| Content { sealed_value_optional: Some(v) });
@@ -743,15 +741,15 @@ fn parse_regular_message(message_json: &mut MessageJson,
 }
 
 fn parse_service_message(message_json: &mut MessageJson,
-                         service_msg: &mut MessageService) -> Res<ShouldProceed> {
+                         service_msg: &mut MessageService) -> Result<ShouldProceed> {
     use history::*;
     use history::message_service::SealedValueOptional;
 
     // Null members are added as unknown
-    fn parse_members(message_json: &mut MessageJson) -> Res<Vec<String>> {
+    fn parse_members(message_json: &mut MessageJson) -> Result<Vec<String>> {
         let json_path = format!("{}.members", message_json.json_path);
         message_json.field("members")?
-            .try_as_array().map_err(error_to_string)?
+            .try_as_array()?
             .iter()
             .map(|v|
                 if v.value_type() != ValueType::Null {
@@ -760,7 +758,7 @@ fn parse_service_message(message_json: &mut MessageJson,
                     Ok(UNKNOWN.to_owned())
                 }
             )
-            .collect::<Res<Vec<String>>>()
+            .collect::<Result<Vec<String>>>()
     }
 
     let val: SealedValueOptional = match message_json.field_str("action")?.as_str() {
@@ -841,7 +839,7 @@ fn parse_service_message(message_json: &mut MessageJson,
             return Ok(ShouldProceed::SkipChat);
         }
         etc =>
-            return Err(format!("Don't know how to parse service message for action '{etc}'")),
+            return err!("Don't know how to parse service message for action '{etc}'"),
     };
     service_msg.sealed_value_optional = Some(val);
     Ok(ShouldProceed::ProceedMessage)
@@ -851,7 +849,7 @@ fn parse_service_message(message_json: &mut MessageJson,
 // Rich Text
 //
 
-fn parse_rich_text(json_path: &str, rt_json: &Value) -> Res<Vec<RichTextElement>> {
+fn parse_rich_text(json_path: &str, rt_json: &Value) -> Result<Vec<RichTextElement>> {
     fn parse_plain_option(s: &str) -> Option<RichTextElement> {
         if s.is_empty() {
             None
@@ -876,7 +874,7 @@ fn parse_rich_text(json_path: &str, rt_json: &Value) -> Res<Vec<RichTextElement>
                     Value::Object(obj) =>
                         parse_rich_text_object(json_path, obj)?,
                     etc =>
-                        return Err(format!("Don't know how to parse RichText element '{:?}'", etc))
+                        return err!("Don't know how to parse RichText element '{:?}'", etc)
                 };
                 if let Some(val) = val {
                     result.push(val)
@@ -885,7 +883,7 @@ fn parse_rich_text(json_path: &str, rt_json: &Value) -> Res<Vec<RichTextElement>
             Ok(result)
         }
         etc =>
-            Err(format!("Don't know how to parse RichText container '{:?}'", etc))
+            err!("Don't know how to parse RichText container '{:?}'", etc)
     }?;
 
     // Concatenate consecutive plaintext elements
@@ -910,13 +908,13 @@ fn parse_rich_text(json_path: &str, rt_json: &Value) -> Res<Vec<RichTextElement>
 }
 
 fn parse_rich_text_object(json_path: &str,
-                          rte_json: &Object) -> Res<Option<RichTextElement>> {
+                          rte_json: &Object) -> Result<Option<RichTextElement>> {
     let keys =
         rte_json.keys().map(|s| s.deref()).collect::<HashSet<&str, Hasher>>();
     macro_rules! check_keys {
         ($keys:expr) => {
             if keys != HashSet::<&str, Hasher>::from_iter($keys) {
-                return Err(format!("Unexpected keys: {:?}", keys))
+                return err!("Unexpected keys: {:?}", keys)
             }
         };
     }
@@ -1007,7 +1005,7 @@ fn parse_rich_text_object(json_path: &str,
             Some(RichText::make_plain(get_field_string!(rte_json, json_path, "text")))
         }
         etc =>
-            return Err(format!("Don't know how to parse RichText element of type '{etc}' for {:?}", rte_json))
+            return err!("Don't know how to parse RichText element of type '{etc}' for {:?}", rte_json)
     };
     Ok(res)
 }
@@ -1018,9 +1016,9 @@ fn parse_rich_text_object(json_path: &str,
 
 fn append_user(short_user: ShortUser,
                users: &mut Users,
-               ds_uuid: &PbUuid) -> Res<Id> {
+               ds_uuid: &PbUuid) -> Result<Id> {
     if short_user.id == 0 || short_user.id == -1 {
-        Err(format!("Incorrect ID for a user!"))
+        err!("Incorrect ID for a user!")
     } else if let Some(user) = users.id_to_user.get(&short_user.id) {
         Ok(user.id)
     } else {
@@ -1031,13 +1029,13 @@ fn append_user(short_user: ShortUser,
     }
 }
 
-fn parse_user_id(bw: &BorrowedValue) -> Res<Id> {
+fn parse_user_id(bw: &BorrowedValue) -> Result<Id> {
     let err_msg = format!("Don't know how to get user ID from '{}'", bw);
-    let parse_str = |s: &str| -> Res<Id> {
+    let parse_str = |s: &str| -> Result<Id> {
         match s {
-            s if s.starts_with("user") => s[4..].parse::<Id>().map_err(|_| err_msg.clone()),
-            s if s.starts_with("channel") => s[7..].parse::<Id>().map_err(|_| err_msg.clone()),
-            _ => Err(err_msg.clone())
+            s if s.starts_with("user") => Ok(s[4..].parse::<Id>()?),
+            s if s.starts_with("channel") => Ok(s[7..].parse::<Id>()?),
+            _ => bail!(err_msg.as_str())
         }
     };
     match bw {
@@ -1045,15 +1043,15 @@ fn parse_user_id(bw: &BorrowedValue) -> Res<Id> {
         Value::Static(StaticNode::U64(u)) => Ok(*u as Id),
         Value::String(Cow::Borrowed(s)) => parse_str(s),
         Value::String(Cow::Owned(s)) => parse_str(s),
-        _ => Err(err_msg)
+        _ => bail!(err_msg.as_str())
     }
 }
 
-fn parse_timestamp(s: &str) -> Res<i64> {
-    s.parse::<i64>().map_err(|e| format!("Failed to parse unit timestamp {s}: {e}"))
+fn parse_timestamp(s: &str) -> Result<i64> {
+    s.parse::<i64>().chain_err(|| format!("Failed to parse unit timestamp {s}"))
 }
 
-fn parse_datetime(s: &str) -> Res<i64> {
+fn parse_datetime(s: &str) -> Result<i64> {
     lazy_static! {
         static ref TZ: Local = Local::now().timezone();
     }
@@ -1062,8 +1060,8 @@ fn parse_datetime(s: &str) -> Res<i64> {
     let split =
         s.split(|c| c == '-' || c == ':' || c == 'T')
             .map(|s| s.parse::<u32>())
-            .collect::<Result<Vec<u32>, ParseIntError>>()
-            .map_err(|e| format!("Failed to parse date {s}: {e}"))?;
+            .collect::<std::result::Result<Vec<u32>, ParseIntError>>()
+            .chain_err(|| format!("Failed to parse date {s}"))?;
     let date =
         NaiveDate::from_ymd_opt(split[0] as i32, split[1], split[2]).unwrap()
             .and_hms_opt(split[3], split[4], split[5]).unwrap()

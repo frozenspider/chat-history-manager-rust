@@ -14,6 +14,7 @@ lazy_static = "1.4.0"
 hashers = "1.0.1"
 rand = "0.8.5"
 derive_deref = "1.1.1"
+error-chain = "0.12.4"
 
 # Protobuf and web service
 protobuf = "3.2.0"
