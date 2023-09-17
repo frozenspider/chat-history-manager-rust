@@ -12,7 +12,7 @@ use regex::Regex;
 use simd_json::{BorrowedValue, StaticNode, Value as JValue};
 use simd_json::borrowed::{Object, Value};
 
-use crate::utils::*;
+use crate::*;
 use crate::dao::in_memory_dao::InMemoryDao;
 use crate::entities::*;
 use crate::protobuf::*;
@@ -51,8 +51,8 @@ impl Users {
     fn pretty_name(u: &User) -> String {
         String::from(format!(
             "{} {}",
-            u.first_name_option.as_ref().map(|s| s.as_str()).unwrap_or(""),
-            u.last_name_option.as_ref().map(|s| s.as_str()).unwrap_or(""),
+            u.first_name_option.as_deref().unwrap_or(""),
+            u.last_name_option.as_deref().unwrap_or(""),
         ).trim())
     }
 
@@ -129,7 +129,7 @@ enum ShouldProceed {
 }
 
 enum ParsedMessage {
-    Ok(Message),
+    Ok(Box<Message>),
     SkipMessage,
     SkipChat,
 }
@@ -140,7 +140,7 @@ struct ExpectedMessageField<'lt> {
     optional_fields: HashSet<&'lt str, Hasher>,
 }
 
-pub fn parse_file(path: &Path, ds_uuid: &Uuid, myself_chooser: &dyn ChooseMyselfTrait) -> Res<InMemoryDao> {
+pub fn parse_file(path: &Path, ds_uuid: &Uuid, myself_chooser: &dyn ChooseMyselfTrait) -> Res<Box<InMemoryDao>> {
     let path: PathBuf =
         if !path.ends_with("result.json") {
             path.join("result.json")
@@ -169,8 +169,10 @@ pub fn parse_file(path: &Path, ds_uuid: &Uuid, myself_chooser: &dyn ChooseMyself
     let start_time = Instant::now();
     let root_obj = as_object!(parsed, "root");
 
-    let mut myself: User = Default::default();
-    myself.ds_uuid = Some(ds_uuid.clone());
+    let mut myself = User {
+        ds_uuid: Some(ds_uuid.clone()),
+        ..Default::default()
+    };
 
     let single_chat_keys = HashSet::from(["name", "type", "id", "messages"]);
     let keys = root_obj.keys().map(|s| s.deref()).collect::<HashSet<_>>();
@@ -213,14 +215,14 @@ pub fn parse_file(path: &Path, ds_uuid: &Uuid, myself_chooser: &dyn ChooseMyself
     users.sort_by_key(|u| if u.id == myself.id { Id::MIN } else { u.id });
 
     let parent_name = path.parent().unwrap().file_name().unwrap();
-    Ok(InMemoryDao::new(
+    Ok(Box::new(InMemoryDao::new(
         format!("Telegram ({})", parent_name.to_os_string().into_string().unwrap()),
         ds,
         path.parent().unwrap().to_path_buf(),
         myself,
         users,
         chats_with_messages,
-    ))
+    )))
 }
 
 /** Returns a partially filled user. */
@@ -318,7 +320,7 @@ fn parse_chat(json_path: &str,
                 let parsed = parse_message(&path, v, ds_uuid, users, &mut member_ids)?;
                 match parsed {
                     ParsedMessage::Ok(msg) =>
-                        messages.push(msg),
+                        messages.push(*msg),
                     ParsedMessage::SkipMessage =>
                         { /* NOOP */ }
                     ParsedMessage::SkipChat => {
@@ -362,7 +364,7 @@ fn parse_chat(json_path: &str,
     let mut member_ids = member_ids.into_iter().collect_vec();
     member_ids.sort();
     if let Some(myself_id) = myself_id_option {
-        member_ids.insert(0, myself_id.clone());
+        member_ids.insert(0, *myself_id);
     }
     chat.member_ids = member_ids;
 
@@ -452,12 +454,12 @@ impl<'lt> MessageJson<'lt> {
             }
         }
 
-        Ok(field_opt.map(|s| (match s.as_str() {
+        Ok(field_opt.and_then(|s| (match s.as_str() {
             "" => None,
             "(File not included. Change data exporting settings to download.)" => None,
             "(File exceeds maximum size. Change data exporting settings to download.)" => None,
             _ => Some(s)
-        })).flatten())
+        })))
     }
 }
 
@@ -491,8 +493,10 @@ fn parse_message(json_path: &str,
         expected_fields: None,
     };
 
-    let mut message: Message = Default::default();
-    message.internal_id = *NO_INTERNAL_ID;
+    let mut message: Box<Message> = Box::new(Message {
+        internal_id: *NO_INTERNAL_ID,
+        ..Default::default()
+    });
 
     // Determine message type an parse short user from it.
     let mut short_user: ShortUser = ShortUser::default();
@@ -592,9 +596,9 @@ fn parse_regular_message(message_json: &mut MessageJson,
 
     if let Some(ref edited) = message_json.field_opt_str("edited_unixtime")? {
         message_json.add_required("edited");
-        regular_msg.edit_timestamp_option = Some(parse_timestamp(&edited)?);
+        regular_msg.edit_timestamp_option = Some(parse_timestamp(edited)?);
     } else if let Some(ref edited) = message_json.field_opt_str("edited")? {
-        regular_msg.edit_timestamp_option = Some(parse_datetime(&edited)?);
+        regular_msg.edit_timestamp_option = Some(parse_datetime(edited)?);
     }
     regular_msg.forward_from_name_option = match message_json.field_opt("forwarded_from")? {
         None => None,
@@ -748,7 +752,7 @@ fn parse_service_message(message_json: &mut MessageJson,
         let json_path = format!("{}.members", message_json.json_path);
         message_json.field("members")?
             .try_as_array().map_err(error_to_string)?
-            .into_iter()
+            .iter()
             .map(|v|
                 if v.value_type() != ValueType::Null {
                     as_string_res!(v, json_path)
@@ -814,7 +818,7 @@ fn parse_service_message(message_json: &mut MessageJson,
         "join_group_by_link" => {
             message_json.add_required("inviter");
             SealedValueOptional::GroupInviteMembers(MessageServiceGroupInviteMembers {
-                members: vec![name_or_unnamed(&message_json.field_opt_str("actor")?).to_owned()]
+                members: vec![name_or_unnamed(&message_json.field_opt_str("actor")?)]
             })
         }
         "migrate_from_group" =>
@@ -848,7 +852,7 @@ fn parse_service_message(message_json: &mut MessageJson,
 //
 
 fn parse_rich_text(json_path: &str, rt_json: &Value) -> Res<Vec<RichTextElement>> {
-    fn parse_plain_option(s: &Cow<str>) -> Option<RichTextElement> {
+    fn parse_plain_option(s: &str) -> Option<RichTextElement> {
         if s.is_empty() {
             None
         } else {
@@ -906,7 +910,7 @@ fn parse_rich_text(json_path: &str, rt_json: &Value) -> Res<Vec<RichTextElement>
 }
 
 fn parse_rich_text_object(json_path: &str,
-                          rte_json: &Box<Object>) -> Res<Option<RichTextElement>> {
+                          rte_json: &Object) -> Res<Option<RichTextElement>> {
     let keys =
         rte_json.keys().map(|s| s.deref()).collect::<HashSet<&str, Hasher>>();
     macro_rules! check_keys {
@@ -1028,7 +1032,7 @@ fn append_user(short_user: ShortUser,
 }
 
 fn parse_user_id(bw: &BorrowedValue) -> Res<Id> {
-    let err_msg = format!("Don't know how to get user ID from '{}'", bw.to_string());
+    let err_msg = format!("Don't know how to get user ID from '{}'", bw);
     let parse_str = |s: &str| -> Res<Id> {
         match s {
             s if s.starts_with("user") => s[4..].parse::<Id>().map_err(|_| err_msg.clone()),
@@ -1040,7 +1044,7 @@ fn parse_user_id(bw: &BorrowedValue) -> Res<Id> {
         Value::Static(StaticNode::I64(i)) => Ok(*i),
         Value::Static(StaticNode::U64(u)) => Ok(*u as Id),
         Value::String(Cow::Borrowed(s)) => parse_str(s),
-        Value::String(Cow::Owned(s)) => parse_str(&s),
+        Value::String(Cow::Owned(s)) => parse_str(s),
         _ => Err(err_msg)
     }
 }
@@ -1063,7 +1067,7 @@ fn parse_datetime(s: &str) -> Res<i64> {
     let date =
         NaiveDate::from_ymd_opt(split[0] as i32, split[1], split[2]).unwrap()
             .and_hms_opt(split[3], split[4], split[5]).unwrap()
-            .and_local_timezone(TZ.clone())
+            .and_local_timezone(*TZ)
             .single()
             .ok_or(format!("failed to parse date {}: ambiguous?", s))?;
     Ok(date.timestamp())

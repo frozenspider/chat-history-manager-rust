@@ -1,5 +1,5 @@
 use std::collections::HashSet;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use itertools::Itertools;
 
@@ -28,7 +28,7 @@ pub trait ChatHistoryDao /*extends AutoCloseable*/ {
     fn dataset_root(&self, ds_uuid: &PbUuid) -> DatasetRoot;
 
     /** List all files referenced by entities of this dataset. Some might not exist. */
-    fn dataset_files(&self, ds_uuid: &PbUuid) -> HashSet<&Path>;
+    fn dataset_files(&self, ds_uuid: &PbUuid) -> HashSet<PathBuf>;
 
     fn myself(&self, ds_uuid: &PbUuid) -> User;
 

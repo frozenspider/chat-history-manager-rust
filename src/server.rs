@@ -84,7 +84,7 @@ struct ChooseMyselfImpl {
 }
 
 impl ChooseMyselfTrait for ChooseMyselfImpl {
-    fn choose_myself(&self, users: &Vec<&User>) -> Res<usize> {
+    fn choose_myself(&self, users: &[&User]) -> Res<usize> {
         // let mut pool = LocalPool::new();
         // let spawner = pool.spawner();
 
@@ -132,7 +132,7 @@ pub async fn debug_request_myself(port: u16) -> Res<usize> {
     };
 
     let ds_uuid = PbUuid { value: "00000000-0000-0000-0000-000000000000".to_owned() };
-    let chosen = chooser.choose_myself(&vec![
+    let chosen = chooser.choose_myself(&[
         &User {
             ds_uuid: Some(ds_uuid.clone()),
             id: 100,

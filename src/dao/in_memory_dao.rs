@@ -39,7 +39,7 @@ impl InMemoryDao {
         let mut members = chat.member_ids.iter()
             .filter(|&id| *id != me.id)
             .map(|id| self.user_option(chat.ds_uuid(), *id)
-                .expect(format!("No member with id {id} found for chat {}", chat.qualified_name()).as_str()))
+                .unwrap_or_else(|| panic!("No member with id {id} found for chat {}", chat.qualified_name())))
             .sorted_by_key(|u| u.id)
             .collect_vec();
         members.insert(0, me);
@@ -70,7 +70,7 @@ impl ChatHistoryDao for InMemoryDao {
     }
 
     fn storage_path(&self) -> &Path {
-        self.ds_root.as_path()
+        &self.ds_root
     }
 
     fn datasets(&self) -> Vec<Dataset> {
@@ -78,10 +78,10 @@ impl ChatHistoryDao for InMemoryDao {
     }
 
     fn dataset_root(&self, _ds_uuid: &PbUuid) -> DatasetRoot {
-        DatasetRoot(self.storage_path())
+        DatasetRoot(self.storage_path().to_owned())
     }
 
-    fn dataset_files(&self, _ds_uuid: &PbUuid) -> HashSet<&Path> {
+    fn dataset_files(&self, _ds_uuid: &PbUuid) -> HashSet<PathBuf> {
         /*
         val dsRoot       = datasetRoot(dsUuid)
         val cwds         = chats(dsUuid)

@@ -36,7 +36,7 @@ impl ShortUser {
     pub fn to_user(&self, ds_uuid: &PbUuid) -> User {
         User {
             ds_uuid: Some(ds_uuid.clone()),
-            id: self.id.clone(),
+            id: self.id,
             first_name_option: self.full_name_option.clone(),
             last_name_option: None,
             username_option: None,
@@ -46,11 +46,11 @@ impl ShortUser {
 }
 
 #[allow(dead_code)]
-pub fn unwrap_rich_text(rtes: &Vec<RichTextElement>) -> Vec<&rich_text_element::Val> {
+pub fn unwrap_rich_text(rtes: &[RichTextElement]) -> Vec<&rich_text_element::Val> {
     rtes.iter().map(|rte| rte.val.as_ref().unwrap()).collect_vec()
 }
 
 #[allow(dead_code)]
-pub fn unwrap_rich_text_copy(rtes: &Vec<RichTextElement>) -> Vec<rich_text_element::Val> {
-    unwrap_rich_text(rtes).into_iter().map(|v| v.clone()).collect_vec()
+pub fn unwrap_rich_text_copy(rtes: &[RichTextElement]) -> Vec<rich_text_element::Val> {
+    unwrap_rich_text(rtes).into_iter().cloned().collect_vec()
 }

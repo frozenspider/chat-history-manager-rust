@@ -6,7 +6,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let proto_file = "./protobuf/history.proto";
     let fd_out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
-    let pb_out_dir = PathBuf::from(curr_dir.join("src/protobuf"));
+    let pb_out_dir = curr_dir.join("src/protobuf");
 
     if !pb_out_dir.exists() {
         fs::create_dir(&pb_out_dir).unwrap_or_else(|e| panic!("cannot create directory {:?}: {}", pb_out_dir, e));

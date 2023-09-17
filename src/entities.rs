@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::PathBuf;
 
 use derive_deref::Deref;
 use itertools::Itertools;
@@ -9,7 +9,7 @@ use crate::protobuf::history::*;
 use crate::protobuf::history::message_service::SealedValueOptional;
 
 #[derive(Deref)]
-pub struct DatasetRoot<'a>(pub &'a Path);
+pub struct DatasetRoot(pub PathBuf);
 
 #[derive(Deref)]
 pub struct MessageSourceId(pub i64);
@@ -142,7 +142,7 @@ impl RichText {
                 href,
                 hidden,
             })),
-            searchable_string: searchable_string,
+            searchable_string,
         }
     }
 
@@ -171,7 +171,7 @@ fn normalize_seachable_string(s: &str) -> String {
     NORMALIZE_REGEX.replace_all(s, " ").trim().to_owned()
 }
 
-pub fn make_searchable_string(components: &Vec<RichTextElement>, typed: &message::Typed) -> String {
+pub fn make_searchable_string(components: &[RichTextElement], typed: &message::Typed) -> String {
     let joined_text: String =
         components.iter()
             .map(|rte| &rte.searchable_string)

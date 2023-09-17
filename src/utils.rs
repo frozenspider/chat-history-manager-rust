@@ -2,15 +2,19 @@ use std::collections::Bound;
 use std::error::Error;
 use std::ops::RangeBounds;
 
-pub trait SmartSlice<T> {
+pub trait SmartSlice {
+    type Item;
+
     /**
      * Works as `x[a..b]`, but understands negative indexes as those going from the other end,
      * -1 being the last element.
      */
-    fn smart_slice<R: RangeBounds<i32>>(&self, range: R) -> &[T];
+    fn smart_slice<R: RangeBounds<i32>>(&self, range: R) -> &[Self::Item];
 }
 
-impl<T> SmartSlice<T> for Vec<T> {
+impl<T> SmartSlice for Vec<T> {
+    type Item = T;
+
     fn smart_slice<R: RangeBounds<i32>>(&self, range: R) -> &[T] {
         let lower_inc: usize = match range.start_bound() {
             Bound::Included(&idx) if idx < 0 => self.len() - (-idx as usize),

@@ -36,5 +36,8 @@ features = [
     "macro-diagnostics", # Enable better diagnostics for compile-time UUIDs
 ]
 
+[dev-dependencies]
+pretty_assertions = "1.4.0"
+
 [build-dependencies]
 tonic-build = "0.9.2"

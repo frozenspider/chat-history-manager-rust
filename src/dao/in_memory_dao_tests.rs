@@ -1,8 +1,8 @@
 use chrono::Duration;
 use rand::Rng;
 
+use crate::*;
 use crate::test_utils::*;
-use crate::utils::*;
 
 use super::*;
 
@@ -217,7 +217,7 @@ fn create_dao() -> InMemoryDao {
                 ds_uuid: ds.uuid.clone(),
                 id: 1,
                 name_option: Some("Chat One".to_owned()),
-                tpe: ChatType::PrivateGroup.into(),
+                tpe: ChatType::PrivateGroup as i32,
                 img_path_option: None,
                 member_ids: users.iter().map(|u| u.id).collect_vec(),
                 msg_count: messages.len() as i32,

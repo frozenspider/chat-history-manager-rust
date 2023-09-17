@@ -3,15 +3,16 @@
 use chrono::prelude::*;
 use itertools::Itertools;
 use lazy_static::lazy_static;
+use pretty_assertions::{assert_eq, assert_ne};
 
+use crate::{NoChooser, User};
+use crate::entities::*;
 use crate::json::parse_file;
 use crate::json::telegram::*;
 use crate::protobuf::history::*;
+use crate::protobuf::history::content::SealedValueOptional::*;
 use crate::protobuf::history::message::*;
 use crate::protobuf::history::message_service::SealedValueOptional::*;
-use crate::protobuf::history::content::SealedValueOptional::*;
-use crate::{NoChooser, User};
-use crate::entities::*;
 use crate::test_utils::*;
 
 lazy_static! {
@@ -423,9 +424,9 @@ fn loading_2023_01() {
         ds_uuid: Some(ds_uuid.clone()),
         id: 123123123,
         first_name_option: Some("My Group".to_owned()),
-        last_name_option:None,
+        last_name_option: None,
         username_option: None,
-        phone_number_option: None
+        phone_number_option: None,
     };
     assert_eq!(dao.users.len(), 3);
     assert_eq!(dao.users.iter().collect_vec(), vec![myself, &member, &channel_user]);
@@ -548,7 +549,7 @@ fn loading_2023_01() {
                     photo: Some(ContentPhoto {
                         path_option: None,
                         width: 640,
-                        height: 640
+                        height: 640,
                     })
                 }))
             })),
@@ -576,9 +577,9 @@ fn loading_2023_08() {
         ds_uuid: Some(ds_uuid.clone()),
         id: 5555555555 - USER_ID_SHIFT,
         first_name_option: None,
-        last_name_option:None,
+        last_name_option: None,
         username_option: None,
-        phone_number_option: None
+        phone_number_option: None,
     };
     assert_eq!(dao.users.len(), 2);
     assert_eq!(dao.users.iter().collect_vec(), vec![myself, &unnamed_user]);
