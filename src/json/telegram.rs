@@ -492,7 +492,7 @@ fn parse_message(json_path: &str,
     };
 
     let mut message: Message = Default::default();
-    message.internal_id = NO_INTERNAL_ID;
+    message.internal_id = *NO_INTERNAL_ID;
 
     // Determine message type an parse short user from it.
     let mut short_user: ShortUser = ShortUser::default();

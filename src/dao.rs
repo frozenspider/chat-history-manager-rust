@@ -25,7 +25,7 @@ pub trait ChatHistoryDao /*extends AutoCloseable*/ {
     fn datasets(&self) -> Vec<Dataset>;
 
     /** Directory which stores eveything in the dataset. All files are guaranteed to have this as a prefix. */
-    fn dataset_root(&self, ds_uuid: &PbUuid) -> &DatasetRoot;
+    fn dataset_root(&self, ds_uuid: &PbUuid) -> DatasetRoot;
 
     /** List all files referenced by entities of this dataset. Some might not exist. */
     fn dataset_files(&self, ds_uuid: &PbUuid) -> HashSet<&Path>;

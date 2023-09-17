@@ -77,8 +77,8 @@ impl ChatHistoryDao for InMemoryDao {
         vec![self.dataset.clone()]
     }
 
-    fn dataset_root(&self, _ds_uuid: &PbUuid) -> &DatasetRoot {
-        self.storage_path()
+    fn dataset_root(&self, _ds_uuid: &PbUuid) -> DatasetRoot {
+        DatasetRoot(self.storage_path())
     }
 
     fn dataset_files(&self, _ds_uuid: &PbUuid) -> HashSet<&Path> {
@@ -193,7 +193,7 @@ impl ChatHistoryDao for InMemoryDao {
 
     fn messages_around_date(&self, chat: &Chat, date_ts: Timestamp, limit: usize) -> (Vec<Message>, Vec<Message>) {
         let messages = self.messages_option(chat.id).unwrap();
-        let idx = messages.iter().position(|m| m.timestamp >= date_ts);
+        let idx = messages.iter().position(|m| m.timestamp >= *date_ts);
         match idx {
             None => {
                 // Not found
@@ -210,12 +210,12 @@ impl ChatHistoryDao for InMemoryDao {
 
     fn message_option(&self, chat: &Chat, source_id: MessageSourceId) -> Option<Message> {
         self.messages_option(chat.id).unwrap()
-            .iter().find(|m| m.source_id_option.iter().contains(&source_id)).cloned()
+            .iter().find(|m| m.source_id_option.iter().contains(&*source_id)).cloned()
     }
 
     fn message_option_by_internal_id(&self, chat: &Chat, internal_id: MessageInternalId) -> Option<Message> {
         self.messages_option(chat.id).unwrap()
-            .iter().find(|m| m.internal_id == internal_id).cloned()
+            .iter().find(|m| m.internal_id == *internal_id).cloned()
     }
 
     fn close(&self) { /* NOOP */ }

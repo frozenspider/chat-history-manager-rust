@@ -114,7 +114,7 @@ fn messages_around() -> Res<()> {
     let none_vec = vec![];
     let none = none_vec.as_slice();
 
-    const START: Timestamp = 0;
+    const START: Timestamp = Timestamp(0);
     const END: Timestamp = Timestamp::MAX;
 
     fn assert_split(actual: (Vec<Message>, Vec<Message>), left: &[Message], right: &[Message]) {
@@ -129,19 +129,19 @@ fn messages_around() -> Res<()> {
     assert_split(dao.messages_around_date(&chat, END, 1000), msgs.smart_slice(..), none);
 
 
-    assert_split(dao.messages_around_date(&chat, msgs[0].timestamp, 1), none, msgs.smart_slice(..=0));
-    assert_split(dao.messages_around_date(&chat, msgs[1].timestamp, 1), msgs.smart_slice(..=0), msgs.smart_slice(1..=1));
-    assert_split(dao.messages_around_date(&chat, msgs[2].timestamp, 2), msgs.smart_slice(..=1), msgs.smart_slice(2..=3));
-    assert_split(dao.messages_around_date(&chat, msgs[2].timestamp, 4), msgs.smart_slice(..=1), msgs.smart_slice(2..=5));
+    assert_split(dao.messages_around_date(&chat, msgs[0].timestamp(), 1), none, msgs.smart_slice(..=0));
+    assert_split(dao.messages_around_date(&chat, msgs[1].timestamp(), 1), msgs.smart_slice(..=0), msgs.smart_slice(1..=1));
+    assert_split(dao.messages_around_date(&chat, msgs[2].timestamp(), 2), msgs.smart_slice(..=1), msgs.smart_slice(2..=3));
+    assert_split(dao.messages_around_date(&chat, msgs[2].timestamp(), 4), msgs.smart_slice(..=1), msgs.smart_slice(2..=5));
 
-    assert_split(dao.messages_around_date(&chat, msgs[len - 1].timestamp, 1), msgs.smart_slice(-2..=-2), msgs.smart_slice(-1..));
-    assert_split(dao.messages_around_date(&chat, msgs[len - 2].timestamp, 1), msgs.smart_slice(-3..=-3), msgs.smart_slice(-2..=-2));
-    assert_split(dao.messages_around_date(&chat, msgs[len - 2].timestamp, 2), msgs.smart_slice(-4..=-3), msgs.smart_slice(-2..));
-    assert_split(dao.messages_around_date(&chat, msgs[len - 2].timestamp, 4), msgs.smart_slice(-6..=-3), msgs.smart_slice(-2..));
+    assert_split(dao.messages_around_date(&chat, msgs[len - 1].timestamp(), 1), msgs.smart_slice(-2..=-2), msgs.smart_slice(-1..));
+    assert_split(dao.messages_around_date(&chat, msgs[len - 2].timestamp(), 1), msgs.smart_slice(-3..=-3), msgs.smart_slice(-2..=-2));
+    assert_split(dao.messages_around_date(&chat, msgs[len - 2].timestamp(), 2), msgs.smart_slice(-4..=-3), msgs.smart_slice(-2..));
+    assert_split(dao.messages_around_date(&chat, msgs[len - 2].timestamp(), 4), msgs.smart_slice(-6..=-3), msgs.smart_slice(-2..));
 
     // Timestamp between N-1 and N
     let n = len / 2;
-    let mid_ts = (msgs[n - 1].timestamp + msgs[n].timestamp) / 2;
+    let mid_ts = Timestamp((msgs[n - 1].timestamp + msgs[n].timestamp) / 2);
     let n = n as i32;
 
     assert_split(dao.messages_around_date(&chat, mid_ts, 1),

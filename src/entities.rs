@@ -1,5 +1,6 @@
 use std::path::Path;
 
+use derive_deref::Deref;
 use itertools::Itertools;
 use lazy_static::lazy_static;
 use regex::Regex;
@@ -7,16 +8,26 @@ use regex::Regex;
 use crate::protobuf::history::*;
 use crate::protobuf::history::message_service::SealedValueOptional;
 
-// TODO: Replace with some sort of tagged types?
-pub type DatasetRoot = Path;
-pub type MessageSourceId = i64;
-pub type MessageInternalId = i64;
-pub type Timestamp = i64;
+#[derive(Deref)]
+pub struct DatasetRoot<'a>(pub &'a Path);
+
+#[derive(Deref)]
+pub struct MessageSourceId(pub i64);
+
+#[derive(Deref)]
+pub struct MessageInternalId(pub i64);
+
+#[derive(Deref)]
+pub struct Timestamp(pub i64);
+
+impl Timestamp {
+    pub const MAX: Timestamp = Timestamp(i64::MAX);
+}
 
 pub const UNNAMED: &str = "[unnamed]";
 pub const UNKNOWN: &str = "[unknown]";
 
-pub const NO_INTERNAL_ID: MessageInternalId = -1;
+pub const NO_INTERNAL_ID: MessageInternalId = MessageInternalId(-1);
 
 pub struct ChatWithDetails {
     pub chat: Chat,
@@ -64,6 +75,10 @@ impl User {
     pub fn pretty_name(&self) -> String {
         unimplemented!()
     }
+}
+
+impl Message {
+    pub fn timestamp(&self) -> Timestamp { Timestamp(self.timestamp) }
 }
 
 pub struct RichText {}
