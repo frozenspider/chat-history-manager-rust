@@ -39,6 +39,7 @@ const SRC_ALIAS: &str = "Telegram";
 
 const SRC_TYPE: &str = "telegram";
 
+type CB<'a> = ParseCallback<'a>;
 
 #[derive(Default, Debug)]
 pub struct Users {
@@ -226,10 +227,10 @@ pub fn parse_file(path: &Path, ds_uuid: &Uuid, myself_chooser: &dyn ChooseMyself
 fn parse_contact(json_path: &str, bw: &BorrowedValue) -> Res<User> {
     let mut user: User = Default::default();
 
-    parse_bw_as_object(bw, json_path, action_map([
-        ("date", consume()),
-        ("date_unixtime", consume()),
-        ("user_id", Box::new(|v: &BorrowedValue| {
+    parse_bw_as_object(bw, json_path, |CB { key, value: v, wrong_key_action }| match key {
+        "date" => consume(),
+        "date_unixtime" => consume(),
+        "user_id" => {
             // In older (pre-2021-06) dumps, id field was present but was always 0.
             let id = as_i64!(v, json_path, "user_id");
             if id == 0 {
@@ -237,20 +238,21 @@ fn parse_contact(json_path: &str, bw: &BorrowedValue) -> Res<User> {
             } else {
                 Err("ID was an actual value and not zero!".to_owned())
             }
-        })),
-        ("first_name", Box::new(|v: &BorrowedValue| {
+        }
+        "first_name" => {
             user.first_name_option = as_string_option!(v, json_path, "first_name");
             Ok(())
-        })),
-        ("last_name", Box::new(|v: &BorrowedValue| {
+        }
+        "last_name" => {
             user.last_name_option = as_string_option!(v, json_path, "last_name");
             Ok(())
-        })),
-        ("phone_number", Box::new(|v: &BorrowedValue| {
+        }
+        "phone_number" => {
             user.phone_number_option = as_string_option!(v, json_path, "phone_number");
             Ok(())
-        })),
-    ]))?;
+        }
+        _ => wrong_key_action()
+    })?;
 
     // Normalize user ID.
     if user.id >= USER_ID_SHIFT {
@@ -283,16 +285,15 @@ fn parse_chat(json_path: &str,
 
     let chat_name: RefCell<Option<String>> = RefCell::from(None);
 
-    parse_object(chat_json, &json_path, action_map([
-        ("", consume()), // No idea how to get rid of it
-        ("name", Box::new(|v: &BorrowedValue| {
-            if v.value_type() != ValueType::Null {
-                chat_name.replace(as_string_option!(v, json_path, "name"));
+    parse_object(chat_json, &json_path, |CB { key, value, wrong_key_action }| match key {
+        "name" => {
+            if value.value_type() != ValueType::Null {
+                chat_name.replace(as_string_option!(value, json_path, "name"));
             }
             Ok(())
-        })),
-        ("type", Box::new(|v: &BorrowedValue| {
-            let tpe = match as_str!(v, json_path, "type") {
+        }
+        "type" => {
+            let tpe = match as_str!(value, json_path, "type") {
                 "personal_chat" => Ok(ChatType::Personal),
                 "private_group" => Ok(ChatType::PrivateGroup),
                 "private_supergroup" => Ok(ChatType::PrivateGroup),
@@ -304,15 +305,15 @@ fn parse_chat(json_path: &str,
             }?;
             chat.tpe = tpe as i32;
             Ok(())
-        })),
-        ("id", Box::new(|v: &BorrowedValue| {
-            chat.id = as_i64!(v, json_path, "id");
+        }
+        "id" => {
+            chat.id = as_i64!(value, json_path, "id");
             Ok(())
-        })),
-        ("messages", Box::new(|v: &BorrowedValue| {
+        }
+        "messages" => {
             if skip_processing.get() { return Ok(()); }
             let path = format!("{json_path}.messages");
-            let messages_json = as_array!(v, path);
+            let messages_json = as_array!(value, path);
             for v in messages_json {
                 let parsed = parse_message(&path, v, ds_uuid, users, &mut member_ids)?;
                 match parsed {
@@ -328,8 +329,9 @@ fn parse_chat(json_path: &str,
                 }
             }
             Ok(())
-        })),
-    ]))?;
+        }
+        _ => wrong_key_action()
+    })?;
 
     chat.name_option = chat_name.borrow().clone();
 

@@ -7,89 +7,78 @@ pub fn parse(root_obj: &Object,
     let mut users: Users = Default::default();
     let mut chats_with_messages: Vec<ChatWithMessages> = vec![];
 
-    parse_object(root_obj, "root", action_map([
-        ("about", consume()),
-        ("profile_pictures", consume()),
-        ("frequent_contacts", consume()),
-        ("other_data", consume()),
-        ("contacts", Box::new(|v: &BorrowedValue| {
-            parse_bw_as_object(v, "personal_information", action_map([
-                ("about", consume()),
-                ("list", Box::new(|v: &BorrowedValue| {
-                    for v in v.as_array().ok_or("contact list is not an array!")? {
+    parse_object(root_obj, "root", |CB { key, value, wrong_key_action }| match key {
+        "about" => consume(),
+        "profile_pictures" => consume(),
+        "frequent_contacts" => consume(),
+        "other_data" => consume(),
+        "contacts" =>
+            parse_bw_as_object(value, "personal_information", |CB { key, value, wrong_key_action }| match key {
+                "about" => consume(),
+                "list" => {
+                    for v in value.as_array().ok_or("contact list is not an array!")? {
                         let mut contact = parse_contact("contact", v)?;
                         contact.ds_uuid = Some(ds_uuid.clone());
                         users.insert(contact);
                     }
                     Ok(())
-                })),
-            ]))?;
-            Ok(())
-        })),
-        ("personal_information", Box::new(|v: &BorrowedValue| {
+                }
+                _ => wrong_key_action()
+            }),
+        "personal_information" => {
             let json_path = "personal_information";
-            parse_bw_as_object(v, json_path, action_map([
-                ("about", consume()),
-                ("user_id", Box::new(|v: &BorrowedValue| {
+            parse_bw_as_object(value, json_path, |CB { key, value: v, wrong_key_action }| match key {
+                "about" => consume(),
+                "user_id" => {
                     myself.id = as_i64!(v, json_path, "user_id");
                     Ok(())
-                })),
-                ("first_name", Box::new(|v: &BorrowedValue| {
+                }
+                "first_name" => {
                     myself.first_name_option = Some(as_string!(v, json_path, "first_name"));
                     Ok(())
-                })),
-                ("last_name", Box::new(|v: &BorrowedValue| {
+                }
+                "last_name" => {
                     myself.last_name_option = Some(as_string!(v, json_path, "last_name"));
                     Ok(())
-                })),
-                ("username", Box::new(|v: &BorrowedValue| {
+                }
+                "username" => {
                     myself.username_option = Some(as_string!(v, json_path, "username"));
                     Ok(())
-                })),
-                ("phone_number", Box::new(|v: &BorrowedValue| {
+                }
+                "phone_number" => {
                     myself.phone_number_option = Some(as_string!(v, json_path, "phone_number"));
                     Ok(())
-                })),
-                ("bio", consume()),
-            ]))
-        })),
-        ("chats", consume() /* Cannot borrow users the second time here! */),
-        ("left_chats", consume() /* Cannot borrow users the second time here! */),
-    ]))?;
+                }
+                "bio" => consume(),
+                _ => wrong_key_action()
+            })
+        }
+        "chats" => {
+            let json_path = "chats";
+
+            let chats_arr = as_object!(value, "chats")
+                .get("list").ok_or("No chats list in dataset!")?
+                .as_array().ok_or(format!("{json_path} list is not an array!"))?;
+
+            for v in chats_arr {
+                if let Some(mut cwm) = parse_chat(json_path, as_object!(v, json_path, "chat"),
+                                                  &ds_uuid, Some(&myself.id), &mut users)? {
+                    let mut c = cwm.chat.as_mut().unwrap();
+                    c.ds_uuid = Some(ds_uuid.clone());
+                    chats_with_messages.push(cwm);
+                }
+            }
+
+            Ok(())
+        }
+        "left_chats" => {
+            // We don't want to import "left_chats" section!
+            consume()
+        }
+        _ => wrong_key_action()
+    })?;
 
     users.insert(myself.clone());
-
-    fn parse_chats_inner(json_path: &str,
-                         chat_json: &Object,
-                         ds_uuid: &PbUuid,
-                         myself_id: &Id,
-                         users: &mut Users,
-                         chats_with_messages: &mut Vec<ChatWithMessages>) -> EmptyRes {
-        let chats_arr = chat_json
-            .get("list").ok_or("No chats list in dataset!")?
-            .as_array().ok_or(format!("{json_path} list is not an array!"))?;
-
-        for v in chats_arr {
-            if let Some(mut cwm) = parse_chat(json_path, as_object!(v, json_path, "chat"),
-                                              &ds_uuid, Some(myself_id), users)? {
-                let mut c = cwm.chat.as_mut().unwrap();
-                c.ds_uuid = Some(ds_uuid.clone());
-                chats_with_messages.push(cwm);
-            }
-        }
-
-        Ok(())
-    }
-
-    match root_obj.get("chats") {
-        Some(chats_json) => parse_chats_inner(
-            "chats", as_object!(chats_json, "chats"),
-            &ds_uuid, &myself.id, &mut users, &mut chats_with_messages,
-        )?,
-        None => return Err(String::from("No chats in dataset!")),
-    }
-
-    // We don't want to import "left_chats" section!
 
     Ok((users, chats_with_messages))
 }

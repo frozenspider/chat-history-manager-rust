@@ -10,15 +10,22 @@ use simd_json;
 use simd_json::{BorrowedValue, ValueAccess, ValueType};
 use uuid::Uuid;
 
-use crate::{EmptyRes, Res, ChooseMyselfTrait};
+use crate::*;
+use crate::entities::*;
+use crate::dao::in_memory_dao::InMemoryDao;
 
 mod telegram;
 
 type Hasher = BuildHasherDefault<FxHasher>;
 
-type ObjFn<'lt> = dyn FnMut(&BorrowedValue) -> EmptyRes + 'lt;
-type BoxObjFn<'lt> = Box<ObjFn<'lt>>;
-type ActionMap<'lt> = HashMap<&'lt str, BoxObjFn<'lt>, Hasher>;
+struct ParseCallback<'a> {
+    /// Key being processed
+    key: &'a str,
+    /// Value corresponding to tha key
+    value: &'a BorrowedValue<'a>,
+    /// Action to take when key is not expected
+    wrong_key_action: &'a dyn Fn() -> EmptyRes,
+}
 
 // Macros for converting JSON value to X.
 
@@ -126,9 +133,6 @@ pub(crate) use get_field_str;
 pub(crate) use get_field_string;
 pub(crate) use get_field_string_option;
 
-use crate::dao::in_memory_dao::InMemoryDao;
-use crate::entities::*;
-
 fn name_or_unnamed(name_option: &Option<String>) -> String {
     name_option.as_ref().map(|s| s.clone()).unwrap_or(UNNAMED.to_owned())
 }
@@ -137,30 +141,30 @@ fn hasher() -> Hasher {
     BuildHasherDefault::<FxHasher>::default()
 }
 
-fn action_map<'lt, const N: usize>(actions: [(&'lt str, BoxObjFn<'lt>); N]) -> ActionMap<'lt> {
-    ActionMap::from_iter(actions)
+fn parse_bw_as_object<T>(bw: &BorrowedValue,
+                         path: &str,
+                         process: T) -> EmptyRes
+    where T: FnMut(ParseCallback) -> EmptyRes
+{
+    parse_object(as_object!(bw, path), path, process)
 }
 
-fn parse_bw_as_object<'lt>(bw: &BorrowedValue,
-                           path: &str,
-                           actions: ActionMap<'lt>) -> EmptyRes {
-    parse_object(as_object!(bw, path), path, actions)
-}
-
-fn parse_object<'lt>(obj: &simd_json::borrowed::Object,
-                     path: &str,
-                     mut actions: ActionMap<'lt>) -> EmptyRes {
+fn parse_object<T>(obj: &simd_json::borrowed::Object,
+                   path: &str,
+                   mut process: T) -> EmptyRes
+    where T: FnMut(ParseCallback) -> EmptyRes
+{
     for (k, v) in obj.iter() {
-        let action =
-            actions.get_mut(k.as_ref()).ok_or(format!("Unexpected key: {}.{}", path, k))?;
-        action(v)?
+        process(ParseCallback {
+            key: k,
+            value: v,
+            wrong_key_action: &|| Err(format!("Unexpected key: {}.{}", path, k)),
+        })?
     }
     Ok(())
 }
 
-fn consume<'lt>() -> BoxObjFn<'lt> {
-    Box::new(|_| Ok(()))
-}
+fn consume() -> EmptyRes { Ok(()) }
 
 pub fn parse_file(path: &str, choose_myself: &dyn ChooseMyselfTrait) -> Res<InMemoryDao> {
     let uuid = Uuid::new_v4();

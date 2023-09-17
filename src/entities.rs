@@ -7,7 +7,7 @@ use regex::Regex;
 use crate::protobuf::history::*;
 use crate::protobuf::history::message_service::SealedValueOptional;
 
-// TODO: Replace with some sort of tagget types?
+// TODO: Replace with some sort of tagged types?
 pub type DatasetRoot = Path;
 pub type MessageSourceId = i64;
 pub type MessageInternalId = i64;
@@ -26,23 +26,23 @@ pub struct ChatWithDetails {
 }
 
 impl ChatWithDetails {
-    pub fn ds_uuid(&self) -> &PbUuid {
-        self.chat.ds_uuid.as_ref().unwrap()
-    }
-
-    /** Used to resolve plaintext members */
-    pub fn resolve_member_index(&self, member_name: &str) -> Option<usize> {
-        self.members.iter().position(|m| m.pretty_name() == member_name)
-    }
-
-    /** Used to resolve plaintext members */
-    pub fn resolve_member(&self, member_name: &str) -> Option<&User> {
-        self.resolve_member_index(member_name).map(|i| &self.members[i])
-    }
-
-    pub fn resolve_members(&self, member_names: Vec<String>) -> Vec<Option<&User>> {
-        member_names.iter().map(|mn| self.resolve_member(mn)).collect_vec()
-    }
+    // pub fn ds_uuid(&self) -> &PbUuid {
+    //     self.chat.ds_uuid.as_ref().unwrap()
+    // }
+    //
+    // /** Used to resolve plaintext members */
+    // pub fn resolve_member_index(&self, member_name: &str) -> Option<usize> {
+    //     self.members.iter().position(|m| m.pretty_name() == member_name)
+    // }
+    //
+    // /** Used to resolve plaintext members */
+    // pub fn resolve_member(&self, member_name: &str) -> Option<&User> {
+    //     self.resolve_member_index(member_name).map(|i| &self.members[i])
+    // }
+    //
+    // pub fn resolve_members(&self, member_names: Vec<String>) -> Vec<Option<&User>> {
+    //     member_names.iter().map(|mn| self.resolve_member(mn)).collect_vec()
+    // }
 }
 
 impl Chat {
