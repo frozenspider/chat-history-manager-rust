@@ -1,8 +1,8 @@
 use super::*;
 
-pub fn parse(root_obj: &Object,
-             ds_uuid: &PbUuid,
-             myself: &mut User) -> Result<(Users, Vec<ChatWithMessages>)> {
+pub(super) fn parse(root_obj: &Object,
+                    ds_uuid: &PbUuid,
+                    myself: &mut User) -> Result<(Users, Vec<ChatWithMessages>)> {
     let mut users: Users = Default::default();
     let mut chats_with_messages: Vec<ChatWithMessages> = vec![];
 

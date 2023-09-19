@@ -59,7 +59,7 @@ fn messages_first_last_scroll() {
 }
 
 #[test]
-fn messages_befoer_after_between() -> Result<()> {
+fn messages_befoer_after_between() -> EmptyRes {
     let dao = create_dao();
     let ds_uuid = dao.datasets().remove(0).uuid.unwrap();
     let chat = dao.chats(&ds_uuid).remove(0).chat;
@@ -103,7 +103,7 @@ fn messages_befoer_after_between() -> Result<()> {
 }
 
 #[test]
-fn messages_around() -> Result<()> {
+fn messages_around() -> EmptyRes {
     let dao = create_dao();
     let ds_uuid = dao.datasets().remove(0).uuid.unwrap();
     let chat = dao.chats(&ds_uuid).remove(0).chat;

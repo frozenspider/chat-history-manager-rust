@@ -19,17 +19,10 @@ lazy_static! {
         concat!(env!("CARGO_MANIFEST_DIR"), "/resources/test").replace("//", "/");
 }
 
+static TELEGRAM: TelegramDataLoader = TelegramDataLoader;
+
 fn resource(relative_path: &str) -> PathBuf {
     Path::new(RESOURCES_DIR.as_str()).join(relative_path)
-}
-
-fn verify_result<T>(r: Result<T>) -> T {
-    match r {
-        Ok(res) => res,
-        Err(e) => {
-            panic!("Result has an error:\n{}", error_to_string(&e))
-        }
-    }
 }
 
 trait ExtOption<T> {
@@ -56,9 +49,12 @@ fn expected_myself(ds_uuid: &PbUuid) -> User {
 //
 
 #[test]
-fn loading_2020_01() {
+fn loading_2020_01() -> EmptyRes {
+    let res = resource("telegram_2020-01");
+    TELEGRAM.looks_about_right(&res)?;
+
     let dao =
-        verify_result(parse_telegram_file(&resource("telegram_2020-01"), &ZERO_UUID, &NoChooser));
+        TELEGRAM.load(&res, &NoChooser)?;
 
     let ds_uuid = dao.dataset.uuid.unwrap_ref();
     let myself = &dao.myself;
@@ -142,14 +138,18 @@ fn loading_2020_01() {
                     vec![rich_text_element::Val::Plain(RtePlain { text: s.to_owned() })]
                 )
                 .collect_vec()
-        )
+        );
+        Ok(())
     }
 }
 
 #[test]
-fn loading_2021_05() {
+fn loading_2021_05() -> EmptyRes {
+    let res = resource("telegram_2021-05");
+    TELEGRAM.looks_about_right(&res)?;
+
     let dao =
-        verify_result(parse_telegram_file(&resource("telegram_2021-05"), &ZERO_UUID, &NoChooser));
+        TELEGRAM.load(&res, &NoChooser)?;
 
     let ds_uuid = dao.dataset.uuid.unwrap_ref();
     let myself = &dao.myself;
@@ -204,13 +204,18 @@ fn loading_2021_05() {
         assert!(matches!(typed[0], Typed::Service(MessageService { sealed_value_optional: Some(GroupCreate(_)) })));
         assert!(matches!(typed[1], Typed::Service(MessageService { sealed_value_optional: Some(GroupMigrateFrom(_)) })));
         assert!(matches!(typed[2], Typed::Regular(_)));
-    }
+    };
+    Ok(())
 }
 
 
 #[test]
-fn loading_2021_06_supergroup() {
-    let dao = verify_result(parse_telegram_file(&resource("telegram_2021-06_supergroup"), &ZERO_UUID,&NoChooser));
+fn loading_2021_06_supergroup() -> EmptyRes {
+    let res = resource("telegram_2021-06_supergroup");
+    TELEGRAM.looks_about_right(&res)?;
+
+    let dao =
+        TELEGRAM.load(&res, &NoChooser)?;
 
     let ds_uuid = dao.dataset.uuid.unwrap_ref();
     let myself = &dao.myself;
@@ -328,12 +333,17 @@ fn loading_2021_06_supergroup() {
                 }),
             })),
         });
-    }
+    };
+    Ok(())
 }
 
 #[test]
-fn loading_2021_07() {
-    let dao = verify_result(parse_telegram_file(&resource("telegram_2021-07"), &ZERO_UUID, &NoChooser));
+fn loading_2021_07() -> EmptyRes {
+    let res = resource("telegram_2021-07");
+    TELEGRAM.looks_about_right(&res)?;
+
+    let dao =
+        TELEGRAM.load(&res, &NoChooser)?;
 
     let ds_uuid = dao.dataset.uuid.unwrap_ref();
     let myself = &dao.myself;
@@ -397,12 +407,18 @@ fn loading_2021_07() {
                 }))
             })),
         });
-    }
+    };
+    Ok(())
 }
 
 #[test]
-fn loading_2023_01() {
-    let dao = verify_result(parse_telegram_file(&resource("telegram_2023-01"), &ZERO_UUID, &NoChooser));
+fn loading_2023_01() -> EmptyRes {
+    let res = resource("telegram_2023-01");
+    TELEGRAM.looks_about_right(&res)?;
+
+    let dao =
+        TELEGRAM.load(&res, &NoChooser)?;
+
     // Parsing as UTC+5.
     let offset = FixedOffset::east_opt(5 * 3600).unwrap();
 
@@ -552,12 +568,17 @@ fn loading_2023_01() {
                 }))
             })),
         });
-    }
+    };
+    Ok(())
 }
 
 #[test]
-fn loading_2023_08() {
-    let dao = verify_result(parse_telegram_file(&resource("telegram_2023-08"), &ZERO_UUID, &NoChooser));
+fn loading_2023_08() -> EmptyRes {
+    let res = resource("telegram_2023-08");
+    TELEGRAM.looks_about_right(&res)?;
+
+    let dao =
+        TELEGRAM.load(&res, &NoChooser)?;
 
     let ds_uuid = dao.dataset.uuid.unwrap_ref();
     let myself = &dao.myself;
@@ -637,5 +658,6 @@ fn loading_2023_08() {
                 content_option: None,
             })),
         });
-    }
+    };
+    Ok(())
 }

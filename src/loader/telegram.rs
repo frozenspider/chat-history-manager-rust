@@ -2,6 +2,8 @@ use std::borrow::Cow;
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::fs;
+use std::fs::File;
+use std::io::{BufRead, BufReader};
 use std::num::ParseIntError;
 use std::ops::Deref;
 use std::path::{Path, PathBuf};
@@ -16,9 +18,11 @@ use uuid::Uuid;
 use crate::*;
 use crate::dao::in_memory_dao::InMemoryDao;
 use crate::entities::*;
+use crate::loader::DataLoader;
 use crate::protobuf::*;
 use crate::protobuf::history::*;
 
+use super::*;
 // Reexporting simd_json for simplicity
 pub use super::json_utils::*;
 
@@ -41,10 +45,12 @@ const SRC_ALIAS: &str = "Telegram";
 
 const SRC_TYPE: &str = "telegram";
 
+const RESULT_JSON: &str = "result.json";
+
 type CB<'a> = ParseCallback<'a>;
 
 #[derive(Default, Debug)]
-pub struct Users {
+struct Users {
     id_to_user: HashMap<UserId, User, Hasher>,
     pretty_name_to_idless_users: Vec<(String, User)>,
 }
@@ -142,17 +148,40 @@ struct ExpectedMessageField<'lt> {
     optional_fields: HashSet<&'lt str, Hasher>,
 }
 
-pub fn parse_telegram_file(path: &Path, ds_uuid: &Uuid, myself_chooser: &impl MyselfChooser) -> Result<Box<InMemoryDao>> {
-    let path: PathBuf =
-        if !path.ends_with("result.json") {
-            path.join("result.json")
-        } else {
-            path.to_path_buf()
-        };
+pub struct TelegramDataLoader;
 
-    if !path.exists() {
-        return err!("{} not found!", path.to_str().unwrap());
+impl DataLoader for TelegramDataLoader {
+    fn name(&self) -> &'static str { "telegram" }
+
+    fn looks_about_right_inner(&self, root_path: &Path) -> EmptyRes {
+        let path = get_real_path(root_path);
+        if !path.exists() {
+            bail!("{} not found in {}", RESULT_JSON, path_to_str(root_path)?);
+        }
+        let input = File::open(&path)?;
+        let buffered = BufReader::new(input);
+        if !buffered.lines().next().ok_or("File is empty")??.trim().starts_with('{') {
+            bail!("{} is not a valid JSON file", path_to_str(&path)?);
+        }
+        Ok(())
     }
+
+    fn load_inner(&self, root_path: &Path, myself_chooser: &dyn MyselfChooser) -> Result<Box<InMemoryDao>> {
+        parse_telegram_file(root_path, Uuid::new_v4(), myself_chooser)
+    }
+}
+
+fn get_real_path(path: &Path) -> PathBuf {
+    if !path.ends_with(RESULT_JSON) {
+        path.join(RESULT_JSON)
+    } else {
+        path.to_path_buf()
+    }
+}
+
+fn parse_telegram_file(path: &Path, ds_uuid: Uuid, myself_chooser: &dyn MyselfChooser) -> Result<Box<InMemoryDao>> {
+    let path = get_real_path(path);
+    assert!(path.exists()); // Should be checked by looks_about_right already.
 
     let now_str = Local::now().format("%Y-%m-%d");
 
