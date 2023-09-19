@@ -1,3 +1,4 @@
+use std::fmt::{Display, Formatter};
 use std::path::PathBuf;
 
 use derive_deref::Deref;
@@ -10,6 +11,17 @@ use crate::protobuf::history::message_service::SealedValueOptional;
 
 #[derive(Deref)]
 pub struct DatasetRoot(pub PathBuf);
+
+#[derive(Deref, Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct UserId(pub i64);
+
+impl UserId {
+    pub const MIN: UserId = UserId(i64::MIN);
+
+    pub const INVALID: UserId = UserId(0);
+
+    pub fn is_valid(&self) -> bool { self.0 > 0 }
+}
 
 #[derive(Deref)]
 pub struct MessageSourceId(pub i64);
@@ -28,6 +40,50 @@ pub const UNNAMED: &str = "[unnamed]";
 pub const UNKNOWN: &str = "[unknown]";
 
 pub const NO_INTERNAL_ID: MessageInternalId = MessageInternalId(-1);
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ShortUser {
+    pub id: UserId,
+    pub full_name_option: Option<String>,
+}
+
+impl ShortUser {
+    pub fn new(id: UserId, full_name_option: Option<String>) -> Self {
+        Self { id, full_name_option }
+    }
+
+    #[allow(dead_code)]
+    pub fn new_name_str(id: UserId, full_name: &str) -> Self {
+        Self::new(id, Some(full_name.to_owned()))
+    }
+
+    pub fn default() -> Self {
+        Self::new(UserId::INVALID, None)
+    }
+
+    pub fn to_user(&self, ds_uuid: &PbUuid) -> User {
+        User {
+            ds_uuid: Some(ds_uuid.clone()),
+            id: *self.id,
+            first_name_option: self.full_name_option.clone(),
+            last_name_option: None,
+            username_option: None,
+            phone_number_option: None,
+        }
+    }
+}
+
+impl Display for ShortUser {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "ShortUser(id: {}, full_name: {:?})", *self.id, self.full_name_option)
+    }
+}
+
+impl User {
+    pub fn id(&self) -> UserId { UserId(self.id) }
+
+    pub fn pretty_name(&self) -> String { unimplemented!() }
+}
 
 pub struct ChatWithDetails {
     pub chat: Chat,
@@ -62,18 +118,12 @@ impl Chat {
         self.ds_uuid.as_ref().unwrap()
     }
 
-    fn name_or_unnamed(&self) -> String {
-        self.name_option.clone().unwrap_or_else(|| UNNAMED.to_owned())
-    }
-
     pub fn qualified_name(&self) -> String {
-        format!("'{}' (#${})", self.name_or_unnamed(), self.id)
+        format!("'{}' (#${})", name_or_unnamed(&self.name_option), self.id)
     }
-}
 
-impl User {
-    pub fn pretty_name(&self) -> String {
-        unimplemented!()
+    pub fn member_ids(& self) -> impl Iterator<Item=UserId> + '_ {
+        self.member_ids.iter().map(|id| UserId(*id))
     }
 }
 
@@ -84,6 +134,16 @@ impl Message {
 pub struct RichText {}
 
 impl RichText {
+    #[cfg(test)]
+    pub fn unwrap(rtes: &[RichTextElement]) -> Vec<&rich_text_element::Val> {
+        rtes.iter().map(|rte| rte.val.as_ref().unwrap()).collect_vec()
+    }
+
+    #[cfg(test)]
+    pub fn unwrap_copy(rtes: &[RichTextElement]) -> Vec<rich_text_element::Val> {
+        Self::unwrap(rtes).into_iter().cloned().collect_vec()
+    }
+
     pub fn make_plain(text: String) -> RichTextElement {
         RichTextElement {
             searchable_string: normalize_seachable_string(text.as_str()),
@@ -220,4 +280,8 @@ pub fn make_searchable_string(components: &[RichTextElement], typed: &message::T
         .join(" ")
         .trim()
         .to_owned()
+}
+
+pub fn name_or_unnamed(name_option: &Option<String>) -> String {
+    name_option.as_ref().cloned().unwrap_or(UNNAMED.to_owned())
 }

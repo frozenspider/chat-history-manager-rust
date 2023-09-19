@@ -1,9 +1,11 @@
 use std::collections::Bound;
 use std::fmt::Debug;
+use std::hash::BuildHasherDefault;
 use std::ops::RangeBounds;
 use std::time::Instant;
 
 pub use error_chain::{bail, error_chain};
+use hashers::fx_hash::FxHasher;
 
 error_chain! {
     types {
@@ -68,7 +70,7 @@ pub fn error_to_string(e: &Error) -> String {
             s.push_str("  └> ");
         }
         s.push_str(&err.to_string());
-        s.push_str("\n");
+        s.push('\n');
     }
     s
 }
@@ -81,4 +83,14 @@ pub fn measure<T, R>(block: T, after_call: impl Fn(&R, u128)) -> R
     let elapsed = start_time.elapsed().as_millis();
     after_call(&result, elapsed);
     result
+}
+
+//
+// Hashing
+//
+
+pub type Hasher = BuildHasherDefault<FxHasher>;
+
+pub fn hasher() -> Hasher {
+    BuildHasherDefault::<FxHasher>::default()
 }

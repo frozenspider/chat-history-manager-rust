@@ -16,9 +16,11 @@ use uuid::Uuid;
 use crate::*;
 use crate::dao::in_memory_dao::InMemoryDao;
 use crate::entities::*;
-pub use crate::loader::json_utils::*;
 use crate::protobuf::*;
 use crate::protobuf::history::*;
+
+// Reexporting simd_json for simplicity
+pub use super::json_utils::*;
 
 mod parser_full;
 mod parser_single;
@@ -27,13 +29,13 @@ mod parser_single;
 mod tests;
 
 /// Starting with Telegram 2020-10, user IDs are shifted by this value
-const USER_ID_SHIFT: Id = 0x100000000_i64;
+const USER_ID_SHIFT: i64 = 0x100000000_i64;
 
 /// Starting with Telegram 2021-05, personal chat IDs are un-shifted by this value
-const PERSONAL_CHAT_ID_SHIFT: Id = 0x100000000_i64;
+const PERSONAL_CHAT_ID_SHIFT: i64 = 0x100000000_i64;
 
 /// Starting with Telegram 2021-05, personal chat IDs are un-shifted by this value
-const GROUP_CHAT_ID_SHIFT: Id = PERSONAL_CHAT_ID_SHIFT * 2;
+const GROUP_CHAT_ID_SHIFT: i64 = PERSONAL_CHAT_ID_SHIFT * 2;
 
 const SRC_ALIAS: &str = "Telegram";
 
@@ -43,7 +45,7 @@ type CB<'a> = ParseCallback<'a>;
 
 #[derive(Default, Debug)]
 pub struct Users {
-    id_to_user: HashMap<Id, User, Hasher>,
+    id_to_user: HashMap<UserId, User, Hasher>,
     pretty_name_to_idless_users: Vec<(String, User)>,
 }
 
@@ -111,8 +113,8 @@ impl Users {
                 user
             }
         };
-        let id = user.id;
-        if id > 0 {
+        let id = user.id();
+        if id.is_valid() {
             log::debug!("> User has valid ID");
             self.id_to_user.insert(id, user);
         } else {
@@ -199,10 +201,10 @@ pub fn parse_telegram_file(path: &Path, ds_uuid: &Uuid, myself_chooser: &impl My
     // Sanity check: every chat member is supposed to have an associated user.
     for cwm in &chats_with_messages {
         let chat = cwm.chat.as_ref().ok_or("Chat absent!")?;
-        for member_id in &chat.member_ids {
-            if !users.id_to_user.contains_key(member_id) {
+        for member_id in chat.member_ids() {
+            if !users.id_to_user.contains_key(&member_id) {
                 return err!("No member with id={} found for chat with id={} '{}'",
-                            member_id, chat.id, name_or_unnamed(&chat.name_option));
+                            *member_id, chat.id, name_or_unnamed(&chat.name_option));
             }
         }
     }
@@ -210,7 +212,7 @@ pub fn parse_telegram_file(path: &Path, ds_uuid: &Uuid, myself_chooser: &impl My
     let mut users = users.id_to_user.into_values().collect_vec();
 
     // Set myself to be a first member (not required by convention but to match existing behaviour).
-    users.sort_by_key(|u| if u.id == myself.id { Id::MIN } else { u.id });
+    users.sort_by_key(|u| if u.id == myself.id { *UserId::MIN } else { u.id });
 
     let parent_name = path.parent().unwrap().file_name().unwrap();
     Ok(Box::new(InMemoryDao::new(
@@ -266,14 +268,14 @@ fn parse_contact(json_path: &str, bw: &BorrowedValue) -> Result<User> {
 fn parse_chat(json_path: &str,
               chat_json: &Object,
               ds_uuid: &PbUuid,
-              myself_id_option: Option<&Id>,
+              myself_id_option: Option<&UserId>,
               users: &mut Users) -> Result<Option<ChatWithMessages>> {
     let mut chat: Chat = Default::default();
     let mut messages: Vec<Message> = vec![];
 
     let skip_processing = Cell::from(false);
 
-    let mut member_ids: HashSet<Id, Hasher> =
+    let mut member_ids: HashSet<UserId, Hasher> =
         HashSet::with_capacity_and_hasher(100, hasher());
 
     let json_path = format!("{json_path}.chat");
@@ -358,11 +360,11 @@ fn parse_chat(json_path: &str,
         member_ids.remove(myself_id);
     }
     let mut member_ids = member_ids.into_iter().collect_vec();
-    member_ids.sort();
+    member_ids.sort_by_key(|id| **id);
     if let Some(myself_id) = myself_id_option {
         member_ids.insert(0, *myself_id);
     }
-    chat.member_ids = member_ids;
+    chat.member_ids = member_ids.into_iter().map(|s| *s).collect();
 
     Ok(Some(ChatWithMessages { chat: Some(chat), messages }))
 }
@@ -463,7 +465,7 @@ fn parse_message(json_path: &str,
                  bw: &BorrowedValue,
                  ds_uuid: &PbUuid,
                  users: &mut Users,
-                 member_ids: &mut HashSet<Id, Hasher>) -> Result<ParsedMessage> {
+                 member_ids: &mut HashSet<UserId, Hasher>) -> Result<ParsedMessage> {
     use history::message::Typed;
 
     fn as_hash_set<'lt>(arr: &[&'lt str]) -> HashSet<&'lt str, Hasher> {
@@ -530,11 +532,11 @@ fn parse_message(json_path: &str,
     }
 
     // Normalize user ID.
-    if short_user.id >= USER_ID_SHIFT {
-        short_user.id -= USER_ID_SHIFT;
+    if *short_user.id >= USER_ID_SHIFT {
+        short_user.id = UserId(*short_user.id - USER_ID_SHIFT);
     }
 
-    message.from_id = short_user.id;
+    message.from_id = *short_user.id;
 
     member_ids.insert(short_user.id);
 
@@ -1014,31 +1016,31 @@ fn parse_rich_text_object(json_path: &str,
 
 fn append_user(short_user: ShortUser,
                users: &mut Users,
-               ds_uuid: &PbUuid) -> Result<Id> {
-    if short_user.id == 0 || short_user.id == -1 {
+               ds_uuid: &PbUuid) -> Result<UserId> {
+    if !short_user.id.is_valid() {
         err!("Incorrect ID for a user!")
     } else if let Some(user) = users.id_to_user.get(&short_user.id) {
-        Ok(user.id)
+        Ok(user.id())
     } else {
         let user = short_user.to_user(ds_uuid);
-        let id = user.id;
+        let id = user.id();
         users.insert(user);
         Ok(id)
     }
 }
 
-fn parse_user_id(bw: &BorrowedValue) -> Result<Id> {
+fn parse_user_id(bw: &BorrowedValue) -> Result<UserId> {
     let err_msg = format!("Don't know how to get user ID from '{}'", bw);
-    let parse_str = |s: &str| -> Result<Id> {
+    let parse_str = |s: &str| -> Result<UserId> {
         match s {
-            s if s.starts_with("user") => Ok(s[4..].parse::<Id>()?),
-            s if s.starts_with("channel") => Ok(s[7..].parse::<Id>()?),
+            s if s.starts_with("user") => Ok(UserId(s[4..].parse::<i64>()?)),
+            s if s.starts_with("channel") => Ok(UserId(s[7..].parse::<i64>()?)),
             _ => bail!(err_msg.as_str())
         }
     };
     match bw {
-        Value::Static(StaticNode::I64(i)) => Ok(*i),
-        Value::Static(StaticNode::U64(u)) => Ok(*u as Id),
+        Value::Static(StaticNode::I64(i)) => Ok(UserId(*i)),
+        Value::Static(StaticNode::U64(u)) => Ok(UserId(*u as i64)),
         Value::String(Cow::Borrowed(s)) => parse_str(s),
         Value::String(Cow::Owned(s)) => parse_str(s),
         _ => bail!(err_msg.as_str())

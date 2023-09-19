@@ -1,13 +1,8 @@
-use std::hash::BuildHasherDefault;
-
-use hashers::fx_hash::FxHasher;
+// Reexporting simd_json for simplicity
 pub use simd_json::{BorrowedValue, StaticNode, Value as JValue, ValueAccess, ValueType};
 pub use simd_json::borrowed::{Object, Value};
 
 use crate::*;
-use crate::entities::*;
-
-pub type Hasher = BuildHasherDefault<FxHasher>;
 
 pub struct ParseCallback<'a> {
     /// Key being processed
@@ -127,16 +122,8 @@ macro_rules! get_field_string_option {
 }
 
 //
-// Utility functions
+// Parse functions
 //
-
-pub fn name_or_unnamed(name_option: &Option<String>) -> String {
-    name_option.as_ref().cloned().unwrap_or(UNNAMED.to_owned())
-}
-
-pub fn hasher() -> Hasher {
-    BuildHasherDefault::<FxHasher>::default()
-}
 
 pub fn parse_bw_as_object(bw: &BorrowedValue,
                           path: &str,

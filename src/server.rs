@@ -52,10 +52,8 @@ impl HistoryLoader for ChatHistoryManagerServer {
             response
         });
 
-        let response =
-            blocking_task.await
-                .map_err(|e| Status::new(Code::Internal, e.to_string()))?;
-        response
+        blocking_task.await
+            .map_err(|e| Status::new(Code::Internal, e.to_string()))?
     }
 }
 
@@ -103,7 +101,7 @@ impl MyselfChooser for ChooseMyselfImpl {
 
         let spawned = handle.spawn(async_chooser);
 
-        Ok(handle.block_on(spawned)??)
+        handle.block_on(spawned)?
     }
 }
 
@@ -148,7 +146,7 @@ pub async fn debug_request_myself(port: u16) -> Result<usize> {
             phone_number_option: None,
         },
         &User {
-            ds_uuid: Some(ds_uuid.clone()),
+            ds_uuid: Some(ds_uuid),
             id: 200,
             first_name_option: None,
             last_name_option: Some("User 200 LN".to_owned()),

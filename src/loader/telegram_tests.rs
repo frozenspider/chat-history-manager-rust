@@ -13,7 +13,6 @@ use crate::protobuf::history::message::*;
 use crate::protobuf::history::message_service::SealedValueOptional::*;
 
 use super::*;
-use super::super::*;
 
 lazy_static! {
     static ref RESOURCES_DIR: String =
@@ -65,7 +64,7 @@ fn loading_2020_01() {
     let myself = &dao.myself;
     assert_eq!(myself, &expected_myself(ds_uuid));
 
-    let member = ShortUser::new(32507588, None);
+    let member = ShortUser::new(UserId(32507588), None);
     let expected_users = vec![
         myself.clone(),
         User {
@@ -85,8 +84,8 @@ fn loading_2020_01() {
             username_option: None,
             phone_number_option: Some("+7 999 333 44 55".to_owned()),
         },
-        ShortUser::new_name_str(310242343, "Vlllllll").to_user(ds_uuid),
-        ShortUser::new_name_str(333333333, "Ddddddd Uuuuuuuu").to_user(ds_uuid),
+        ShortUser::new_name_str(UserId(310242343), "Vlllllll").to_user(ds_uuid),
+        ShortUser::new_name_str(UserId(333333333), "Ddddddd Uuuuuuuu").to_user(ds_uuid),
         User {
             ds_uuid: Some(ds_uuid.clone()),
             id: 555555555,
@@ -95,7 +94,7 @@ fn loading_2020_01() {
             username_option: None,
             phone_number_option: Some("+998 90 1112233".to_owned()),
         },
-        ShortUser::new_name_str(666666666, "Iiiii Kkkkkkkkkk").to_user(ds_uuid),
+        ShortUser::new_name_str(UserId(666666666), "Iiiii Kkkkkkkkkk").to_user(ds_uuid),
         User {
             ds_uuid: Some(ds_uuid.clone()),
             id: 777777777,
@@ -128,10 +127,10 @@ fn loading_2020_01() {
         assert_eq!(chat.msg_count, 5);
         msgs.iter().for_each(|m| {
             assert!(matches!(m.typed.unwrap_ref(), Typed::Regular(_)));
-            assert_eq!(m.from_id, member.id);
+            assert_eq!(m.from_id, *member.id);
         });
         assert_eq!(
-            msgs.iter().map(|m| unwrap_rich_text_copy(&m.text).clone()).collect_vec(),
+            msgs.iter().map(|m| RichText::unwrap_copy(&m.text).clone()).collect_vec(),
             vec![
                 "Message from null-names contact",
                 "These messages...",
@@ -158,7 +157,7 @@ fn loading_2021_05() {
 
     // We only know of myself + two users (other's IDs aren't known), as well as service "member".
     let service_member =
-        ShortUser::new_name_str(8112233, "My Old Group").to_user(ds_uuid);
+        ShortUser::new_name_str(UserId(8112233), "My Old Group").to_user(ds_uuid);
     let member1 = User {
         ds_uuid: Some(ds_uuid.clone()),
         id: 22222222,
@@ -219,11 +218,11 @@ fn loading_2021_06_supergroup() {
 
     // We only know of myself + two users (other's IDs aren't known), as well as service "member".
     let u222222222 =
-        ShortUser::new_name_str(222222222, "Sssss Pppppp").to_user(ds_uuid);
+        ShortUser::new_name_str(UserId(222222222), "Sssss Pppppp").to_user(ds_uuid);
     let u333333333 =
-        ShortUser::new_name_str(333333333, "Tttttt Yyyyyyy").to_user(ds_uuid);
+        ShortUser::new_name_str(UserId(333333333), "Tttttt Yyyyyyy").to_user(ds_uuid);
     let u444444444 =
-        ShortUser::new_name_str(444444444, "Vvvvvvvv Bbbbbbb").to_user(ds_uuid);
+        ShortUser::new_name_str(UserId(444444444), "Vvvvvvvv Bbbbbbb").to_user(ds_uuid);
 
     {
         let mut sorted_users = dao.users.iter().collect_vec();

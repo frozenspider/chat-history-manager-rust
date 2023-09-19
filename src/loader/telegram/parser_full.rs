@@ -61,7 +61,7 @@ pub fn parse(root_obj: &Object,
 
             for v in chats_arr {
                 if let Some(mut cwm) = parse_chat(json_path, as_object!(v, json_path, "chat"),
-                                                  ds_uuid, Some(&myself.id), &mut users)? {
+                                                  ds_uuid, Some(&myself.id()), &mut users)? {
                     let mut c = cwm.chat.as_mut().unwrap();
                     c.ds_uuid = Some(ds_uuid.clone());
                     chats_with_messages.push(cwm);
