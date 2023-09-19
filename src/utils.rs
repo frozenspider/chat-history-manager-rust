@@ -72,6 +72,7 @@ error_chain! {
     foreign_links {
         Io(std::io::Error);
         ParseInt(::std::num::ParseIntError);
+        ParseFloat(::std::num::ParseFloatError);
         Json(simd_json::Error);
         JsonTryType(simd_json::TryTypeError);
         NetworkTransport(tonic::transport::Error);

@@ -4,7 +4,8 @@ use super::*;
 
 #[test]
 fn basics() {
-    let dao = create_specific_dao();
+    let dao_holder = create_specific_dao();
+    let dao = dao_holder.dao;
     assert_eq!(dao.name(), &dao.name);
     assert_eq!(dao.storage_path(), &dao.ds_root);
     assert_eq!(dao.datasets().iter().collect_vec(), vec![&dao.dataset]);
@@ -23,7 +24,8 @@ fn basics() {
 
 #[test]
 fn messages_first_last_scroll() {
-    let dao = create_specific_dao();
+    let dao_holder = create_specific_dao();
+    let dao = dao_holder.dao;
     let ds_uuid = dao.datasets().remove(0).uuid.unwrap();
     let chat = dao.chats(&ds_uuid).remove(0).chat;
     let msgs = &dao.cwms[0].messages;
@@ -53,7 +55,8 @@ fn messages_first_last_scroll() {
 
 #[test]
 fn messages_befoer_after_between() -> EmptyRes {
-    let dao = create_specific_dao();
+    let dao_holder = create_specific_dao();
+    let dao = dao_holder.dao;
     let ds_uuid = dao.datasets().remove(0).uuid.unwrap();
     let chat = dao.chats(&ds_uuid).remove(0).chat;
     let msgs = &dao.cwms[0].messages;
@@ -97,7 +100,8 @@ fn messages_befoer_after_between() -> EmptyRes {
 
 #[test]
 fn messages_around() -> EmptyRes {
-    let dao = create_specific_dao();
+    let dao_holder = create_specific_dao();
+    let dao = dao_holder.dao;
     let ds_uuid = dao.datasets().remove(0).uuid.unwrap();
     let chat = dao.chats(&ds_uuid).remove(0).chat;
     let msgs = &dao.cwms[0].messages;
@@ -146,7 +150,7 @@ fn messages_around() -> EmptyRes {
 // Helpers
 //
 
-pub fn create_specific_dao() -> Box<InMemoryDao> {
+pub fn create_specific_dao() -> InMemoryDaoHolder {
     let users = vec![
         User {
             ds_uuid: Some(ZERO_PB_UUID.clone()),

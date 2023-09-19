@@ -12,6 +12,10 @@ use super::*;
 #[path = "in_memory_dao_tests.rs"]
 mod tests;
 
+macro_rules! subtract_or_zero {
+    ($idx:expr, $limit:expr) => { if $idx > $limit { $idx - $limit } else { 0 } };
+}
+
 #[derive(DeepSizeOf)]
 pub struct InMemoryDao {
     pub name: String,
@@ -29,7 +33,7 @@ impl InMemoryDao {
                myself: User,
                users: Vec<User>,
                cwms: Vec<ChatWithMessages>) -> Self {
-        assert!(ds_root.is_absolute());
+        let ds_root = ds_root.canonicalize().expect("Could not canonicalize dataset root");
         assert!(users.iter().any(|u| *u == myself));
         InMemoryDao { name, dataset, ds_root, myself, users, cwms }
     }
@@ -125,37 +129,36 @@ impl ChatHistoryDao for InMemoryDao {
 
     fn scroll_messages(&self, chat: &Chat, offset: usize, limit: usize) -> Vec<Message> {
         self.messages_option(chat.id)
-            .map(|msgs| cutout(msgs, offset as i32, (offset + limit) as i32))
+            .map(|msgs| cutout(msgs, offset, offset + limit))
             .unwrap_or(vec![])
     }
 
     fn last_messages(&self, chat: &Chat, limit: usize) -> Vec<Message> {
         self.messages_option(chat.id)
-            .map(|msgs| cutout(msgs, (msgs.len()) as i32 - limit as i32, msgs.len() as i32).to_vec())
+            .map(|msgs| {
+                cutout(msgs, subtract_or_zero!(msgs.len(), limit), msgs.len()).to_vec()
+            })
             .unwrap_or(vec![])
     }
 
     fn messages_before_impl(&self, chat: &Chat, msg: &Message, limit: usize) -> Result<Vec<Message>> {
         let msgs = self.messages_option(chat.id).unwrap();
-        let limit = limit as i32;
         let idx = msgs.iter().rposition(|m| m.internal_id == msg.internal_id);
         match idx {
             None => err!("Message not found!"),
             Some(idx) => {
-                let idx = idx as i32;
-                Ok(cutout(msgs, idx - limit, idx))
+                Ok(cutout(msgs, subtract_or_zero!(idx, limit), idx))
             }
         }
     }
 
     fn messages_after_impl(&self, chat: &Chat, msg: &Message, limit: usize) -> Result<Vec<Message>> {
         let msgs = self.messages_option(chat.id).unwrap();
-        let limit = limit as i32;
         let idx = msgs.iter().position(|m| m.internal_id == msg.internal_id);
         match idx {
             None => err!("Message not found!"),
             Some(idx) => {
-                let start = idx as i32 + 1;
+                let start = idx + 1;
                 Ok(cutout(msgs, start, start + limit))
             }
         }
@@ -201,8 +204,7 @@ impl ChatHistoryDao for InMemoryDao {
             }
             Some(idx) => {
                 let (p1, p2) = messages.split_at(idx);
-                let limit = limit as i32;
-                (cutout(p1, p1.len() as i32 - limit, p1.len() as i32),
+                (cutout(p1, subtract_or_zero!(p1.len(), limit), p1.len()),
                  cutout(p2, 0, limit))
             }
         }
@@ -223,9 +225,9 @@ impl ChatHistoryDao for InMemoryDao {
     }
 }
 
-fn cutout<T: Clone>(slice: &[T], start_inc: i32, end_exc: i32) -> Vec<T> {
-    fn sanitize<T>(idx: i32, slice: &[T]) -> usize {
-        cmp::min(cmp::max(idx, 0), slice.len() as i32) as usize
+fn cutout<T: Clone>(slice: &[T], start_inc: usize, end_exc: usize) -> Vec<T> {
+    fn sanitize<T>(idx: usize, slice: &[T]) -> usize {
+        cmp::min(cmp::max(idx, 0), slice.len())
     }
     slice[sanitize(start_inc, slice)..sanitize(end_exc, slice)].to_vec()
 }

@@ -1,5 +1,5 @@
 use std::fmt::{Display, Formatter};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use derive_deref::Deref;
 use itertools::Itertools;
@@ -7,6 +7,10 @@ use lazy_static::lazy_static;
 use regex::Regex;
 
 use crate::protobuf::history::*;
+
+use super::*;
+
+pub mod entity_equality;
 
 pub const UNNAMED: &str = "[unnamed]";
 pub const UNKNOWN: &str = "[unknown]";
@@ -17,8 +21,28 @@ pub const NO_INTERNAL_ID: MessageInternalId = MessageInternalId(-1);
 // Helper entities
 //
 
-#[derive(Deref)]
+#[derive(Deref, Debug)]
 pub struct DatasetRoot(pub PathBuf);
+
+impl DatasetRoot {
+    pub fn to_absolute(&self, path: &str) -> PathBuf {
+        let path = Path::new(path);
+        assert!(!path.is_absolute());
+        self.0.join(path)
+    }
+
+    pub fn to_relative(&self, path: &Path) -> Result<String> {
+        let ds_root = &self.0;
+        assert!(ds_root.is_absolute());
+        let path = path.canonicalize()?;
+        let path = path.to_str().ok_or("Path is not a valid string!")?;
+        let ds_root = ds_root.to_str().ok_or("Dataset root is not a valid string!")?;
+        if !path.starts_with(ds_root) {
+            bail!("Path {} is not under dataset root {}", path, ds_root);
+        }
+        Ok(path[(ds_root.len() + 1)..].to_owned())
+    }
+}
 
 #[derive(Deref, Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct UserId(pub i64);
@@ -31,10 +55,10 @@ impl UserId {
     pub fn is_valid(&self) -> bool { self.0 > 0 }
 }
 
-#[derive(Deref)]
+#[derive(Deref, Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct MessageSourceId(pub i64);
 
-#[derive(Deref)]
+#[derive(Deref, Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct MessageInternalId(pub i64);
 
 #[derive(Deref)]
@@ -102,23 +126,23 @@ pub struct ChatWithDetails {
 }
 
 impl ChatWithDetails {
-    // pub fn ds_uuid(&self) -> &PbUuid {
-    //     self.chat.ds_uuid.as_ref().unwrap()
-    // }
-    //
-    // /** Used to resolve plaintext members */
-    // pub fn resolve_member_index(&self, member_name: &str) -> Option<usize> {
-    //     self.members.iter().position(|m| m.pretty_name() == member_name)
-    // }
-    //
-    // /** Used to resolve plaintext members */
-    // pub fn resolve_member(&self, member_name: &str) -> Option<&User> {
-    //     self.resolve_member_index(member_name).map(|i| &self.members[i])
-    // }
-    //
-    // pub fn resolve_members(&self, member_names: Vec<String>) -> Vec<Option<&User>> {
-    //     member_names.iter().map(|mn| self.resolve_member(mn)).collect_vec()
-    // }
+    pub fn ds_uuid(&self) -> &PbUuid {
+        self.chat.ds_uuid.as_ref().unwrap()
+    }
+
+    /** Used to resolve plaintext members */
+    pub fn resolve_member_index(&self, member_name: &str) -> Option<usize> {
+        self.members.iter().position(|m| m.pretty_name() == member_name)
+    }
+
+    /** Used to resolve plaintext members */
+    pub fn resolve_member(&self, member_name: &str) -> Option<&User> {
+        self.resolve_member_index(member_name).map(|i| &self.members[i])
+    }
+
+    pub fn resolve_members(&self, member_names: &[String]) -> Vec<Option<&User>> {
+        member_names.iter().map(|mn| self.resolve_member(mn)).collect_vec()
+    }
 }
 
 impl Chat {
@@ -138,6 +162,8 @@ impl Chat {
 
 impl Message {
     pub fn internal_id(&self) -> MessageInternalId { MessageInternalId(self.internal_id) }
+
+    // pub fn source_id_option(&self) -> Option<MessageSourceId> { self.source_id_option.map(MessageSourceId) }
 
     pub fn timestamp(&self) -> Timestamp { Timestamp(self.timestamp) }
 }
@@ -232,6 +258,27 @@ impl RichText {
     }
 }
 
+impl Content {
+    pub fn path_file_option(&self, ds_root: &DatasetRoot) -> Option<PathBuf> {
+        use content::SealedValueOptional::*;
+        match self.sealed_value_optional.as_ref() { // @formatter:off
+            Some(Sticker(c))   => c.path_option.as_ref().map(|c| ds_root.to_absolute(c)),
+            Some(Photo(c))     => c.path_option.as_ref().map(|c| ds_root.to_absolute(c)),
+            Some(VoiceMsg(c))  => c.path_option.as_ref().map(|c| ds_root.to_absolute(c)),
+            Some(VideoMsg(c))  => c.path_option.as_ref().map(|c| ds_root.to_absolute(c)),
+            Some(Animation(c)) => c.path_option.as_ref().map(|c| ds_root.to_absolute(c)),
+            Some(File(c))      => c.path_option.as_ref().map(|c| ds_root.to_absolute(c)),
+            _ => None
+        } // @formatter:on
+    }
+}
+
+impl ContentLocation {
+    pub fn lat(&self) -> Result<f64> { self.lat_str.parse::<f64>().map_err(|e| e.into()) }
+
+    pub fn lon(&self) -> Result<f64> { self.lon_str.parse::<f64>().map_err(|e| e.into()) }
+}
+
 //
 // Master/slave specific entities
 //
@@ -299,7 +346,6 @@ pub fn make_searchable_string(components: &[RichTextElement], typed: &message::T
             .join(" ");
 
 
-    use message_service::SealedValueOptional::*;
     let typed_component_text: Vec<String> = match typed {
         message::Typed::Regular(MessageRegular { content_option, .. }) => {
             match content_option {
@@ -324,7 +370,8 @@ pub fn make_searchable_string(components: &[RichTextElement], typed: &message::T
                 }
             }
         }
-        message::Typed::Service(MessageService { sealed_value_optional: Some(m) }) =>
+        message::Typed::Service(MessageService { sealed_value_optional: Some(m) }) => {
+            use message_service::SealedValueOptional::*;
             match m {
                 GroupCreate(m) => vec![vec![m.title.clone()], m.members.clone()].into_iter().flatten().collect_vec(),
                 GroupInviteMembers(m) => m.members.clone(),
@@ -333,6 +380,7 @@ pub fn make_searchable_string(components: &[RichTextElement], typed: &message::T
                 GroupCall(m) => m.members.clone(),
                 _ => vec![],
             }
+        }
         _ => unreachable!()
     };
 

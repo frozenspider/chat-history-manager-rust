@@ -11,9 +11,11 @@ pub use crate::test_utils::*;
 // Reexporting utility stuff
 pub use crate::utils::*;
 pub use crate::utils::entity_utils::*;
+pub use crate::utils::entity_utils::entity_equality::*;
 
 mod protobuf;
 mod loader;
+mod merge;
 mod server;
 mod dao;
 mod utils;

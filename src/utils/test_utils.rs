@@ -1,3 +1,6 @@
+use std::collections::BTreeMap;
+use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use chrono::*;
@@ -7,8 +10,7 @@ use rand::Rng;
 use uuid::Uuid;
 use crate::dao::ChatHistoryDao;
 
-use crate::entity_utils::*;
-use crate::InMemoryDao;
+use crate::*;
 use crate::protobuf::history::*;
 
 lazy_static! {
@@ -32,19 +34,70 @@ pub fn dt(s: &str, offset: Option<&FixedOffset>) -> DateTime<FixedOffset> {
     offset.from_local_datetime(&NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S").unwrap()).unwrap()
 }
 
+pub fn random_alphanumeric(length: usize) -> String {
+    rand::thread_rng()
+        .sample_iter(&rand::distributions::Alphanumeric)
+        .take(length)
+        .map(char::from)
+        .collect()
+}
+
+pub fn create_named_file(path: &Path, content: &[u8]) -> EmptyRes {
+    let mut file = fs::File::create(&path)?;
+    file.write(content)?;
+    Ok(())
+}
+
+pub fn create_random_named_file(path: &Path) -> EmptyRes {
+    create_named_file(path, random_alphanumeric(256).as_bytes())
+}
+
+pub fn create_random_file(parent: &Path) -> Result<PathBuf> {
+    let path = parent.join(&format!("{}.bin", random_alphanumeric(30)));
+    create_random_named_file(&path)?;
+    Ok(path)
+}
+
 //
 // Entity creation helpers
 //
 
-type AmendMessageFn = fn(bool, &DatasetRoot, &mut Message);
-
 pub struct DaoEntities<MsgType> {
-    pub dao: Box<InMemoryDao>,
+    pub dao_holder: InMemoryDaoHolder,
     pub ds: Dataset,
     pub root: DatasetRoot,
     pub users: Vec<User>,
     pub cwd: ChatWithDetails,
-    pub msgs: Vec<MsgType>,
+    pub msgs: BTreeMap<MessageSourceId, MsgType>,
+}
+
+pub struct MergerHelper {
+    pub m: DaoEntities<MasterMessage>,
+    pub s: DaoEntities<SlaveMessage>,
+}
+
+impl MergerHelper {
+    const MAX_USER_ID: usize = 3;
+
+    pub fn random_user_id() -> usize {
+        let mut rng = rand::thread_rng();
+        rng.gen_range(1..=Self::MAX_USER_ID)
+    }
+
+    pub fn new_as_is(msgs1: Vec<Message>,
+                     msgs2: Vec<Message>) -> Self {
+        Self::new(msgs1, msgs2, &|_, _, _| ())
+    }
+
+    pub fn new(msgs1: Vec<Message>,
+               msgs2: Vec<Message>,
+               amend_message: &impl Fn(bool, &DatasetRoot, &mut Message)) -> Self {
+        let m =
+            create_dao_and_entities(true, "One", msgs1, Self::MAX_USER_ID, amend_message, MasterMessage);
+        let s =
+            create_dao_and_entities(false, "Two", msgs2, Self::MAX_USER_ID, amend_message, SlaveMessage);
+        MergerHelper { m, s }
+    }
 }
 
 fn create_dao_and_entities<MsgType>(
@@ -52,13 +105,16 @@ fn create_dao_and_entities<MsgType>(
     name_suffix: &str,
     src_msgs: Vec<Message>,
     num_users: usize,
-    amend_message: AmendMessageFn,
+    amend_message: &impl Fn(bool, &DatasetRoot, &mut Message),
     wrap_message: fn(Message) -> MsgType,
 ) -> DaoEntities<MsgType> {
-    let dao = create_simple_dao(is_master, name_suffix, src_msgs, num_users, amend_message);
+    let dao_holder = create_simple_dao(is_master, name_suffix, src_msgs, num_users, amend_message);
     let (ds, root, users, cwd, msgs) =
-        get_simple_dao_entities(dao.as_ref());
-    DaoEntities { dao, ds, root, users, cwd, msgs: msgs.into_iter().map(wrap_message).collect() }
+        get_simple_dao_entities(dao_holder.dao.as_ref());
+    let duplicates = msgs.iter().map(|m| m.source_id()).counts().into_iter().filter(|pair| pair.1 > 1).collect_vec();
+    assert!(duplicates.is_empty(), "Duplicate messages found! {:?}", duplicates);
+    let msgs = msgs.into_iter().map(|m| (m.source_id(), wrap_message(m))).collect();
+    DaoEntities { dao_holder, ds, root, users, cwd, msgs }
 }
 
 fn get_simple_dao_entities(dao: &impl ChatHistoryDao)
@@ -76,10 +132,10 @@ fn create_simple_dao(
     name_suffix: &str,
     messages: Vec<Message>,
     num_users: usize,
-    amend_message: AmendMessageFn,
-) -> Box<InMemoryDao> {
-    let member_ids = (1..num_users).map(|i| i as i64).collect();
-    let users = (1..num_users).map(|i| create_user(&ZERO_PB_UUID, i as i64)).collect_vec();
+    amend_message: &impl Fn(bool, &DatasetRoot, &mut Message),
+) -> InMemoryDaoHolder {
+    let member_ids = (1..=num_users).map(|i| i as i64).collect();
+    let users = (1..=num_users).map(|i| create_user(&ZERO_PB_UUID, i as i64)).collect_vec();
     let chat = create_group_chat(&ZERO_PB_UUID, 1, "One", member_ids, messages.len());
     let cwms = vec![ChatWithMessages { chat: Some(chat), messages }];
     create_dao(name_suffix, users, cwms, |ds_root, m| amend_message(is_master, ds_root, m))
@@ -90,7 +146,7 @@ pub fn create_dao(
     users: Vec<User> /* Last one would be self. */,
     cwms: Vec<ChatWithMessages>,
     amend_messages: impl Fn(&DatasetRoot, &mut Message),
-) -> Box<InMemoryDao> {
+) -> InMemoryDaoHolder {
     assert!({
                 let user_ids = users.iter().map(|u| u.id).collect_vec();
                 cwms.iter()
@@ -107,7 +163,8 @@ pub fn create_dao(
     let mut users = users;
     users.iter_mut().for_each(|u| u.ds_uuid = ds.uuid.clone());
 
-    let ds_root = DatasetRoot(std::env::temp_dir().join("chm-rust"));
+    let tmp_dir = TmpDir::new();
+    let ds_root = DatasetRoot(tmp_dir.path.clone());
 
     let mut cwms = cwms;
     for cwm in cwms.iter_mut() {
@@ -115,7 +172,10 @@ pub fn create_dao(
         cwm.messages.iter_mut().for_each(|m| amend_messages(&ds_root, m));
     }
     let myself = users.last().unwrap().clone();
-    Box::new(InMemoryDao::new("Test Dao".to_owned(), ds, ds_root.0, myself, users, cwms))
+    InMemoryDaoHolder {
+        dao: Box::new(InMemoryDao::new("Test Dao".to_owned(), ds, ds_root.0, myself, users, cwms)),
+        tmp_dir: tmp_dir,
+    }
 }
 
 fn create_user(ds_uuid: &PbUuid, id: i64) -> User {
@@ -142,14 +202,14 @@ fn create_group_chat(ds_uuid: &PbUuid, id: i64, name_suffix: &str, member_ids: V
     }
 }
 
-pub fn create_regular_message(idx: i64, user_id: i64) -> Message {
+pub fn create_regular_message(idx: usize, user_id: usize) -> Message {
     let mut rng = rand::thread_rng();
     // Any previous message
     let reply_to_message_id_option =
-        if idx > 0 { Some(rng.gen_range(0..idx)) } else { None };
+        if idx > 0 { Some(rng.gen_range(0..idx) as i64) } else { None };
 
     let typed = message::Typed::Regular(MessageRegular {
-        edit_timestamp_option: Some((BASE_DATE.clone() + Duration::minutes(idx) + Duration::seconds(5)).timestamp()),
+        edit_timestamp_option: Some((BASE_DATE.clone() + Duration::minutes(idx as i64) + Duration::seconds(5)).timestamp()),
         reply_to_message_id_option: reply_to_message_id_option,
         forward_from_name_option: Some(format!("u{user_id}")),
         content_option: Some(Content {
@@ -162,12 +222,47 @@ pub fn create_regular_message(idx: i64, user_id: i64) -> Message {
     let text = vec![RichText::make_plain(format!("Hello there, {idx}!"))];
     let searchable_string = make_searchable_string(&text, &typed);
     Message {
-        internal_id: idx * 100,
-        source_id_option: Some(idx),
-        timestamp: (BASE_DATE.clone() + Duration::minutes(idx)).timestamp(),
-        from_id: user_id,
+        internal_id: idx as i64 * 100,
+        source_id_option: Some(idx as i64),
+        timestamp: (BASE_DATE.clone() + Duration::minutes(idx as i64)).timestamp(),
+        from_id: user_id as i64,
         text,
         searchable_string,
         typed: Some(typed),
+    }
+}
+
+//
+// Helper traits/impls
+//
+
+pub struct InMemoryDaoHolder {
+    pub dao: Box<InMemoryDao>,
+
+    // We need to hold tmp_dir here to prevent early destruction.
+    #[allow(unused)]
+    tmp_dir: TmpDir,
+}
+
+impl Message {
+    pub fn source_id(&self) -> MessageSourceId { MessageSourceId(self.source_id_option.unwrap()) }
+}
+
+pub struct TmpDir {
+    pub path: PathBuf,
+}
+
+impl TmpDir {
+    pub fn new() -> Self {
+        let dir_name = format!("chm-rust_{}", random_alphanumeric(10));
+        let path = std::env::temp_dir().canonicalize().unwrap().join(dir_name);
+        fs::create_dir(&path).expect("Can't create temp directory!");
+        TmpDir { path }
+    }
+}
+
+impl Drop for TmpDir {
+    fn drop(&mut self) {
+        fs::remove_dir_all(&self.path).expect(format!("Failed to remove temporary dir '{}'", self.path.to_str().unwrap()).as_str())
     }
 }
