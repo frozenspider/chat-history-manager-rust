@@ -1,24 +1,24 @@
 use std::borrow::Cow;
-use std::cell::RefCell;
-use std::collections::HashSet;
+use std::cell::{Cell, RefCell};
+use std::collections::{HashMap, HashSet};
+use std::fs;
 use std::num::ParseIntError;
 use std::ops::Deref;
 use std::path::{Path, PathBuf};
+use std::time::Instant;
 
 use chrono::{Local, NaiveDate};
 use itertools::Itertools;
 use lazy_static::lazy_static;
 use regex::Regex;
-use simd_json::{BorrowedValue, StaticNode, Value as JValue};
-use simd_json::borrowed::{Object, Value};
+use uuid::Uuid;
 
 use crate::*;
 use crate::dao::in_memory_dao::InMemoryDao;
 use crate::entities::*;
+pub use crate::loader::json_utils::*;
 use crate::protobuf::*;
 use crate::protobuf::history::*;
-
-use super::*;
 
 mod parser_full;
 mod parser_single;
@@ -140,7 +140,7 @@ struct ExpectedMessageField<'lt> {
     optional_fields: HashSet<&'lt str, Hasher>,
 }
 
-pub fn parse_file(path: &Path, ds_uuid: &Uuid, myself_chooser: &dyn ChooseMyselfTrait) -> Result<Box<InMemoryDao>> {
+pub fn parse_telegram_file(path: &Path, ds_uuid: &Uuid, myself_chooser: &impl MyselfChooser) -> Result<Box<InMemoryDao>> {
     let path: PathBuf =
         if !path.ends_with("result.json") {
             path.join("result.json")

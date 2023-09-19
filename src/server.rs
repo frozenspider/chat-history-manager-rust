@@ -1,4 +1,5 @@
 use std::net::SocketAddr;
+use std::path::Path;
 
 use itertools::Itertools;
 use tokio::runtime::Handle;
@@ -33,8 +34,9 @@ impl HistoryLoader for ChatHistoryManagerServer {
 
         let blocking_task = tokio::task::spawn_blocking(move || {
             let myself_chooser = ChooseMyselfImpl { myself_chooser_port };
+            let path = Path::new(&request.get_ref().path);
             let response =
-                json::parse_file(&request.get_ref().path, &myself_chooser)
+                loader::load(path, &myself_chooser)
                     .map_err(|err| Status::new(Code::Internal, error_to_string(&err)))
                     .map(|dao|
                         ParseHistoryFileResponse {
@@ -82,7 +84,7 @@ struct ChooseMyselfImpl {
     myself_chooser_port: u16,
 }
 
-impl ChooseMyselfTrait for ChooseMyselfImpl {
+impl MyselfChooser for ChooseMyselfImpl {
     fn choose_myself(&self, users: &[&User]) -> Result<usize> {
         // let mut pool = LocalPool::new();
         // let spawner = pool.spawner();

@@ -1,34 +1,21 @@
-use std::cell::Cell;
-use std::collections::HashMap;
-use std::fs;
 use std::hash::BuildHasherDefault;
-use std::path::Path;
-use std::time::Instant;
-use hashers::fx_hash::FxHasher;
 
-use simd_json::{BorrowedValue, ValueAccess, ValueType};
-use uuid::Uuid;
+use hashers::fx_hash::FxHasher;
+pub use simd_json::{BorrowedValue, StaticNode, Value as JValue, ValueAccess, ValueType};
+pub use simd_json::borrowed::{Object, Value};
 
 use crate::*;
 use crate::entities::*;
-use crate::dao::in_memory_dao::InMemoryDao;
 
-mod telegram;
+pub type Hasher = BuildHasherDefault<FxHasher>;
 
-type Hasher = BuildHasherDefault<FxHasher>;
-
-struct ParseCallback<'a> {
+pub struct ParseCallback<'a> {
     /// Key being processed
-    key: &'a str,
+    pub key: &'a str,
     /// Value corresponding to tha key
-    value: &'a BorrowedValue<'a>,
+    pub value: &'a BorrowedValue<'a>,
     /// Action to take when key is not expected
-    wrong_key_action: &'a dyn Fn() -> EmptyRes,
-}
-
-pub fn parse_file(path: &str, choose_myself: &dyn ChooseMyselfTrait) -> Result<Box<InMemoryDao>> {
-    let uuid = Uuid::new_v4();
-    telegram::parse_file(Path::new(path), &uuid, choose_myself)
+    pub wrong_key_action: &'a dyn Fn() -> EmptyRes,
 }
 
 //
@@ -143,23 +130,23 @@ macro_rules! get_field_string_option {
 // Utility functions
 //
 
-fn name_or_unnamed(name_option: &Option<String>) -> String {
+pub fn name_or_unnamed(name_option: &Option<String>) -> String {
     name_option.as_ref().cloned().unwrap_or(UNNAMED.to_owned())
 }
 
-fn hasher() -> Hasher {
+pub fn hasher() -> Hasher {
     BuildHasherDefault::<FxHasher>::default()
 }
 
-fn parse_bw_as_object(bw: &BorrowedValue,
-                      path: &str,
-                      process: impl FnMut(ParseCallback) -> EmptyRes) -> EmptyRes {
+pub fn parse_bw_as_object(bw: &BorrowedValue,
+                          path: &str,
+                          process: impl FnMut(ParseCallback) -> EmptyRes) -> EmptyRes {
     parse_object(as_object!(bw, path), path, process)
 }
 
-fn parse_object(obj: &simd_json::borrowed::Object,
-                path: &str,
-                mut process: impl FnMut(ParseCallback) -> EmptyRes) -> EmptyRes {
+pub fn parse_object(obj: &simd_json::borrowed::Object,
+                    path: &str,
+                    mut process: impl FnMut(ParseCallback) -> EmptyRes) -> EmptyRes {
     for (k, v) in obj.iter() {
         process(ParseCallback {
             key: k,
@@ -170,4 +157,4 @@ fn parse_object(obj: &simd_json::borrowed::Object,
     Ok(())
 }
 
-fn consume() -> EmptyRes { Ok(()) }
+pub fn consume() -> EmptyRes { Ok(()) }

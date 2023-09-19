@@ -1,6 +1,7 @@
 use std::collections::Bound;
 use std::fmt::Debug;
 use std::ops::RangeBounds;
+use std::time::Instant;
 
 pub use error_chain::{bail, error_chain};
 
@@ -70,4 +71,14 @@ pub fn error_to_string(e: &Error) -> String {
         s.push_str("\n");
     }
     s
+}
+
+pub fn measure<T, R>(block: T, after_call: impl Fn(&R, u128)) -> R
+    where T: FnOnce() -> R
+{
+    let start_time = Instant::now();
+    let result = block();
+    let elapsed = start_time.elapsed().as_millis();
+    after_call(&result, elapsed);
+    result
 }

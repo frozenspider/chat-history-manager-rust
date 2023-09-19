@@ -1,5 +1,4 @@
-use crate::json::*;
-use crate::json::telegram::*;
+use super::*;
 
 pub fn parse(root_obj: &Object,
              ds_uuid: &PbUuid,
