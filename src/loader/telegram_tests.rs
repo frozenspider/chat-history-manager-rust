@@ -6,6 +6,7 @@ use lazy_static::lazy_static;
 use pretty_assertions::{assert_eq, assert_ne};
 
 use crate::{NoChooser, User};
+use crate::dao::ChatHistoryDao;
 use crate::entities::*;
 use crate::protobuf::history::*;
 use crate::protobuf::history::content::SealedValueOptional::*;
@@ -14,16 +15,7 @@ use crate::protobuf::history::message_service::SealedValueOptional::*;
 
 use super::*;
 
-lazy_static! {
-    static ref RESOURCES_DIR: String =
-        concat!(env!("CARGO_MANIFEST_DIR"), "/resources/test").replace("//", "/");
-}
-
-static TELEGRAM: TelegramDataLoader = TelegramDataLoader;
-
-fn resource(relative_path: &str) -> PathBuf {
-    Path::new(RESOURCES_DIR.as_str()).join(relative_path)
-}
+static LOADER: TelegramDataLoader = TelegramDataLoader;
 
 trait ExtOption<T> {
     fn unwrap_ref(&self) -> &T;
@@ -51,10 +43,10 @@ fn expected_myself(ds_uuid: &PbUuid) -> User {
 #[test]
 fn loading_2020_01() -> EmptyRes {
     let res = resource("telegram_2020-01");
-    TELEGRAM.looks_about_right(&res)?;
+    LOADER.looks_about_right(&res)?;
 
     let dao =
-        TELEGRAM.load(&res, &NoChooser)?;
+        LOADER.load(&res, &NoChooser)?;
 
     let ds_uuid = dao.dataset.uuid.unwrap_ref();
     let myself = &dao.myself;
@@ -118,7 +110,7 @@ fn loading_2020_01() -> EmptyRes {
         assert!(chat.member_ids.contains(&myself.id));
         assert!(chat.member_ids.contains(&member.id));
 
-        let msgs: &Vec<Message> = &cwm.messages; // TODO: Ask DAO instead?
+        let msgs = dao.first_messages(&chat, 99999);
         assert_eq!(msgs.len(), 5);
         assert_eq!(chat.msg_count, 5);
         msgs.iter().for_each(|m| {
@@ -146,10 +138,10 @@ fn loading_2020_01() -> EmptyRes {
 #[test]
 fn loading_2021_05() -> EmptyRes {
     let res = resource("telegram_2021-05");
-    TELEGRAM.looks_about_right(&res)?;
+    LOADER.looks_about_right(&res)?;
 
     let dao =
-        TELEGRAM.load(&res, &NoChooser)?;
+        LOADER.load(&res, &NoChooser)?;
 
     let ds_uuid = dao.dataset.uuid.unwrap_ref();
     let myself = &dao.myself;
@@ -195,7 +187,7 @@ fn loading_2021_05() -> EmptyRes {
         assert_eq!(chat.member_ids[2], member1.id);
         assert_eq!(chat.member_ids[3], member2.id);
 
-        let msgs: &Vec<Message> = &cwm.messages; // TODO: Ask DAO instead?
+        let msgs = dao.first_messages(&chat, 99999);
         assert_eq!(msgs.len(), 3);
         assert_eq!(chat.msg_count, 3);
         let typed = msgs.iter().map(|m| m.typed.unwrap_ref()).collect_vec();
@@ -212,10 +204,10 @@ fn loading_2021_05() -> EmptyRes {
 #[test]
 fn loading_2021_06_supergroup() -> EmptyRes {
     let res = resource("telegram_2021-06_supergroup");
-    TELEGRAM.looks_about_right(&res)?;
+    LOADER.looks_about_right(&res)?;
 
     let dao =
-        TELEGRAM.load(&res, &NoChooser)?;
+        LOADER.load(&res, &NoChooser)?;
 
     let ds_uuid = dao.dataset.uuid.unwrap_ref();
     let myself = &dao.myself;
@@ -255,7 +247,7 @@ fn loading_2021_06_supergroup() -> EmptyRes {
         assert_eq!(chat.member_ids[2], u333333333.id);
         assert_eq!(chat.member_ids[3], u444444444.id);
 
-        let msgs: &Vec<Message> = &cwm.messages; // TODO: Ask DAO instead?
+        let msgs = dao.first_messages(&chat, 99999);
         assert_eq!(msgs.len(), 4);
         assert_eq!(chat.msg_count, 4);
 
@@ -340,10 +332,10 @@ fn loading_2021_06_supergroup() -> EmptyRes {
 #[test]
 fn loading_2021_07() -> EmptyRes {
     let res = resource("telegram_2021-07");
-    TELEGRAM.looks_about_right(&res)?;
+    LOADER.looks_about_right(&res)?;
 
     let dao =
-        TELEGRAM.load(&res, &NoChooser)?;
+        LOADER.load(&res, &NoChooser)?;
 
     let ds_uuid = dao.dataset.uuid.unwrap_ref();
     let myself = &dao.myself;
@@ -376,7 +368,7 @@ fn loading_2021_07() -> EmptyRes {
         assert_eq!(chat.member_ids[0], myself.id);
         assert_eq!(chat.member_ids[1], member.id);
 
-        let msgs: &Vec<Message> = &cwm.messages; // TODO: Ask DAO instead?
+        let msgs = dao.first_messages(&chat, 99999);
         assert_eq!(msgs.len(), 2);
         assert_eq!(chat.msg_count, 2);
         // let typed = msgs.iter().map(|m| m.typed.unwrap_ref()).collect_vec();
@@ -414,10 +406,10 @@ fn loading_2021_07() -> EmptyRes {
 #[test]
 fn loading_2023_01() -> EmptyRes {
     let res = resource("telegram_2023-01");
-    TELEGRAM.looks_about_right(&res)?;
+    LOADER.looks_about_right(&res)?;
 
     let dao =
-        TELEGRAM.load(&res, &NoChooser)?;
+        LOADER.load(&res, &NoChooser)?;
 
     // Parsing as UTC+5.
     let offset = FixedOffset::east_opt(5 * 3600).unwrap();
@@ -462,7 +454,7 @@ fn loading_2023_01() -> EmptyRes {
         assert_eq!(chat.member_ids[1], member.id);
         assert_eq!(chat.member_ids[2], channel_user.id);
 
-        let msgs: &Vec<Message> = &cwm.messages; // TODO: Ask DAO instead?
+        let msgs = dao.first_messages(&chat, 99999);
         assert_eq!(msgs.len(), 6);
         assert_eq!(chat.msg_count, 6);
 
@@ -575,10 +567,10 @@ fn loading_2023_01() -> EmptyRes {
 #[test]
 fn loading_2023_08() -> EmptyRes {
     let res = resource("telegram_2023-08");
-    TELEGRAM.looks_about_right(&res)?;
+    LOADER.looks_about_right(&res)?;
 
     let dao =
-        TELEGRAM.load(&res, &NoChooser)?;
+        LOADER.load(&res, &NoChooser)?;
 
     let ds_uuid = dao.dataset.uuid.unwrap_ref();
     let myself = &dao.myself;

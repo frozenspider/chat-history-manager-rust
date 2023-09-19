@@ -1,29 +1,35 @@
+use std::fs::File;
+use std::io::{BufRead, BufReader};
 use std::path::Path;
+
 use itertools::{Either, Itertools};
+
 use crate::*;
 use crate::loader::telegram::TelegramDataLoader;
 
-mod telegram;
 mod json_utils;
+mod telegram;
 
 trait DataLoader {
     fn name(&self) -> &'static str;
 
-    fn looks_about_right(&self, root_path: &Path) -> EmptyRes {
-        ensure_file_presence(root_path)?;
-        self.looks_about_right_inner(root_path)
+    // TODO: Add allowed files filter
+
+    fn looks_about_right(&self, path: &Path) -> EmptyRes {
+        ensure_file_presence(path)?;
+        self.looks_about_right_inner(path)
     }
 
-    fn looks_about_right_inner(&self, root_path: &Path) -> EmptyRes;
+    fn looks_about_right_inner(&self, path: &Path) -> EmptyRes;
 
-    fn load(&self, root_path: &Path, myself_chooser: &dyn MyselfChooser) -> Result<Box<InMemoryDao>> {
-        let root_path_str = ensure_file_presence(root_path)?;
+    fn load(&self, path: &Path, myself_chooser: &dyn MyselfChooser) -> Result<Box<InMemoryDao>> {
+        let root_path_str = ensure_file_presence(path)?;
         measure(|| {
-            self.load_inner(root_path, myself_chooser)
+            self.load_inner(path, myself_chooser)
         }, |_, t| log::info!("File {} loaded in {t} ms", root_path_str))
     }
 
-    fn load_inner(&self, root_path: &Path, myself_chooser: &dyn MyselfChooser) -> Result<Box<InMemoryDao>>;
+    fn load_inner(&self, path: &Path, myself_chooser: &dyn MyselfChooser) -> Result<Box<InMemoryDao>>;
 }
 
 fn path_to_str(path: &Path) -> Result<&str> {
@@ -63,4 +69,10 @@ pub fn load(root_path: &Path, myself_chooser: &dyn MyselfChooser) -> Result<Box<
             }
         }
     })
+}
+
+fn first_line(path: &Path) -> Result<String> {
+    let input = File::open(path)?;
+    let buffered = BufReader::new(input);
+    Ok(buffered.lines().next().ok_or("File is empty")??.trim().to_owned())
 }

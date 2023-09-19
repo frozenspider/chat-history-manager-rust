@@ -4,23 +4,22 @@ use std::hash::BuildHasherDefault;
 use std::ops::RangeBounds;
 use std::time::Instant;
 
+use chrono::Local;
 pub use error_chain::{bail, error_chain};
 use hashers::fx_hash::FxHasher;
+use lazy_static::lazy_static;
 
-error_chain! {
-    types {
-        Error, ErrorKind, ResultExt, Result;
-    }
+//
+// Constants
+//
 
-    foreign_links {
-        Io(std::io::Error);
-        ParseInt(::std::num::ParseIntError);
-        Json(simd_json::Error);
-        JsonTryType(simd_json::TryTypeError);
-        NetworkTransport(tonic::transport::Error);
-        TaskJoin(tokio::task::JoinError);
-    }
+lazy_static! {
+    pub static ref LOCAL_TZ: Local = Local::now().timezone();
 }
+
+//
+// Smart slice
+//
 
 pub trait SmartSlice {
     type Item;
@@ -54,6 +53,25 @@ impl<T> SmartSlice for Vec<T> {
     }
 }
 
+//
+// Error handling
+//
+
+error_chain! {
+    types {
+        Error, ErrorKind, ResultExt, Result;
+    }
+
+    foreign_links {
+        Io(std::io::Error);
+        ParseInt(::std::num::ParseIntError);
+        Json(simd_json::Error);
+        JsonTryType(simd_json::TryTypeError);
+        NetworkTransport(tonic::transport::Error);
+        TaskJoin(tokio::task::JoinError);
+    }
+}
+
 pub type EmptyRes = Result<()>;
 
 #[macro_export]
@@ -74,6 +92,10 @@ pub fn error_to_string(e: &Error) -> String {
     }
     s
 }
+
+//
+// Time measurement
+//
 
 pub fn measure<T, R>(block: T, after_call: impl Fn(&R, u128)) -> R
     where T: FnOnce() -> R

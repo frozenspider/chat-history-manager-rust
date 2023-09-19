@@ -2,8 +2,6 @@ use std::borrow::Cow;
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::fs;
-use std::fs::File;
-use std::io::{BufRead, BufReader};
 use std::num::ParseIntError;
 use std::ops::Deref;
 use std::path::{Path, PathBuf};
@@ -151,23 +149,21 @@ struct ExpectedMessageField<'lt> {
 pub struct TelegramDataLoader;
 
 impl DataLoader for TelegramDataLoader {
-    fn name(&self) -> &'static str { "telegram" }
+    fn name(&self) -> &'static str { "Telegram" }
 
-    fn looks_about_right_inner(&self, root_path: &Path) -> EmptyRes {
-        let path = get_real_path(root_path);
+    fn looks_about_right_inner(&self, src_path: &Path) -> EmptyRes {
+        let path = get_real_path(src_path);
         if !path.exists() {
-            bail!("{} not found in {}", RESULT_JSON, path_to_str(root_path)?);
+            bail!("{} not found in {}", RESULT_JSON, path_to_str(src_path)?);
         }
-        let input = File::open(&path)?;
-        let buffered = BufReader::new(input);
-        if !buffered.lines().next().ok_or("File is empty")??.trim().starts_with('{') {
+        if !first_line(&path)?.starts_with('{') {
             bail!("{} is not a valid JSON file", path_to_str(&path)?);
         }
         Ok(())
     }
 
-    fn load_inner(&self, root_path: &Path, myself_chooser: &dyn MyselfChooser) -> Result<Box<InMemoryDao>> {
-        parse_telegram_file(root_path, Uuid::new_v4(), myself_chooser)
+    fn load_inner(&self, path: &Path, myself_chooser: &dyn MyselfChooser) -> Result<Box<InMemoryDao>> {
+        parse_telegram_file(path, Uuid::new_v4(), myself_chooser)
     }
 }
 
@@ -1081,9 +1077,6 @@ fn parse_timestamp(s: &str) -> Result<i64> {
 }
 
 fn parse_datetime(s: &str) -> Result<i64> {
-    lazy_static! {
-        static ref TZ: Local = Local::now().timezone();
-    }
     // NaiveDateTime::parse_from_str is very slow! So we're parsing by hand.
     // Otherwise, we would use const DATE_TIME_FMT: &str = "%Y-%m-%dT%H:%M:%S";
     let split =
@@ -1094,7 +1087,7 @@ fn parse_datetime(s: &str) -> Result<i64> {
     let date =
         NaiveDate::from_ymd_opt(split[0] as i32, split[1], split[2]).unwrap()
             .and_hms_opt(split[3], split[4], split[5]).unwrap()
-            .and_local_timezone(*TZ)
+            .and_local_timezone(*LOCAL_TZ)
             .single()
             .ok_or(format!("failed to parse date {}: ambiguous?", s))?;
     Ok(date.timestamp())
