@@ -5,10 +5,10 @@ edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [dependencies]
-itertools = "0.10.5"
+itertools = "0.11.0"
 simd-json = "0.10.3"
 mimalloc = "0.1.37" # As advise by SIMD Json docs
-chrono = "0.4.26"
+chrono = "0.4.31"
 regex = "1.8.4"
 lazy_static = "1.4.0"
 hashers = "1.0.1"
@@ -18,10 +18,10 @@ error-chain = "0.12.4"
 
 # Protobuf and web service
 protobuf = "3.2.0"
-tonic = "0.9.2"
-tonic-reflection = "0.9.2"
+tonic = "0.10.0"
+tonic-reflection = "0.10.0"
 tokio = { version = "1.28.2", features = ["macros", "rt-multi-thread"] }
-prost = "0.11.9"
+prost = "0.12.1"
 unicode-segmentation = "1.10.1"
 deepsize = "0.2.0"
 
@@ -41,4 +41,4 @@ features = [
 pretty_assertions = "1.4.0"
 
 [build-dependencies]
-tonic-build = "0.9.2"
+tonic-build = "0.10.0"

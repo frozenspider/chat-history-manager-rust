@@ -23,12 +23,11 @@ fn resource(relative_path: &str) -> String {
     [RESOURCES_DIR.as_str(), relative_path].join("/")
 }
 
-fn verify_result<T, E: std::fmt::Display>(r: Result<T, E>) -> T {
+fn verify_result<T>(r: Result<T>) -> T {
     match r {
         Ok(res) => res,
         Err(e) => {
-            panic!(r#"Result has an error:
-{}"#, e)
+            panic!("Result has an error:\n{}", error_to_string(&e))
         }
     }
 }

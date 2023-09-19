@@ -344,15 +344,13 @@ fn parse_chat(json_path: &str,
     chat.msg_count = messages.len() as i32;
 
     // Undo the shifts introduced by Telegram 2021-05.
-    match ChatType::from_i32(chat.tpe) {
-        Some(ChatType::Personal) if chat.id < PERSONAL_CHAT_ID_SHIFT =>
+    match ChatType::try_from(chat.tpe).chain_err(|| "Chat type has no associated enum")? {
+        ChatType::Personal if chat.id < PERSONAL_CHAT_ID_SHIFT =>
             chat.id += PERSONAL_CHAT_ID_SHIFT,
-        Some(ChatType::PrivateGroup) if chat.id < GROUP_CHAT_ID_SHIFT =>
+        ChatType::PrivateGroup if chat.id < GROUP_CHAT_ID_SHIFT =>
             chat.id += GROUP_CHAT_ID_SHIFT,
-        Some(_etc) =>
+        _etc =>
             { /* Don't change anything. */ }
-        None =>
-            return err!("Chat type has no associated enum: {}", chat.tpe)
     }
 
     if let Some(myself_id) = myself_id_option {
