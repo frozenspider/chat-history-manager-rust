@@ -1,10 +1,8 @@
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
-use itertools::Itertools;
-
 use crate::protobuf::history::*;
-use crate::entities::*;
+use crate::entity_utils::*;
 use crate::*;
 
 pub mod in_memory_dao;
@@ -64,6 +62,7 @@ pub trait ChatHistoryDao {
 
     fn messages_before_impl(&self, chat: &Chat, msg: &Message, limit: usize) -> Result<Vec<Message>>;
 
+    // TODO: Rework to exclude given message itself
     /**
      * Return N messages after the given one (inclusive).
      * Message must be present, so the result would contain at least one element.

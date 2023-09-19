@@ -9,6 +9,15 @@ use regex::Regex;
 use crate::protobuf::history::*;
 use crate::protobuf::history::message_service::SealedValueOptional;
 
+pub const UNNAMED: &str = "[unnamed]";
+pub const UNKNOWN: &str = "[unknown]";
+
+pub const NO_INTERNAL_ID: MessageInternalId = MessageInternalId(-1);
+
+//
+// Helper entities
+//
+
 #[derive(Deref)]
 pub struct DatasetRoot(pub PathBuf);
 
@@ -35,11 +44,6 @@ pub struct Timestamp(pub i64);
 impl Timestamp {
     pub const MAX: Timestamp = Timestamp(i64::MAX);
 }
-
-pub const UNNAMED: &str = "[unnamed]";
-pub const UNKNOWN: &str = "[unknown]";
-
-pub const NO_INTERNAL_ID: MessageInternalId = MessageInternalId(-1);
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ShortUser {
@@ -85,6 +89,10 @@ impl User {
     pub fn pretty_name(&self) -> String { unimplemented!() }
 }
 
+impl Dataset {
+    pub fn uuid(&self) -> &PbUuid { self.uuid.as_ref().unwrap() }
+}
+
 pub struct ChatWithDetails {
     pub chat: Chat,
     pub last_msg_option: Option<Message>,
@@ -122,12 +130,14 @@ impl Chat {
         format!("'{}' (#${})", name_or_unnamed(&self.name_option), self.id)
     }
 
-    pub fn member_ids(& self) -> impl Iterator<Item=UserId> + '_ {
+    pub fn member_ids(&self) -> impl Iterator<Item=UserId> + '_ {
         self.member_ids.iter().map(|id| UserId(*id))
     }
 }
 
 impl Message {
+    pub fn internal_id(&self) -> MessageInternalId { MessageInternalId(self.internal_id) }
+
     pub fn timestamp(&self) -> Timestamp { Timestamp(self.timestamp) }
 }
 
@@ -220,6 +230,49 @@ impl RichText {
         }
     }
 }
+
+//
+// Master/slave specific entities
+//
+
+#[derive(Deref, Copy, Clone, Debug, PartialEq, Eq)]
+pub struct MasterInternalId(i64);
+
+#[derive(Deref, Copy, Clone, Debug, PartialEq, Eq)]
+pub struct SlaveInternalId(i64);
+
+#[derive(Deref, Clone, Debug)]
+pub struct MasterMessage(pub Message);
+
+impl MasterMessage {
+    fn typed_id(&self) -> MasterInternalId { MasterInternalId(self.0.internal_id) }
+}
+
+impl PartialEq for MasterMessage {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.internal_id == other.0.internal_id &&
+            self.0.source_id_option == other.0.source_id_option
+    }
+}
+
+#[derive(Deref, Clone, Debug)]
+pub struct SlaveMessage(pub Message);
+
+impl SlaveMessage {
+    fn typed_id(&self) -> SlaveInternalId { SlaveInternalId(self.0.internal_id) }
+}
+
+
+impl PartialEq for SlaveMessage {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.internal_id == other.0.internal_id &&
+            self.0.source_id_option == other.0.source_id_option
+    }
+}
+
+//
+// Helper functions
+//
 
 fn normalize_seachable_string(s: &str) -> String {
     lazy_static! {

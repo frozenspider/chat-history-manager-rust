@@ -1,4 +1,4 @@
-// Reexporting simd_json for simplicity
+// Reexporting simd_json for simplicity.
 pub use simd_json::{BorrowedValue, StaticNode, Value as JValue, ValueAccess, ValueType};
 pub use simd_json::borrowed::{Object, Value};
 

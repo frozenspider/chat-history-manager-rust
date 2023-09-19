@@ -9,6 +9,13 @@ pub use error_chain::{bail, error_chain};
 use hashers::fx_hash::FxHasher;
 use lazy_static::lazy_static;
 
+pub mod entity_utils;
+
+#[cfg(test)]
+pub mod test_utils;
+
+pub mod json_utils;
+
 //
 // Constants
 //

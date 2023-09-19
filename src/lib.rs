@@ -1,20 +1,22 @@
+extern crate core;
+
 use std::path::Path;
+
+use itertools::Itertools;
+
 use crate::dao::in_memory_dao::InMemoryDao;
 use crate::protobuf::history::User;
 #[cfg(test)]
 pub use crate::test_utils::*;
 // Reexporting utility stuff
 pub use crate::utils::*;
+pub use crate::utils::entity_utils::*;
 
 mod protobuf;
 mod loader;
 mod server;
 mod dao;
-mod entities;
 mod utils;
-
-#[cfg(test)]
-mod test_utils;
 
 //
 // Entry points

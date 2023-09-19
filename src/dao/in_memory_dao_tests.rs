@@ -1,17 +1,10 @@
-use chrono::Duration;
-use rand::Rng;
-
 use crate::*;
 
 use super::*;
 
-//
-// Tests
-//
-
 #[test]
 fn basics() {
-    let dao = create_dao();
+    let dao = create_specific_dao();
     assert_eq!(dao.name(), &dao.name);
     assert_eq!(dao.storage_path(), &dao.ds_root);
     assert_eq!(dao.datasets().iter().collect_vec(), vec![&dao.dataset]);
@@ -30,7 +23,7 @@ fn basics() {
 
 #[test]
 fn messages_first_last_scroll() {
-    let dao = create_dao();
+    let dao = create_specific_dao();
     let ds_uuid = dao.datasets().remove(0).uuid.unwrap();
     let chat = dao.chats(&ds_uuid).remove(0).chat;
     let msgs = &dao.cwms[0].messages;
@@ -60,7 +53,7 @@ fn messages_first_last_scroll() {
 
 #[test]
 fn messages_befoer_after_between() -> EmptyRes {
-    let dao = create_dao();
+    let dao = create_specific_dao();
     let ds_uuid = dao.datasets().remove(0).uuid.unwrap();
     let chat = dao.chats(&ds_uuid).remove(0).chat;
     let msgs = &dao.cwms[0].messages;
@@ -104,7 +97,7 @@ fn messages_befoer_after_between() -> EmptyRes {
 
 #[test]
 fn messages_around() -> EmptyRes {
-    let dao = create_dao();
+    let dao = create_specific_dao();
     let ds_uuid = dao.datasets().remove(0).uuid.unwrap();
     let chat = dao.chats(&ds_uuid).remove(0).chat;
     let msgs = &dao.cwms[0].messages;
@@ -153,46 +146,10 @@ fn messages_around() -> EmptyRes {
 // Helpers
 //
 
-fn create_regular_message(idx: i64, user_id: i64) -> Message {
-    let mut rng = rand::thread_rng();
-    // Any previous message
-    let reply_to_message_id_option =
-        if idx > 0 { Some(rng.gen_range(0..idx)) } else { None };
-
-    let typed = message::Typed::Regular(MessageRegular {
-        edit_timestamp_option: Some((BASE_DATE.clone() + Duration::minutes(idx) + Duration::seconds(5)).timestamp()),
-        reply_to_message_id_option: reply_to_message_id_option,
-        forward_from_name_option: Some(format!("u{user_id}")),
-        content_option: Some(Content {
-            sealed_value_optional: Some(
-                content::SealedValueOptional::Poll(ContentPoll { question: format!("Hey, {idx}!") })
-            )
-        }),
-    });
-
-    let text = vec![RichText::make_plain(format!("Hello there, {idx}!"))];
-    let searchable_string = make_searchable_string(&text, &typed);
-    Message {
-        internal_id: idx * 100,
-        source_id_option: Some(idx),
-        timestamp: (BASE_DATE.clone() + Duration::minutes(idx)).timestamp(),
-        from_id: user_id,
-        text,
-        searchable_string,
-        typed: Some(typed),
-    }
-}
-
-fn create_dao() -> InMemoryDao {
-    let ds = Dataset {
-        uuid: Some(PbUuid { value: "00000000-0000-0000-0000-000000000000".to_owned() }),
-        alias: "Dataset One".to_owned(),
-        source_type: "test source".to_owned(),
-    };
-    let ds_root: PathBuf = std::env::temp_dir().join("chm-rust");
+pub fn create_specific_dao() -> Box<InMemoryDao> {
     let users = vec![
         User {
-            ds_uuid: ds.uuid.clone(),
+            ds_uuid: Some(ZERO_PB_UUID.clone()),
             id: 1,
             first_name_option: Some("Wwwwww Www".to_owned()),
             last_name_option: None,
@@ -200,7 +157,7 @@ fn create_dao() -> InMemoryDao {
             phone_number_option: None,
         },
         User {
-            ds_uuid: ds.uuid.clone(),
+            ds_uuid: Some(ZERO_PB_UUID.clone()),
             id: 2,
             first_name_option: Some("Aaaaa".to_owned()),
             last_name_option: Some("Aaaaaaaaaaa".to_owned()),
@@ -208,12 +165,13 @@ fn create_dao() -> InMemoryDao {
             phone_number_option: Some("+998 91 1234567".to_owned()),
         },
     ];
+
     let cwms = vec![{
         let messages =
             (0..10).map(|i| create_regular_message(i, (i % 2) + 1)).collect_vec();
         ChatWithMessages {
             chat: Some(Chat {
-                ds_uuid: ds.uuid.clone(),
+                ds_uuid: Some(ZERO_PB_UUID.clone()),
                 id: 1,
                 name_option: Some("Chat One".to_owned()),
                 tpe: ChatType::PrivateGroup as i32,
@@ -224,5 +182,6 @@ fn create_dao() -> InMemoryDao {
             messages,
         }
     }];
-    InMemoryDao::new("Test Dao".to_owned(), ds, ds_root, users.last().unwrap().clone(), users, cwms)
+
+    create_dao("One", users, cwms, |_, _| ())
 }

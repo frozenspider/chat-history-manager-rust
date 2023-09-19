@@ -7,7 +7,7 @@ use pretty_assertions::{assert_eq, assert_ne};
 
 use crate::{NoChooser, User};
 use crate::dao::ChatHistoryDao;
-use crate::entities::*;
+use crate::entity_utils::*;
 use crate::protobuf::history::*;
 use crate::protobuf::history::content::SealedValueOptional::*;
 use crate::protobuf::history::message::*;
@@ -16,25 +16,6 @@ use crate::protobuf::history::message_service::SealedValueOptional::*;
 use super::*;
 
 static LOADER: TelegramDataLoader = TelegramDataLoader;
-
-trait ExtOption<T> {
-    fn unwrap_ref(&self) -> &T;
-}
-
-impl<T> ExtOption<T> for Option<T> {
-    fn unwrap_ref(&self) -> &T { self.as_ref().unwrap() }
-}
-
-fn expected_myself(ds_uuid: &PbUuid) -> User {
-    User {
-        ds_uuid: Some(ds_uuid.clone()),
-        id: 11111111,
-        first_name_option: Some("Aaaaa".to_owned()),
-        last_name_option: Some("Aaaaaaaaaaa".to_owned()),
-        username_option: Some("@frozenspider".to_owned()),
-        phone_number_option: Some("+998 91 1234567".to_owned()),
-    }
-}
 
 //
 // Tests
@@ -252,7 +233,7 @@ fn loading_2021_06_supergroup() -> EmptyRes {
         assert_eq!(chat.msg_count, 4);
 
         assert_eq!(msgs[0], Message {
-            internal_id: -1,
+            internal_id: 0,
             source_id_option: Some(-999681092),
             timestamp: dt("2020-12-22 23:11:21", None).timestamp(),
             from_id: u222222222.id,
@@ -266,7 +247,7 @@ fn loading_2021_06_supergroup() -> EmptyRes {
         });
 
         assert_eq!(msgs[1], Message {
-            internal_id: -1,
+            internal_id: 1,
             source_id_option: Some(-999681090),
             timestamp: dt("2020-12-22 23:12:09", None).timestamp(),
             from_id: u333333333.id,
@@ -286,7 +267,7 @@ fn loading_2021_06_supergroup() -> EmptyRes {
         });
 
         assert_eq!(msgs[2], Message {
-            internal_id: -1,
+            internal_id: 2,
             source_id_option: Some(-999681087),
             timestamp: dt("2020-12-22 23:12:51", None).timestamp(),
             from_id: u444444444.id,
@@ -305,7 +286,7 @@ fn loading_2021_06_supergroup() -> EmptyRes {
             })),
         });
         assert_eq!(msgs[3], Message {
-            internal_id: -1,
+            internal_id: 3,
             source_id_option: Some(358000),
             timestamp: dt("2021-03-18 17:50:23", None).timestamp(),
             from_id: myself.id,
@@ -374,7 +355,7 @@ fn loading_2021_07() -> EmptyRes {
         // let typed = msgs.iter().map(|m| m.typed.unwrap_ref()).collect_vec();
 
         assert_eq!(msgs[0], Message {
-            internal_id: -1,
+            internal_id: 0,
             source_id_option: Some(111111),
             timestamp: dt("2021-07-03 22:38:58", None).timestamp(),
             from_id: member.id,
@@ -387,7 +368,7 @@ fn loading_2021_07() -> EmptyRes {
             })),
         });
         assert_eq!(msgs[1], Message {
-            internal_id: -1,
+            internal_id: 1,
             source_id_option: Some(111112),
             timestamp: dt("2021-07-03 22:39:01", None).timestamp(),
             from_id: member.id,
@@ -460,7 +441,7 @@ fn loading_2023_01() -> EmptyRes {
 
         // Order of these two is swapped by Telegram
         assert_eq!(msgs[0], Message {
-            internal_id: -1,
+            internal_id: 0,
             source_id_option: Some(1),
             timestamp: dt("2016-02-10 21:55:02", Some(&offset)).timestamp(),
             from_id: channel_user.id,
@@ -473,7 +454,7 @@ fn loading_2023_01() -> EmptyRes {
             })),
         });
         assert_eq!(msgs[1], Message {
-            internal_id: -1,
+            internal_id: 1,
             source_id_option: Some(-999999999),
             timestamp: dt("2016-02-10 21:55:03", Some(&offset)).timestamp(),
             from_id: member.id,
@@ -484,7 +465,7 @@ fn loading_2023_01() -> EmptyRes {
             })),
         });
         assert_eq!(msgs[2], Message {
-            internal_id: -1,
+            internal_id: 2,
             source_id_option: Some(111111),
             timestamp: dt("2016-11-17 17:57:40", Some(&offset)).timestamp(),
             from_id: member.id,
@@ -520,7 +501,7 @@ fn loading_2023_01() -> EmptyRes {
             })),
         });
         assert_eq!(msgs[3], Message {
-            internal_id: -1,
+            internal_id: 3,
             source_id_option: Some(111112),
             timestamp: dt("2022-10-17 16:40:09", Some(&offset)).timestamp(),
             from_id: myself.id,
@@ -533,7 +514,7 @@ fn loading_2023_01() -> EmptyRes {
             })),
         });
         assert_eq!(msgs[4], Message {
-            internal_id: -1,
+            internal_id: 4,
             source_id_option: Some(111113),
             timestamp: 1666993143, // Here we put an explicit timestamp, just for fun
             from_id: myself.id,
@@ -544,7 +525,7 @@ fn loading_2023_01() -> EmptyRes {
             })),
         });
         assert_eq!(msgs[5], Message {
-            internal_id: -1,
+            internal_id: 5,
             source_id_option: Some(111114),
             timestamp: 1676732102, // Here we put an explicit timestamp, just for fun
             from_id: myself.id,
@@ -617,7 +598,7 @@ fn loading_2023_08() -> EmptyRes {
 
         // Order of these two is swapped by Telegram
         assert_eq!(msgs[0], Message {
-            internal_id: -1,
+            internal_id: 0,
             source_id_option: Some(11111),
             timestamp: 1664352868,
             from_id: unnamed_user.id,
@@ -630,7 +611,7 @@ fn loading_2023_08() -> EmptyRes {
             })),
         });
         assert_eq!(msgs[1], Message {
-            internal_id: -1,
+            internal_id: 1,
             source_id_option: Some(11112),
             timestamp: 1665499755,
             from_id: unnamed_user.id,
@@ -652,4 +633,27 @@ fn loading_2023_08() -> EmptyRes {
         });
     };
     Ok(())
+}
+
+//
+// Helpers
+//
+
+trait ExtOption<T> {
+    fn unwrap_ref(&self) -> &T;
+}
+
+impl<T> ExtOption<T> for Option<T> {
+    fn unwrap_ref(&self) -> &T { self.as_ref().unwrap() }
+}
+
+fn expected_myself(ds_uuid: &PbUuid) -> User {
+    User {
+        ds_uuid: Some(ds_uuid.clone()),
+        id: 11111111,
+        first_name_option: Some("Aaaaa".to_owned()),
+        last_name_option: Some("Aaaaaaaaaaa".to_owned()),
+        username_option: Some("@frozenspider".to_owned()),
+        phone_number_option: Some("+998 91 1234567".to_owned()),
+    }
 }

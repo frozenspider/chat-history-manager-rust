@@ -5,7 +5,6 @@ use std::path::{Path, PathBuf};
 use deepsize::DeepSizeOf;
 
 use crate::*;
-use crate::entities::*;
 
 use super::*;
 

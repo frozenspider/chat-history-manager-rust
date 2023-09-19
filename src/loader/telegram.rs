@@ -15,14 +15,13 @@ use uuid::Uuid;
 
 use crate::*;
 use crate::dao::in_memory_dao::InMemoryDao;
-use crate::entities::*;
 use crate::loader::DataLoader;
 use crate::protobuf::*;
 use crate::protobuf::history::*;
+// Reexporting JSON utils for simplicity.
+pub use crate::utils::json_utils::*;
 
 use super::*;
-// Reexporting simd_json for simplicity
-pub use super::json_utils::*;
 
 mod parser_full;
 mod parser_single;
@@ -367,6 +366,10 @@ fn parse_chat(json_path: &str,
     }
 
     messages.sort_by_key(|m| (m.timestamp, m.internal_id));
+
+    for (idx, m) in messages.iter_mut().enumerate() {
+        m.internal_id = idx as i64;
+    }
 
     chat.msg_count = messages.len() as i32;
 

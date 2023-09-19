@@ -107,7 +107,7 @@ message Message {
   option (scalapb.message).no_box = true;  // do not wrap in Option
 
   /**
-   * Unique ID assigned to this message by a DAO storage engine, should be -1 until saved.
+   * Unique ID assigned to this message by a DAO storage engine (even local one), always valid and >= 0.
    * No ordering guarantees are provided in general case.
    * Might change on dataset/chat mutation operations.
    * Should NEVER be compared across different DAOs!

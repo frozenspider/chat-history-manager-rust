@@ -7,7 +7,6 @@ use itertools::{Either, Itertools};
 use crate::*;
 use crate::loader::telegram::TelegramDataLoader;
 
-mod json_utils;
 mod telegram;
 
 trait DataLoader {
