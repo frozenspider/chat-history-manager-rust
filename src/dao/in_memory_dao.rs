@@ -138,12 +138,12 @@ impl ChatHistoryDao for InMemoryDao {
     fn messages_before_impl(&self, chat: &Chat, msg: &Message, limit: usize) -> Result<Vec<Message>> {
         let msgs = self.messages_option(chat.id).unwrap();
         let limit = limit as i32;
-        let idx = msgs.iter().rposition(|m| m.internal_id <= msg.internal_id);
+        let idx = msgs.iter().rposition(|m| m.internal_id == msg.internal_id);
         match idx {
             None => err!("Message not found!"),
             Some(idx) => {
                 let idx = idx as i32;
-                Ok(cutout(msgs, idx - limit + 1, idx + 1))
+                Ok(cutout(msgs, idx - limit, idx))
             }
         }
     }
@@ -151,43 +151,43 @@ impl ChatHistoryDao for InMemoryDao {
     fn messages_after_impl(&self, chat: &Chat, msg: &Message, limit: usize) -> Result<Vec<Message>> {
         let msgs = self.messages_option(chat.id).unwrap();
         let limit = limit as i32;
-        let idx = msgs.iter().position(|m| m.internal_id >= msg.internal_id);
+        let idx = msgs.iter().position(|m| m.internal_id == msg.internal_id);
         match idx {
             None => err!("Message not found!"),
             Some(idx) => {
-                let idx = idx as i32;
-                Ok(cutout(msgs, idx, idx + limit))
+                let start = idx as i32 + 1;
+                Ok(cutout(msgs, start, start + limit))
             }
         }
     }
 
     fn messages_between_impl(&self, chat: &Chat, msg1: &Message, msg2: &Message) -> Result<Vec<Message>> {
         let msgs = self.messages_option(chat.id).unwrap();
-        let idx1 = msgs.iter().position(|m| m.internal_id >= msg1.internal_id);
-        let idx2 = msgs.iter().rposition(|m| m.internal_id <= msg2.internal_id);
+        let idx1 = msgs.iter().position(|m| m.internal_id == msg1.internal_id);
+        let idx2 = msgs.iter().rposition(|m| m.internal_id == msg2.internal_id);
         match (idx1, idx2) {
             (None, _) => err!("Message 1 not found!"),
             (_, None) => err!("Message 2 not found!"),
+            (Some(idx1), Some(idx2)) if idx1 == idx2 =>
+                Ok(vec![]),
             (Some(idx1), Some(idx2)) => {
-                assert!(idx2 >= idx1);
-                Ok(msgs[idx1..=idx2].to_vec())
+                assert!(idx1 < idx2);
+                Ok(msgs[(idx1 + 1)..idx2].to_vec())
             }
         }
     }
 
-    fn count_messages_between(&self, chat: &Chat, msg1: &Message, msg2: &Message) -> usize {
+    fn count_messages_between(&self, chat: &Chat, msg1: &Message, msg2: &Message) -> Result<usize> {
         assert!(msg1.internal_id <= msg2.internal_id);
         // Inefficient!
-        let between = self.messages_between(chat, msg1, msg2);
-        match between {
-            Err(_) => 0,
-            Ok(between) if between.is_empty() => 0,
-            Ok(between) => {
-                let mut size = between.len() as i32;
-                if between.first().unwrap().internal_id == msg1.internal_id { size -= 1; }
-                if between.last().unwrap().internal_id == msg2.internal_id { size -= 1; }
-                cmp::max(size, 0) as usize
-            }
+        let between = self.messages_between(chat, msg1, msg2)?;
+        if between.is_empty() {
+            Ok(0)
+        } else {
+            let mut size = between.len() as i32;
+            if between.first().unwrap().internal_id == msg1.internal_id { size -= 1; }
+            if between.last().unwrap().internal_id == msg2.internal_id { size -= 1; }
+            Ok(cmp::max(size, 0) as usize)
         }
     }
 

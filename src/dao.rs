@@ -46,60 +46,36 @@ pub trait ChatHistoryDao {
 
     fn last_messages(&self, chat: &Chat, limit: usize) -> Vec<Message>;
 
-    /**
-     * Return N messages before the given one (inclusive).
-     * Message must be present, so the result would contain at least one element.
-     */
+    /// Return N messages before the given one (exclusive). Message must be present.
     fn messages_before(&self, chat: &Chat, msg: &Message, limit: usize) -> Result<Vec<Message>> {
         if limit == 0 { bail!("Limit is zero!"); }
         let result = self.messages_before_impl(chat, msg, limit)?;
-        assert!(!result.is_empty());
         assert!(result.len() <= limit);
-        assert_eq!(result.last().as_ref().unwrap().source_id_option, msg.source_id_option);
-        assert_eq!(result.last().as_ref().unwrap().internal_id, msg.internal_id);
         Ok(result)
     }
 
     fn messages_before_impl(&self, chat: &Chat, msg: &Message, limit: usize) -> Result<Vec<Message>>;
 
-    // TODO: Rework to exclude given message itself
-    /**
-     * Return N messages after the given one (inclusive).
-     * Message must be present, so the result would contain at least one element.
-     */
+    /// Return N messages after the given one (exclusive). Message must be present.
     fn messages_after(&self, chat: &Chat, msg: &Message, limit: usize) -> Result<Vec<Message>> {
         if limit == 0 { bail!("Limit is zero!"); }
         let result = self.messages_after_impl(chat, msg, limit)?;
-        assert!(!result.is_empty());
         assert!(result.len() <= limit);
-        assert_eq!(&result[0].source_id_option, &msg.source_id_option);
-        assert_eq!(&result[0].internal_id, &msg.internal_id);
         Ok(result)
     }
 
     fn messages_after_impl(&self, chat: &Chat, msg: &Message, limit: usize) -> Result<Vec<Message>>;
 
-    /**
-     * Return N messages between the given ones (inclusive).
-     * Messages must be present, so the result would contain at least one element (if both are the same message).
-     */
+    /// Return N messages between the given ones (exclusive). Messages must be present.
     fn messages_between(&self, chat: &Chat, msg1: &Message, msg2: &Message) -> Result<Vec<Message>> {
         let result = self.messages_between_impl(chat, msg1, msg2)?;
-        assert!(!result.is_empty());
-        assert_eq!(result[0].source_id_option, msg1.source_id_option);
-        assert_eq!(result[0].internal_id, msg1.internal_id);
-        assert_eq!(result.last().unwrap().source_id_option, msg2.source_id_option);
-        assert_eq!(result.last().unwrap().internal_id, msg2.internal_id);
         Ok(result)
     }
 
     fn messages_between_impl(&self, chat: &Chat, msg1: &Message, msg2: &Message) -> Result<Vec<Message>>;
 
-    /**
-     * Count messages between the given ones (exclusive, unlike messages_between).
-     * Messages must be present.
-     */
-    fn count_messages_between(&self, chat: &Chat, msg1: &Message, msg2: &Message) -> usize;
+    /// Count messages between the given ones (exclusive). Messages must be present.
+    fn count_messages_between(&self, chat: &Chat, msg1: &Message, msg2: &Message) -> Result<usize>;
 
     /** Returns N messages before and N at-or-after the given date */
     fn messages_around_date(&self, chat: &Chat, date_ts: Timestamp, limit: usize) -> (Vec<Message>, Vec<Message>);
