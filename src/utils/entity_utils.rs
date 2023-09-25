@@ -7,7 +7,6 @@ use lazy_static::lazy_static;
 use regex::Regex;
 
 use crate::protobuf::history::*;
-use crate::protobuf::history::message_service::SealedValueOptional;
 
 pub const UNNAMED: &str = "[unnamed]";
 pub const UNKNOWN: &str = "[unknown]";
@@ -61,10 +60,6 @@ impl ShortUser {
         Self::new(id, Some(full_name.to_owned()))
     }
 
-    pub fn default() -> Self {
-        Self::new(UserId::INVALID, None)
-    }
-
     pub fn to_user(&self, ds_uuid: &PbUuid) -> User {
         User {
             ds_uuid: Some(ds_uuid.clone()),
@@ -74,6 +69,12 @@ impl ShortUser {
             username_option: None,
             phone_number_option: None,
         }
+    }
+}
+
+impl Default for ShortUser {
+    fn default() -> Self {
+        Self::new(UserId::INVALID, None)
     }
 }
 
@@ -241,12 +242,13 @@ pub struct MasterInternalId(i64);
 #[derive(Deref, Copy, Clone, Debug, PartialEq, Eq)]
 pub struct SlaveInternalId(i64);
 
+pub trait WithTypedId {
+    type Item: Clone;
+    fn typed_id(&self) -> Self::Item;
+}
+
 #[derive(Deref, Clone, Debug)]
 pub struct MasterMessage(pub Message);
-
-impl MasterMessage {
-    fn typed_id(&self) -> MasterInternalId { MasterInternalId(self.0.internal_id) }
-}
 
 impl PartialEq for MasterMessage {
     fn eq(&self, other: &Self) -> bool {
@@ -255,19 +257,24 @@ impl PartialEq for MasterMessage {
     }
 }
 
-#[derive(Deref, Clone, Debug)]
-pub struct SlaveMessage(pub Message);
-
-impl SlaveMessage {
-    fn typed_id(&self) -> SlaveInternalId { SlaveInternalId(self.0.internal_id) }
+impl WithTypedId for MasterMessage {
+    type Item = MasterInternalId;
+    fn typed_id(&self) -> MasterInternalId { MasterInternalId(self.0.internal_id) }
 }
 
+#[derive(Deref, Clone, Debug)]
+pub struct SlaveMessage(pub Message);
 
 impl PartialEq for SlaveMessage {
     fn eq(&self, other: &Self) -> bool {
         self.0.internal_id == other.0.internal_id &&
             self.0.source_id_option == other.0.source_id_option
     }
+}
+
+impl WithTypedId for SlaveMessage {
+    type Item = SlaveInternalId;
+    fn typed_id(&self) -> SlaveInternalId { SlaveInternalId(self.0.internal_id) }
 }
 
 //
@@ -291,6 +298,8 @@ pub fn make_searchable_string(components: &[RichTextElement], typed: &message::T
             .filter(|s| !s.is_empty())
             .join(" ");
 
+
+    use message_service::SealedValueOptional::*;
     let typed_component_text: Vec<String> = match typed {
         message::Typed::Regular(MessageRegular { content_option, .. }) => {
             match content_option {
@@ -317,11 +326,11 @@ pub fn make_searchable_string(components: &[RichTextElement], typed: &message::T
         }
         message::Typed::Service(MessageService { sealed_value_optional: Some(m) }) =>
             match m {
-                SealedValueOptional::GroupCreate(m) => vec![vec![m.title.clone()], m.members.clone()].into_iter().flatten().collect_vec(),
-                SealedValueOptional::GroupInviteMembers(m) => m.members.clone(),
-                SealedValueOptional::GroupRemoveMembers(m) => m.members.clone(),
-                SealedValueOptional::GroupMigrateFrom(m) => vec![m.title.clone()],
-                SealedValueOptional::GroupCall(m) => m.members.clone(),
+                GroupCreate(m) => vec![vec![m.title.clone()], m.members.clone()].into_iter().flatten().collect_vec(),
+                GroupInviteMembers(m) => m.members.clone(),
+                GroupRemoveMembers(m) => m.members.clone(),
+                GroupMigrateFrom(m) => vec![m.title.clone()],
+                GroupCall(m) => m.members.clone(),
                 _ => vec![],
             }
         _ => unreachable!()

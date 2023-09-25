@@ -472,18 +472,14 @@ impl<'lt> MessageJson<'lt> {
     fn field_opt_path(&mut self, name: &'lt str) -> Result<Option<String>> {
         let field_opt = self.field_opt_str(name)?;
 
-        // A temporary fix while it's not clean what that really signifies.
-        // So far looks like it may mean timed photo.
-        if let Some(ref x) = field_opt {
-            if x.as_str() == "(File unavailable, please try again later)" {
-                bail!("Found \"File unavailable\"!");
-            }
-        }
-
         Ok(field_opt.and_then(|s| (match s.as_str() {
             "" => None,
             "(File not included. Change data exporting settings to download.)" => None,
             "(File exceeds maximum size. Change data exporting settings to download.)" => None,
+            "(File unavailable, please try again later)" => {
+                // So far looks like it may mean timed photo, or file manually skipped during export.
+                None
+            }
             _ => Some(s)
         })))
     }
@@ -496,20 +492,20 @@ fn parse_message(json_path: &str,
                  member_ids: &mut HashSet<UserId, Hasher>) -> Result<ParsedMessage> {
     use history::message::Typed;
 
-    fn as_hash_set<'lt>(arr: &[&'lt str]) -> HashSet<&'lt str, Hasher> {
+    fn hash_set<const N: usize>(arr: [&str; N]) -> HashSet<&str, Hasher> {
         let mut result = HashSet::with_capacity_and_hasher(100, hasher());
         result.extend(arr);
         result
     }
     lazy_static! {
         static ref REGULAR_MSG_FIELDS: ExpectedMessageField<'static> = ExpectedMessageField {
-            required_fields: as_hash_set(&["id", "type", "date", "text", "from", "from_id"]),
-            optional_fields: as_hash_set(&["date_unixtime", "text_entities", "forwarded_from", "via_bot"]),
+            required_fields: hash_set(["id", "type", "date", "text", "from", "from_id"]),
+            optional_fields: hash_set(["date_unixtime", "text_entities", "forwarded_from", "via_bot"]),
         };
 
         static ref SERVICE_MSG_FIELDS: ExpectedMessageField<'static> = ExpectedMessageField {
-            required_fields: as_hash_set(&["id", "type", "date", "text", "actor", "actor_id", "action"]),
-            optional_fields: as_hash_set(&["date_unixtime", "text_entities", "edited"]),
+            required_fields: hash_set(["id", "type", "date", "text", "actor", "actor_id", "action"]),
+            optional_fields: hash_set(["date_unixtime", "text_entities", "edited"]),
         };
     }
 
