@@ -1,5 +1,3 @@
-use std::borrow::Cow;
-use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::num::ParseIntError;
@@ -297,8 +295,6 @@ fn parse_chat(json_path: &str,
     let mut chat: Chat = Default::default();
     let mut messages: Vec<Message> = vec![];
 
-    let skip_processing = Cell::from(false);
-
     let mut member_ids: HashSet<UserId, Hasher> =
         HashSet::with_capacity_and_hasher(100, hasher());
 
@@ -309,12 +305,13 @@ fn parse_chat(json_path: &str,
         Err(_) => format!("{json_path}[#{}]", get_field!(chat_json, json_path, "id")?)
     };
 
-    let chat_name: RefCell<Option<String>> = RefCell::from(None);
+    let mut chat_name: Option<String> = None;
+    let mut skip_processing = false;
 
     parse_object(chat_json, &json_path, |CB { key, value, wrong_key_action }| match key {
         "name" => {
             if value.value_type() != ValueType::Null {
-                chat_name.replace(as_string_option!(value, json_path, "name"));
+                chat_name = as_string_option!(value, json_path, "name");
             }
             Ok(())
         }
@@ -324,7 +321,7 @@ fn parse_chat(json_path: &str,
                 "private_group" => Ok(ChatType::PrivateGroup),
                 "private_supergroup" => Ok(ChatType::PrivateGroup),
                 "saved_messages" | "private_channel" => {
-                    skip_processing.set(true);
+                    skip_processing = true;
                     Ok(ChatType::Personal) // Doesn't matter
                 }
                 other => err!("Unknown chat type: {}", other),
@@ -337,7 +334,7 @@ fn parse_chat(json_path: &str,
             Ok(())
         }
         "messages" => {
-            if skip_processing.get() { return Ok(()); }
+            if skip_processing { return Ok(()); }
             let path = format!("{json_path}.messages");
             let messages_json = as_array!(value, path);
             for v in messages_json {
@@ -348,8 +345,8 @@ fn parse_chat(json_path: &str,
                     ParsedMessage::SkipMessage =>
                         { /* NOOP */ }
                     ParsedMessage::SkipChat => {
-                        log::warn!("Skipping chat '{}' because it contains topics!", name_or_unnamed(&chat_name.borrow()));
-                        skip_processing.set(true);
+                        log::warn!("Skipping chat '{}' because it contains topics!", name_or_unnamed(&chat_name));
+                        skip_processing = true;
                         break;
                     }
                 }
@@ -359,11 +356,11 @@ fn parse_chat(json_path: &str,
         _ => wrong_key_action()
     })?;
 
-    chat.name_option = chat_name.borrow().clone();
-
-    if skip_processing.get() {
+    if skip_processing {
         return Ok(None);
     }
+
+    chat.name_option = chat_name;
 
     messages.sort_by_key(|m| (m.timestamp, m.internal_id));
 
@@ -1065,8 +1062,8 @@ fn parse_user_id(bw: &BorrowedValue) -> Result<UserId> {
     match bw {
         Value::Static(StaticNode::I64(i)) => Ok(UserId(*i)),
         Value::Static(StaticNode::U64(u)) => Ok(UserId(*u as i64)),
-        Value::String(Cow::Borrowed(s)) => parse_str(s),
-        Value::String(Cow::Owned(s)) => parse_str(s),
+        Value::String(std::borrow::Cow::Borrowed(s)) => parse_str(s),
+        Value::String(std::borrow::Cow::Owned(s)) => parse_str(s),
         _ => bail!(err_msg.as_str())
     }
 }
