@@ -55,15 +55,9 @@ impl<'a, T: 'a> PracticalEq for PET<'a, Option<T>> where for<'b> PET<'a, T>: Pra
 //  Message
 //
 
-macro_rules! clone_without {
-    ($src:expr, $T:ident, $($key:ident : $val:expr),+) => {
-        $T { $( $key: $val, )* ..(*$src).clone() }
-    };
-}
-
 macro_rules! cloned_equals_without {
     ($v1:expr, $v2:expr, $T:ident, $($key:ident : $val:expr),+) => {
-        clone_without!($v1, $T, $($key: $val),*) == clone_without!($v2, $T, $($key: $val),*)
+        $T { $( $key: $val, )* ..(*$v1).clone() } == $T { $( $key: $val, )* ..(*$v2).clone() }
     };
 }
 
@@ -128,41 +122,9 @@ impl<'a> PracticalEq for PET<'a, MessageService> {
     }
 }
 
-/*
-        case (m1: MessageServiceSuggestProfilePhoto, m2: MessageServiceSuggestProfilePhoto) => (m1.photo, v1._2) =~= (m2.photo, v2._2)
-        case (m1: MessageServiceGroupCreate,         m2: MessageServiceGroupCreate)         =>
-          m1.copy(members = Seq.empty) == m2.copy(members = Seq.empty) &&
-            membersPracticallyEquals(m1.members, v1._3, m2.members, v2._3)
-        case (m1: MessageServiceGroupEditPhoto,      m2: MessageServiceGroupEditPhoto)      => (m1.photo, v1._2) =~= (m2.photo, v2._2)
-        case (m1: MessageServiceGroupInviteMembers,  m2: MessageServiceGroupInviteMembers)  =>
-          m1.copy(members = Seq.empty) == m2.copy(members = Seq.empty) &&
-            membersPracticallyEquals(m1.members, v1._3, m2.members, v2._3)
-        case (m1: MessageServiceGroupRemoveMembers,  m2: MessageServiceGroupRemoveMembers)  =>
-          m1.copy(members = Seq.empty) == m2.copy(members = Seq.empty) &&
-            membersPracticallyEquals(m1.members, v1._3, m2.members, v2._3)
-        case (m1: MessageServiceGroupCall,           m2: MessageServiceGroupCall)           =>
-          m1.copy(members = Seq.empty) == m2.copy(members = Seq.empty) &&
-            membersPracticallyEquals(m1.members, v1._3, m2.members, v2._3)
-      }
-    }
-  }
- */
-
 //
 // Content
 //
-
-macro_rules! practical_eq_with_path {
-    ($T:ident, $($x:ident),+) => {
-        impl<'a> PracticalEq for PET<'a, $T> {
-            fn practically_equals(&self, other: &Self) -> Result<bool> {
-                Ok($( self.apply(|v| &v.$x).practically_equals(&other.apply(|v| &v.$x))? && )*
-                    $T { $( $x: None, )* ..(*self.v).clone() } == $T { $( $x: None, )* ..(*other.v).clone() } &&
-                    true)
-            }
-        }
-    };
-}
 
 impl<'a> PracticalEq for PET<'a, Content> {
     fn practically_equals(&self, other: &Self) -> Result<bool> {
@@ -215,6 +177,18 @@ impl<'a> PracticalEq for PET<'a, String> {
             _ => Ok(false),
         }
     }
+}
+
+macro_rules! practical_eq_with_path {
+    ($T:ident, $($x:ident),+) => {
+        impl<'a> PracticalEq for PET<'a, $T> {
+            fn practically_equals(&self, other: &Self) -> Result<bool> {
+                Ok($( self.apply(|v| &v.$x).practically_equals(&other.apply(|v| &v.$x))? && )*
+                    $T { $( $x: None, )* ..(*self.v).clone() } == $T { $( $x: None, )* ..(*other.v).clone() } &&
+                    true)
+            }
+        }
+    };
 }
 
 practical_eq_with_path!(ContentSticker, path_option, thumbnail_path_option);
