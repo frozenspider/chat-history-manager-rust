@@ -119,11 +119,11 @@ fn create_dao_and_entities<MsgType>(
 
 fn get_simple_dao_entities(dao: &impl ChatHistoryDao)
                            -> (Dataset, DatasetRoot, Vec<User>, ChatWithDetails, Vec<Message>) {
-    let ds = dao.datasets().remove(0);
+    let ds = dao.datasets().unwrap().remove(0);
     let ds_root = dao.dataset_root(ds.uuid());
-    let users = dao.users(&ds.uuid());
-    let cwd = dao.chats(&ds.uuid()).remove(0);
-    let msgs = dao.first_messages(&cwd.chat, usize::MAX);
+    let users = dao.users(&ds.uuid()).unwrap();
+    let cwd = dao.chats(&ds.uuid()).unwrap().remove(0);
+    let msgs = dao.first_messages(&cwd.chat, usize::MAX).unwrap();
     (ds, ds_root, users, cwd, msgs)
 }
 

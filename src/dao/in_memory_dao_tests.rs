@@ -3,62 +3,65 @@ use crate::*;
 use super::*;
 
 #[test]
-fn basics() {
+fn basics() -> EmptyRes {
     let dao_holder = create_specific_dao();
     let dao = dao_holder.dao;
     assert_eq!(dao.name(), &dao.name);
     assert_eq!(dao.storage_path(), &dao.ds_root);
-    assert_eq!(dao.datasets().iter().collect_vec(), vec![&dao.dataset]);
-    let ds_uuid = dao.datasets().remove(0).uuid.unwrap();
+    assert_eq!(dao.datasets()?.iter().collect_vec(), vec![&dao.dataset]);
+    let ds_uuid = dao.datasets()?.remove(0).uuid.unwrap();
 
-    let users = dao.users(&ds_uuid);
+    let users = dao.users(&ds_uuid)?;
     assert_eq!(users.len(), 2);
     assert_eq!(users[0].id, 2);
     assert_eq!(users[1].id, 1);
-    assert_eq!(dao.chats(&ds_uuid).len(), 1);
+    assert_eq!(dao.chats(&ds_uuid)?.len(), 1);
 
-    let cwd = dao.chats(&ds_uuid).remove(0);
+    let cwd = dao.chats(&ds_uuid)?.remove(0);
     assert_eq!(cwd.last_msg_option.as_ref(), dao.cwms[0].messages.last());
     assert_eq!(cwd.members, users);
+    Ok(())
 }
 
 #[test]
-fn messages_first_last_scroll() {
+fn messages_first_last_scroll() -> EmptyRes {
     let dao_holder = create_specific_dao();
     let dao = dao_holder.dao;
-    let ds_uuid = dao.datasets().remove(0).uuid.unwrap();
-    let chat = dao.chats(&ds_uuid).remove(0).chat;
+    let ds_uuid = dao.datasets()?.remove(0).uuid.unwrap();
+    let chat = dao.chats(&ds_uuid)?.remove(0).chat;
     let msgs = &dao.cwms[0].messages;
     let len = msgs.len();
 
-    assert_eq!(dao.first_messages(&chat, 1), msgs.smart_slice(..=0));
-    assert_eq!(dao.first_messages(&chat, 2), msgs.smart_slice(..=1));
-    assert_eq!(dao.first_messages(&chat, 1000), msgs.smart_slice(..));
-    assert_eq!(dao.first_messages(&chat, len), msgs.smart_slice(..));
+    assert_eq!(dao.first_messages(&chat, 1)?, msgs.smart_slice(..=0));
+    assert_eq!(dao.first_messages(&chat, 2)?, msgs.smart_slice(..=1));
+    assert_eq!(dao.first_messages(&chat, 1000)?, msgs.smart_slice(..));
+    assert_eq!(dao.first_messages(&chat, len)?, msgs.smart_slice(..));
 
-    assert_eq!(dao.last_messages(&chat, 1), msgs.smart_slice(-1..));
-    assert_eq!(dao.last_messages(&chat, 2), msgs.smart_slice(-2..));
-    assert_eq!(dao.last_messages(&chat, 1000), msgs.smart_slice(..));
-    assert_eq!(dao.last_messages(&chat, len), msgs.smart_slice(..));
+    assert_eq!(dao.last_messages(&chat, 1)?, msgs.smart_slice(-1..));
+    assert_eq!(dao.last_messages(&chat, 2)?, msgs.smart_slice(-2..));
+    assert_eq!(dao.last_messages(&chat, 1000)?, msgs.smart_slice(..));
+    assert_eq!(dao.last_messages(&chat, len)?, msgs.smart_slice(..));
 
-    assert_eq!(dao.scroll_messages(&chat, 0, 0), vec![]);
-    assert_eq!(dao.scroll_messages(&chat, 1000, 0), vec![]);
-    assert_eq!(dao.scroll_messages(&chat, 1000, 1000), vec![]);
+    assert_eq!(dao.scroll_messages(&chat, 0, 0)?, vec![]);
+    assert_eq!(dao.scroll_messages(&chat, 1000, 0)?, vec![]);
+    assert_eq!(dao.scroll_messages(&chat, 1000, 1000)?, vec![]);
 
-    assert_eq!(dao.scroll_messages(&chat, 0, 1), msgs.smart_slice(..=0));
-    assert_eq!(dao.scroll_messages(&chat, len - 1, 1), msgs.smart_slice(-1..));
-    assert_eq!(dao.scroll_messages(&chat, len - 2, 2), msgs.smart_slice(-2..));
-    assert_eq!(dao.scroll_messages(&chat, 0, 1000), msgs.smart_slice(..));
-    assert_eq!(dao.scroll_messages(&chat, 0, len), msgs.smart_slice(..));
-    assert_eq!(dao.scroll_messages(&chat, 1, len - 2), msgs.smart_slice(1..-1));
+    assert_eq!(dao.scroll_messages(&chat, 0, 1)?, msgs.smart_slice(..=0));
+    assert_eq!(dao.scroll_messages(&chat, len - 1, 1)?, msgs.smart_slice(-1..));
+    assert_eq!(dao.scroll_messages(&chat, len - 2, 2)?, msgs.smart_slice(-2..));
+    assert_eq!(dao.scroll_messages(&chat, 0, 1000)?, msgs.smart_slice(..));
+    assert_eq!(dao.scroll_messages(&chat, 0, len)?, msgs.smart_slice(..));
+    assert_eq!(dao.scroll_messages(&chat, 1, len - 2)?, msgs.smart_slice(1..-1));
+
+    Ok(())
 }
 
 #[test]
 fn messages_befoer_after_between() -> EmptyRes {
     let dao_holder = create_specific_dao();
     let dao = dao_holder.dao;
-    let ds_uuid = dao.datasets().remove(0).uuid.unwrap();
-    let chat = dao.chats(&ds_uuid).remove(0).chat;
+    let ds_uuid = dao.datasets()?.remove(0).uuid.unwrap();
+    let chat = dao.chats(&ds_uuid)?.remove(0).chat;
     let msgs = &dao.cwms[0].messages;
     let len = msgs.len();
 
@@ -102,8 +105,8 @@ fn messages_befoer_after_between() -> EmptyRes {
 fn messages_around() -> EmptyRes {
     let dao_holder = create_specific_dao();
     let dao = dao_holder.dao;
-    let ds_uuid = dao.datasets().remove(0).uuid.unwrap();
-    let chat = dao.chats(&ds_uuid).remove(0).chat;
+    let ds_uuid = dao.datasets()?.remove(0).uuid.unwrap();
+    let chat = dao.chats(&ds_uuid)?.remove(0).chat;
     let msgs = &dao.cwms[0].messages;
     let len = msgs.len();
 
@@ -118,29 +121,29 @@ fn messages_around() -> EmptyRes {
         assert_eq!(actual.1, right);
     }
 
-    assert_split(dao.messages_around_date(&chat, START, 1), none, msgs.smart_slice(..=0));
-    assert_split(dao.messages_around_date(&chat, START, 1000), none, msgs.smart_slice(..));
+    assert_split(dao.messages_around_date(&chat, START, 1)?, none, msgs.smart_slice(..=0));
+    assert_split(dao.messages_around_date(&chat, START, 1000)?, none, msgs.smart_slice(..));
 
-    assert_split(dao.messages_around_date(&chat, END, 1), msgs.smart_slice(-1..), none);
-    assert_split(dao.messages_around_date(&chat, END, 1000), msgs.smart_slice(..), none);
+    assert_split(dao.messages_around_date(&chat, END, 1)?, msgs.smart_slice(-1..), none);
+    assert_split(dao.messages_around_date(&chat, END, 1000)?, msgs.smart_slice(..), none);
 
 
-    assert_split(dao.messages_around_date(&chat, msgs[0].timestamp(), 1), none, msgs.smart_slice(..=0));
-    assert_split(dao.messages_around_date(&chat, msgs[1].timestamp(), 1), msgs.smart_slice(..=0), msgs.smart_slice(1..=1));
-    assert_split(dao.messages_around_date(&chat, msgs[2].timestamp(), 2), msgs.smart_slice(..=1), msgs.smart_slice(2..=3));
-    assert_split(dao.messages_around_date(&chat, msgs[2].timestamp(), 4), msgs.smart_slice(..=1), msgs.smart_slice(2..=5));
+    assert_split(dao.messages_around_date(&chat, msgs[0].timestamp(), 1)?, none, msgs.smart_slice(..=0));
+    assert_split(dao.messages_around_date(&chat, msgs[1].timestamp(), 1)?, msgs.smart_slice(..=0), msgs.smart_slice(1..=1));
+    assert_split(dao.messages_around_date(&chat, msgs[2].timestamp(), 2)?, msgs.smart_slice(..=1), msgs.smart_slice(2..=3));
+    assert_split(dao.messages_around_date(&chat, msgs[2].timestamp(), 4)?, msgs.smart_slice(..=1), msgs.smart_slice(2..=5));
 
-    assert_split(dao.messages_around_date(&chat, msgs[len - 1].timestamp(), 1), msgs.smart_slice(-2..=-2), msgs.smart_slice(-1..));
-    assert_split(dao.messages_around_date(&chat, msgs[len - 2].timestamp(), 1), msgs.smart_slice(-3..=-3), msgs.smart_slice(-2..=-2));
-    assert_split(dao.messages_around_date(&chat, msgs[len - 2].timestamp(), 2), msgs.smart_slice(-4..=-3), msgs.smart_slice(-2..));
-    assert_split(dao.messages_around_date(&chat, msgs[len - 2].timestamp(), 4), msgs.smart_slice(-6..=-3), msgs.smart_slice(-2..));
+    assert_split(dao.messages_around_date(&chat, msgs[len - 1].timestamp(), 1)?, msgs.smart_slice(-2..=-2), msgs.smart_slice(-1..));
+    assert_split(dao.messages_around_date(&chat, msgs[len - 2].timestamp(), 1)?, msgs.smart_slice(-3..=-3), msgs.smart_slice(-2..=-2));
+    assert_split(dao.messages_around_date(&chat, msgs[len - 2].timestamp(), 2)?, msgs.smart_slice(-4..=-3), msgs.smart_slice(-2..));
+    assert_split(dao.messages_around_date(&chat, msgs[len - 2].timestamp(), 4)?, msgs.smart_slice(-6..=-3), msgs.smart_slice(-2..));
 
     // Timestamp between N-1 and N
     let n = len / 2;
     let mid_ts = Timestamp((msgs[n - 1].timestamp + msgs[n].timestamp) / 2);
     let n = n as i32;
 
-    assert_split(dao.messages_around_date(&chat, mid_ts, 1),
+    assert_split(dao.messages_around_date(&chat, mid_ts, 1)?,
                  msgs.smart_slice((n - 1)..n), msgs.smart_slice(n..=n));
 
     Ok(())

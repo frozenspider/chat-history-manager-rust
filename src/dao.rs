@@ -18,33 +18,33 @@ pub trait ChatHistoryDao {
     /** Directory which stores eveything - including database itself at the root level */
     fn storage_path(&self) -> &Path;
 
-    fn datasets(&self) -> Vec<Dataset>;
+    fn datasets(&self) -> Result<Vec<Dataset>>;
 
     /** Directory which stores eveything in the dataset. All files are guaranteed to have this as a prefix. */
     fn dataset_root(&self, ds_uuid: &PbUuid) -> DatasetRoot;
 
     /** List all files referenced by entities of this dataset. Some might not exist. */
-    fn dataset_files(&self, ds_uuid: &PbUuid) -> HashSet<PathBuf>;
+    fn dataset_files(&self, ds_uuid: &PbUuid) -> Result<HashSet<PathBuf>>;
 
-    fn myself(&self, ds_uuid: &PbUuid) -> User;
+    fn myself(&self, ds_uuid: &PbUuid) -> Result<User>;
 
     /** Contains myself as the first element. Order must be stable. Method is expected to be fast. */
-    fn users(&self, ds_uuid: &PbUuid) -> Vec<User>;
+    fn users(&self, ds_uuid: &PbUuid) -> Result<Vec<User>>;
 
-    fn user_option(&self, ds_uuid: &PbUuid, id: i64) -> Option<User>;
+    fn user_option(&self, ds_uuid: &PbUuid, id: i64) -> Result<Option<User>>;
 
-    fn chats(&self, ds_uuid: &PbUuid) -> Vec<ChatWithDetails>;
+    fn chats(&self, ds_uuid: &PbUuid) -> Result<Vec<ChatWithDetails>>;
 
-    fn chat_option(&self, ds_uuid: &PbUuid, id: i64) -> Option<ChatWithDetails>;
+    fn chat_option(&self, ds_uuid: &PbUuid, id: i64) -> Result<Option<ChatWithDetails>>;
 
     /// Return N messages after skipping first M of them. Trivial pagination in a nutshell.
-    fn scroll_messages(&self, chat: &Chat, offset: usize, limit: usize) -> Vec<Message>;
+    fn scroll_messages(&self, chat: &Chat, offset: usize, limit: usize) -> Result<Vec<Message>>;
 
-    fn first_messages(&self, chat: &Chat, limit: usize) -> Vec<Message> {
+    fn first_messages(&self, chat: &Chat, limit: usize) -> Result<Vec<Message>> {
         self.scroll_messages(chat, 0, limit)
     }
 
-    fn last_messages(&self, chat: &Chat, limit: usize) -> Vec<Message>;
+    fn last_messages(&self, chat: &Chat, limit: usize) -> Result<Vec<Message>>;
 
     /// Return N messages before the given one (exclusive). Message must be present.
     fn messages_before(&self, chat: &Chat, msg: &Message, limit: usize) -> Result<Vec<Message>> {
@@ -78,11 +78,11 @@ pub trait ChatHistoryDao {
     fn count_messages_between(&self, chat: &Chat, msg1: &Message, msg2: &Message) -> Result<usize>;
 
     /** Returns N messages before and N at-or-after the given date */
-    fn messages_around_date(&self, chat: &Chat, date_ts: Timestamp, limit: usize) -> (Vec<Message>, Vec<Message>);
+    fn messages_around_date(&self, chat: &Chat, date_ts: Timestamp, limit: usize) -> Result<(Vec<Message>, Vec<Message>)>;
 
-    fn message_option(&self, chat: &Chat, source_id: MessageSourceId) -> Option<Message>;
+    fn message_option(&self, chat: &Chat, source_id: MessageSourceId) -> Result<Option<Message>>;
 
-    fn message_option_by_internal_id(&self, chat: &Chat, internal_id: MessageInternalId) -> Option<Message>;
+    fn message_option_by_internal_id(&self, chat: &Chat, internal_id: MessageInternalId) -> Result<Option<Message>>;
 
     /** Whether given data path is the one loaded in this DAO */
     fn is_loaded(&self, storage_path: &Path) -> bool;

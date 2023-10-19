@@ -13,7 +13,7 @@ pub(super) fn parse(root_obj: &Object,
         None =>
             bail!("Chat was skipped entirely!"),
         Some(mut cwm) => {
-            let mut c = cwm.chat.as_mut().unwrap();
+            let c = cwm.chat.as_mut().unwrap();
             c.ds_uuid = Some(ds_uuid.clone());
             chats_with_messages.push(cwm);
         }

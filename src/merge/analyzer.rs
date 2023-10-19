@@ -38,9 +38,9 @@ impl<'a> DatasetDiffAnalyzer<'a> {
         measure(|| {
             self.analyze_inner(
                 AnalysContext {
-                    mm_stream: messages_stream(self.m_dao, &master_cwd.chat, MasterMessage, |m| m),
+                    mm_stream: messages_stream(self.m_dao, &master_cwd.chat, MasterMessage, |m| m)?,
                     m_cwd: master_cwd,
-                    sm_stream: messages_stream(self.s_dao, &slave_cwd.chat, SlaveMessage, |m| m),
+                    sm_stream: messages_stream(self.s_dao, &slave_cwd.chat, SlaveMessage, |m| m)?,
                     s_cwd: slave_cwd,
                 }
             )
@@ -333,18 +333,18 @@ fn messages_stream<'a, T: WithTypedId>(
     chat: &'a Chat,
     wrap: fn(Message) -> T,
     unwrap_ref: fn(&T) -> &Message,
-) -> BatchedMessageIterator<'a, T> {
+) -> Result<BatchedMessageIterator<'a, T>> {
     let mut res = BatchedMessageIterator {
         dao,
         chat,
         wrap,
         unwrap_ref,
-        saved_batch: dao.first_messages(chat, BATCH_SIZE).into_iter(),
+        saved_batch: dao.first_messages(chat, BATCH_SIZE)?.into_iter(),
         next_option: None,
         last_id_option: None,
     };
     res.next_option = res.saved_batch.next().map(res.wrap);
-    res
+    Ok(res)
 }
 
 struct BatchedMessageIterator<'a, T: WithTypedId> {

@@ -875,7 +875,7 @@ fn parse_rich_text(json_path: &str, rt_json: &Value) -> Result<Vec<RichTextEleme
         if s.is_empty() {
             None
         } else {
-            Some(RichText::make_plain(s.deref().to_owned()))
+            Some(RichText::make_plain(s.to_owned()))
         }
     }
 

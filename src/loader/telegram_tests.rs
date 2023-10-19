@@ -91,7 +91,7 @@ fn loading_2020_01() -> EmptyRes {
         assert!(chat.member_ids.contains(&myself.id));
         assert!(chat.member_ids.contains(&member.id));
 
-        let msgs = dao.first_messages(&chat, 99999);
+        let msgs = dao.first_messages(&chat, 99999)?;
         assert_eq!(msgs.len(), 5);
         assert_eq!(chat.msg_count, 5);
         msgs.iter().for_each(|m| {
@@ -168,7 +168,7 @@ fn loading_2021_05() -> EmptyRes {
         assert_eq!(chat.member_ids[2], member1.id);
         assert_eq!(chat.member_ids[3], member2.id);
 
-        let msgs = dao.first_messages(&chat, 99999);
+        let msgs = dao.first_messages(&chat, 99999)?;
         assert_eq!(msgs.len(), 3);
         assert_eq!(chat.msg_count, 3);
         let typed = msgs.iter().map(|m| m.typed.unwrap_ref()).collect_vec();
@@ -228,7 +228,7 @@ fn loading_2021_06_supergroup() -> EmptyRes {
         assert_eq!(chat.member_ids[2], u333333333.id);
         assert_eq!(chat.member_ids[3], u444444444.id);
 
-        let msgs = dao.first_messages(&chat, 99999);
+        let msgs = dao.first_messages(&chat, 99999)?;
         assert_eq!(msgs.len(), 4);
         assert_eq!(chat.msg_count, 4);
 
@@ -349,7 +349,7 @@ fn loading_2021_07() -> EmptyRes {
         assert_eq!(chat.member_ids[0], myself.id);
         assert_eq!(chat.member_ids[1], member.id);
 
-        let msgs = dao.first_messages(&chat, 99999);
+        let msgs = dao.first_messages(&chat, 99999)?;
         assert_eq!(msgs.len(), 2);
         assert_eq!(chat.msg_count, 2);
         // let typed = msgs.iter().map(|m| m.typed.unwrap_ref()).collect_vec();
@@ -435,7 +435,7 @@ fn loading_2023_01() -> EmptyRes {
         assert_eq!(chat.member_ids[1], member.id);
         assert_eq!(chat.member_ids[2], channel_user.id);
 
-        let msgs = dao.first_messages(&chat, 99999);
+        let msgs = dao.first_messages(&chat, 99999)?;
         assert_eq!(msgs.len(), 6);
         assert_eq!(chat.msg_count, 6);
 

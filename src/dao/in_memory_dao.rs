@@ -43,6 +43,7 @@ impl InMemoryDao {
         let mut members = chat.member_ids.iter()
             .filter(|&id| *id != me.id)
             .map(|id| self.user_option(chat.ds_uuid(), *id)
+                .unwrap()
                 .unwrap_or_else(|| panic!("No member with id {id} found for chat {}", chat.qualified_name())))
             .sorted_by_key(|u| u.id)
             .collect_vec();
@@ -77,15 +78,15 @@ impl ChatHistoryDao for InMemoryDao {
         &self.ds_root
     }
 
-    fn datasets(&self) -> Vec<Dataset> {
-        vec![self.dataset.clone()]
+    fn datasets(&self) -> Result<Vec<Dataset>> {
+        Ok(vec![self.dataset.clone()])
     }
 
     fn dataset_root(&self, _ds_uuid: &PbUuid) -> DatasetRoot {
         DatasetRoot(self.storage_path().to_owned())
     }
 
-    fn dataset_files(&self, _ds_uuid: &PbUuid) -> HashSet<PathBuf> {
+    fn dataset_files(&self, _ds_uuid: &PbUuid) -> Result<HashSet<PathBuf>> {
         /*
         val dsRoot       = datasetRoot(dsUuid)
         val cwds         = chats(dsUuid)
@@ -99,46 +100,46 @@ impl ChatHistoryDao for InMemoryDao {
         todo!()
     }
 
-    fn myself(&self, _ds_uuid: &PbUuid) -> User {
-        self.myself.clone()
+    fn myself(&self, _ds_uuid: &PbUuid) -> Result<User> {
+        Ok(self.myself.clone())
     }
 
-    fn users(&self, _ds_uuid: &PbUuid) -> Vec<User> {
+    fn users(&self, _ds_uuid: &PbUuid) -> Result<Vec<User>> {
         let mut result =
             self.users.iter().filter(|&u| *u != self.myself).cloned().collect_vec();
         result.insert(0, self.myself.clone());
-        result
+        Ok(result)
     }
 
-    fn user_option(&self, _ds_uuid: &PbUuid, id: i64) -> Option<User> {
-        self.users.iter().find(|u| u.id == id).cloned()
+    fn user_option(&self, _ds_uuid: &PbUuid, id: i64) -> Result<Option<User>> {
+        Ok(self.users.iter().find(|u| u.id == id).cloned())
     }
 
-    fn chats(&self, _ds_uuid: &PbUuid) -> Vec<ChatWithDetails> {
-        self.cwms.iter()
+    fn chats(&self, _ds_uuid: &PbUuid) -> Result<Vec<ChatWithDetails>> {
+        Ok(self.cwms.iter()
             .map(|cwm| self.cwm_to_cwd(cwm))
             .sorted_by_key(|cwd| // Minus used to reverse order
                 cwd.last_msg_option.as_ref().map(|m| -m.timestamp).unwrap_or(i64::MAX))
-            .collect_vec()
+            .collect_vec())
     }
 
-    fn chat_option(&self, _ds_uuid: &PbUuid, id: i64) -> Option<ChatWithDetails> {
-        self.cwm_option(id)
-            .map(|cwm| self.cwm_to_cwd(cwm))
+    fn chat_option(&self, _ds_uuid: &PbUuid, id: i64) -> Result<Option<ChatWithDetails>> {
+        Ok(self.cwm_option(id)
+            .map(|cwm| self.cwm_to_cwd(cwm)))
     }
 
-    fn scroll_messages(&self, chat: &Chat, offset: usize, limit: usize) -> Vec<Message> {
-        self.messages_option(chat.id)
+    fn scroll_messages(&self, chat: &Chat, offset: usize, limit: usize) -> Result<Vec<Message>> {
+        Ok(self.messages_option(chat.id)
             .map(|msgs| cutout(msgs, offset, offset + limit))
-            .unwrap_or(vec![])
+            .unwrap_or(vec![]))
     }
 
-    fn last_messages(&self, chat: &Chat, limit: usize) -> Vec<Message> {
-        self.messages_option(chat.id)
+    fn last_messages(&self, chat: &Chat, limit: usize) -> Result<Vec<Message>> {
+        Ok(self.messages_option(chat.id)
             .map(|msgs| {
                 cutout(msgs, subtract_or_zero!(msgs.len(), limit), msgs.len()).to_vec()
             })
-            .unwrap_or(vec![])
+            .unwrap_or(vec![]))
     }
 
     fn messages_before_impl(&self, chat: &Chat, msg: &Message, limit: usize) -> Result<Vec<Message>> {
@@ -194,30 +195,31 @@ impl ChatHistoryDao for InMemoryDao {
         }
     }
 
-    fn messages_around_date(&self, chat: &Chat, date_ts: Timestamp, limit: usize) -> (Vec<Message>, Vec<Message>) {
+    fn messages_around_date(&self, chat: &Chat, date_ts: Timestamp, limit: usize)
+                            -> Result<(Vec<Message>, Vec<Message>)> {
         let messages = self.messages_option(chat.id).unwrap();
         let idx = messages.iter().position(|m| m.timestamp >= *date_ts);
-        match idx {
+        Ok(match idx {
             None => {
                 // Not found
-                (self.last_messages(chat, limit), vec![])
+                (self.last_messages(chat, limit)?, vec![])
             }
             Some(idx) => {
                 let (p1, p2) = messages.split_at(idx);
                 (cutout(p1, subtract_or_zero!(p1.len(), limit), p1.len()),
                  cutout(p2, 0, limit))
             }
-        }
+        })
     }
 
-    fn message_option(&self, chat: &Chat, source_id: MessageSourceId) -> Option<Message> {
-        self.messages_option(chat.id).unwrap()
-            .iter().find(|m| m.source_id_option.iter().contains(&*source_id)).cloned()
+    fn message_option(&self, chat: &Chat, source_id: MessageSourceId) -> Result<Option<Message>> {
+        Ok(self.messages_option(chat.id).unwrap()
+            .iter().find(|m| m.source_id_option.iter().contains(&*source_id)).cloned())
     }
 
-    fn message_option_by_internal_id(&self, chat: &Chat, internal_id: MessageInternalId) -> Option<Message> {
-        self.messages_option(chat.id).unwrap()
-            .iter().find(|m| m.internal_id == *internal_id).cloned()
+    fn message_option_by_internal_id(&self, chat: &Chat, internal_id: MessageInternalId) -> Result<Option<Message>> {
+        Ok(self.messages_option(chat.id).unwrap()
+            .iter().find(|m| m.internal_id == *internal_id).cloned())
     }
 
     fn is_loaded(&self, storage_path: &Path) -> bool {
