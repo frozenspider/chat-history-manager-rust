@@ -5,11 +5,10 @@ use std::ops::Deref;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
-use chrono::{Local, NaiveDate};
+use chrono::NaiveDate;
 use itertools::Itertools;
 use lazy_static::lazy_static;
 use regex::Regex;
-use uuid::Uuid;
 
 use crate::*;
 use crate::dao::in_memory_dao::InMemoryDao;
@@ -35,10 +34,6 @@ const PERSONAL_CHAT_ID_SHIFT: i64 = 0x100000000_i64;
 
 /// Starting with Telegram 2021-05, personal chat IDs are un-shifted by this value
 const GROUP_CHAT_ID_SHIFT: i64 = PERSONAL_CHAT_ID_SHIFT * 2;
-
-const SRC_ALIAS: &str = "Telegram";
-
-const SRC_TYPE: &str = "telegram";
 
 const RESULT_JSON: &str = "result.json";
 
@@ -148,6 +143,10 @@ pub struct TelegramDataLoader;
 impl DataLoader for TelegramDataLoader {
     fn name(&self) -> &'static str { "Telegram" }
 
+    fn src_alias(&self) -> &'static str { "Telegram" }
+
+    fn src_type(&self) -> &'static str { "telegram" }
+
     fn looks_about_right_inner(&self, src_path: &Path) -> EmptyRes {
         let path = get_real_path(src_path);
         if !path.exists() {
@@ -159,8 +158,8 @@ impl DataLoader for TelegramDataLoader {
         Ok(())
     }
 
-    fn load_inner(&self, path: &Path, myself_chooser: &dyn MyselfChooser) -> Result<Box<InMemoryDao>> {
-        parse_telegram_file(path, Uuid::new_v4(), myself_chooser)
+    fn load_inner(&self, path: &Path, ds: Dataset, myself_chooser: &dyn MyselfChooser) -> Result<Box<InMemoryDao>> {
+        parse_telegram_file(path, ds, myself_chooser)
     }
 }
 
@@ -172,16 +171,14 @@ fn get_real_path(path: &Path) -> PathBuf {
     }
 }
 
-fn parse_telegram_file(path: &Path, ds_uuid: Uuid, myself_chooser: &dyn MyselfChooser) -> Result<Box<InMemoryDao>> {
+fn parse_telegram_file(path: &Path, ds: Dataset, myself_chooser: &dyn MyselfChooser) -> Result<Box<InMemoryDao>> {
     let path = get_real_path(path);
     assert!(path.exists()); // Should be checked by looks_about_right already.
-
-    let now_str = Local::now().format("%Y-%m-%d");
 
     log::info!("Parsing '{}'", path.to_str().unwrap());
 
     let start_time = Instant::now();
-    let ds_uuid = PbUuid { value: ds_uuid.to_string().to_lowercase() };
+    let ds_uuid = ds.uuid.as_ref().unwrap();
 
     let mut file_content = fs::read(&path)?;
     let parsed = simd_json::to_borrowed_value(&mut file_content)?;
@@ -207,12 +204,6 @@ fn parse_telegram_file(path: &Path, ds_uuid: Uuid, myself_chooser: &dyn MyselfCh
 
     log::info!("Processed in {} ms", start_time.elapsed().as_millis());
 
-    let ds = Dataset {
-        uuid: Some(ds_uuid.clone()),
-        alias: format!("{SRC_ALIAS}, loaded @ {now_str}"),
-        source_type: SRC_TYPE.to_owned(),
-    };
-
     if !users.pretty_name_to_idless_users.is_empty() {
         log::warn!("Discarding users with no IDs:");
         for (_pretty_name, u) in users.pretty_name_to_idless_users {
@@ -236,9 +227,9 @@ fn parse_telegram_file(path: &Path, ds_uuid: Uuid, myself_chooser: &dyn MyselfCh
     // Set myself to be a first member (not required by convention but to match existing behaviour).
     users.sort_by_key(|u| if u.id == myself.id { *UserId::MIN } else { u.id });
 
-    let parent_name = path.parent().unwrap().file_name().unwrap();
+    let parent_name = path_file_name(path.parent().unwrap())?;
     Ok(Box::new(InMemoryDao::new(
-        format!("Telegram ({})", parent_name.to_os_string().into_string().unwrap()),
+        format!("Telegram ({})", parent_name),
         ds,
         path.parent().unwrap().to_path_buf(),
         myself,
@@ -583,7 +574,7 @@ fn parse_message(json_path: &str,
                 message.timestamp = parse_timestamp(as_str!(v, message_json.json_path, "date_unixtime"))?;
             }
             "date" if !has_unixtime => {
-                message.timestamp = parse_datetime(as_str!(v, message_json.json_path, "date"))?;
+                message.timestamp = *parse_datetime(as_str!(v, message_json.json_path, "date"))?;
             }
             "text_entities" => {
                 message.text = parse_rich_text(&format!("{}.text_entities", message_json.json_path), v)?;
@@ -617,7 +608,7 @@ fn parse_regular_message(message_json: &mut MessageJson,
         message_json.add_required("edited");
         regular_msg.edit_timestamp_option = Some(parse_timestamp(edited)?);
     } else if let Some(ref edited) = message_json.field_opt_str("edited")? {
-        regular_msg.edit_timestamp_option = Some(parse_datetime(edited)?);
+        regular_msg.edit_timestamp_option = Some(*parse_datetime(edited)?);
     }
     regular_msg.forward_from_name_option = match message_json.field_opt("forwarded_from")? {
         None => None,
@@ -1072,7 +1063,7 @@ fn parse_timestamp(s: &str) -> Result<i64> {
     s.parse::<i64>().chain_err(|| format!("Failed to parse unit timestamp {s}"))
 }
 
-fn parse_datetime(s: &str) -> Result<i64> {
+fn parse_datetime(s: &str) -> Result<Timestamp> {
     // NaiveDateTime::parse_from_str is very slow! So we're parsing by hand.
     // Otherwise, we would use const DATE_TIME_FMT: &str = "%Y-%m-%dT%H:%M:%S";
     let split =
@@ -1086,7 +1077,7 @@ fn parse_datetime(s: &str) -> Result<i64> {
             .and_local_timezone(*LOCAL_TZ)
             .single()
             .ok_or(format!("failed to parse date {}: ambiguous?", s))?;
-    Ok(date.timestamp())
+    Ok(Timestamp(date.timestamp()))
 }
 
 // Accounts for invisible formatting indicator, e.g. zero-width space \u200B

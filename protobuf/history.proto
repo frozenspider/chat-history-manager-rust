@@ -231,7 +231,9 @@ message Content {
 message ContentSticker {
   // Path relative to data root!
   optional string path_option = 1;
+  // 0 if unknown
   int32 width = 2;
+  // 0 if unknown
   int32 height = 3;
 
   // Path relative to data root!
@@ -242,7 +244,9 @@ message ContentSticker {
 message ContentPhoto {
   // Path relative to data root!
   optional string path_option = 1;
+  // 0 if unknown
   int32 width = 2;
+  // 0 if unknown
   int32 height = 3;
 }
 
@@ -256,7 +260,9 @@ message ContentVoiceMsg {
 message ContentVideoMsg {
   // Path relative to data root!
   optional string path_option = 1;
+  // 0 if unknown
   int32 width = 2;
+  // 0 if unknown
   int32 height = 3;
 
   string mime_type = 4;
@@ -269,7 +275,9 @@ message ContentVideoMsg {
 message ContentAnimation {
   // Path relative to data root!
   optional string path_option = 1;
+  // 0 if unknown
   int32 width = 2;
+  // 0 if unknown
   int32 height = 3;
 
   string mime_type = 4;
@@ -283,7 +291,9 @@ message ContentFile {
   // Path relative to data root!
   optional string path_option = 1;
   string title = 2;
+  // 0 if relevant but unknown
   optional int32 width_option = 3;
+  // 0 if relevant but unknown
   optional int32 height_option = 4;
 
   optional string mime_type_option = 5;

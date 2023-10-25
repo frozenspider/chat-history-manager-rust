@@ -236,6 +236,14 @@ pub fn create_regular_message(idx: usize, user_id: usize) -> Message {
 // Helper traits/impls
 //
 
+pub trait ExtOption<T> {
+    fn unwrap_ref(&self) -> &T;
+}
+
+impl<T> ExtOption<T> for Option<T> {
+    fn unwrap_ref(&self) -> &T { self.as_ref().unwrap() }
+}
+
 pub struct InMemoryDaoHolder {
     pub dao: Box<InMemoryDao>,
 

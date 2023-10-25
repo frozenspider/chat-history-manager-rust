@@ -61,10 +61,12 @@ pub struct MessageSourceId(pub i64);
 #[derive(Deref, Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct MessageInternalId(pub i64);
 
-#[derive(Deref)]
+/// Number of epoch seconds
+#[derive(Deref, Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Timestamp(pub i64);
 
 impl Timestamp {
+    pub const MIN: Timestamp = Timestamp(0);
     pub const MAX: Timestamp = Timestamp(i64::MAX);
 }
 
@@ -111,7 +113,15 @@ impl Display for ShortUser {
 impl User {
     pub fn id(&self) -> UserId { UserId(self.id) }
 
-    pub fn pretty_name(&self) -> String { unimplemented!() }
+    pub fn pretty_name(&self) -> String {
+        match (self.first_name_option.as_ref(), self.last_name_option.as_ref(), self.phone_number_option.as_ref()) {
+            (Some(first_name), Some(last_name), _) => format!("{first_name} {last_name}"),
+            (Some(first_name), None, _) => first_name.clone(),
+            (None, Some(last_name), _) => last_name.clone(),
+            (None, None, Some(phone_number)) => phone_number.clone(),
+            (None, None, None) => UNNAMED.to_owned()
+        }
+    }
 }
 
 impl Dataset {

@@ -639,14 +639,6 @@ fn loading_2023_08() -> EmptyRes {
 // Helpers
 //
 
-trait ExtOption<T> {
-    fn unwrap_ref(&self) -> &T;
-}
-
-impl<T> ExtOption<T> for Option<T> {
-    fn unwrap_ref(&self) -> &T { self.as_ref().unwrap() }
-}
-
 fn expected_myself(ds_uuid: &PbUuid) -> User {
     User {
         ds_uuid: Some(ds_uuid.clone()),
