@@ -37,6 +37,31 @@ const GROUP_CHAT_ID_SHIFT: i64 = PERSONAL_CHAT_ID_SHIFT * 2;
 
 const RESULT_JSON: &str = "result.json";
 
+pub struct TelegramDataLoader;
+
+impl DataLoader for TelegramDataLoader {
+    fn name(&self) -> &'static str { "Telegram" }
+
+    fn src_alias(&self) -> &'static str { "Telegram" }
+
+    fn src_type(&self) -> &'static str { "telegram" }
+
+    fn looks_about_right_inner(&self, src_path: &Path) -> EmptyRes {
+        let path = get_real_path(src_path);
+        if !path.exists() {
+            bail!("{} not found in {}", RESULT_JSON, path_to_str(src_path)?);
+        }
+        if !first_line(&path)?.starts_with('{') {
+            bail!("{} is not a valid JSON file", path_to_str(&path)?);
+        }
+        Ok(())
+    }
+
+    fn load_inner(&self, path: &Path, ds: Dataset, myself_chooser: &dyn MyselfChooser) -> Result<Box<InMemoryDao>> {
+        parse_telegram_file(path, ds, myself_chooser)
+    }
+}
+
 type CB<'a> = ParseCallback<'a>;
 
 #[derive(Default, Debug)]
@@ -136,31 +161,6 @@ enum ParsedMessage {
 struct ExpectedMessageField<'lt> {
     required_fields: HashSet<&'lt str, Hasher>,
     optional_fields: HashSet<&'lt str, Hasher>,
-}
-
-pub struct TelegramDataLoader;
-
-impl DataLoader for TelegramDataLoader {
-    fn name(&self) -> &'static str { "Telegram" }
-
-    fn src_alias(&self) -> &'static str { "Telegram" }
-
-    fn src_type(&self) -> &'static str { "telegram" }
-
-    fn looks_about_right_inner(&self, src_path: &Path) -> EmptyRes {
-        let path = get_real_path(src_path);
-        if !path.exists() {
-            bail!("{} not found in {}", RESULT_JSON, path_to_str(src_path)?);
-        }
-        if !first_line(&path)?.starts_with('{') {
-            bail!("{} is not a valid JSON file", path_to_str(&path)?);
-        }
-        Ok(())
-    }
-
-    fn load_inner(&self, path: &Path, ds: Dataset, myself_chooser: &dyn MyselfChooser) -> Result<Box<InMemoryDao>> {
-        parse_telegram_file(path, ds, myself_chooser)
-    }
 }
 
 fn get_real_path(path: &Path) -> PathBuf {
@@ -503,21 +503,17 @@ fn parse_message(json_path: &str,
         expected_fields: None,
     };
 
-    let mut message: Box<Message> = Box::new(Message {
-        internal_id: *NO_INTERNAL_ID,
-        ..Default::default()
-    });
-
     // Determine message type an parse short user from it.
     let mut short_user: ShortUser = ShortUser::default();
     let tpe = message_json.field_str("type")?;
+    let typed: Typed;
     match tpe.as_str() {
         "message" => {
             message_json.expected_fields = Some(REGULAR_MSG_FIELDS.clone());
 
             let mut regular: MessageRegular = Default::default();
             parse_regular_message(&mut message_json, &mut regular)?;
-            message.typed = Some(Typed::Regular(regular));
+            typed = Typed::Regular(regular);
 
             short_user.id = parse_user_id(message_json.field("from_id")?)?;
             short_user.full_name_option = message_json.field_opt_str("from")?;
@@ -535,7 +531,7 @@ fn parse_message(json_path: &str,
                 ShouldProceed::SkipChat =>
                     return Ok(ParsedMessage::SkipChat)
             };
-            message.typed = Some(Typed::Service(service));
+            typed = Typed::Service(service);
 
             short_user.id = parse_user_id(message_json.field("actor_id")?)?;
             short_user.full_name_option = message_json.field_opt_str("actor")?;
@@ -548,7 +544,7 @@ fn parse_message(json_path: &str,
         short_user.id = UserId(*short_user.id - USER_ID_SHIFT);
     }
 
-    message.from_id = *short_user.id;
+    let from_id = *short_user.id;
 
     member_ids.insert(short_user.id);
 
@@ -558,29 +554,33 @@ fn parse_message(json_path: &str,
     let has_unixtime = message_json.val.get("date_unixtime").is_some();
     let has_text_entities = message_json.val.get("text_entities").is_some();
 
+    let mut source_id_option: Option<i64> = None;
+    let mut timestamp: Option<i64> = None;
+    let mut text: Option<Vec<RichTextElement>> = None;
+
     for (k, v) in message_json.val.iter() {
         let kr = k.as_ref();
         if let Some(ref mut ef) = message_json.expected_fields {
             if !ef.required_fields.remove(kr) &&
                 !ef.optional_fields.remove(kr) {
-                return err!("Unexpected message field '{kr}' for {:?}", message);
+                return err!("Unexpected message field '{kr}'");
             }
         }
 
         match kr {
             "id" =>
-                message.source_id_option = Some(as_i64!(v, message_json.json_path, "id")),
+                source_id_option = Some(as_i64!(v, message_json.json_path, "id")),
             "date_unixtime" => {
-                message.timestamp = parse_timestamp(as_str!(v, message_json.json_path, "date_unixtime"))?;
+                timestamp = Some(parse_timestamp(as_str!(v, message_json.json_path, "date_unixtime"))?);
             }
             "date" if !has_unixtime => {
-                message.timestamp = *parse_datetime(as_str!(v, message_json.json_path, "date"))?;
+                timestamp = Some(*parse_datetime(as_str!(v, message_json.json_path, "date"))?);
             }
             "text_entities" => {
-                message.text = parse_rich_text(&format!("{}.text_entities", message_json.json_path), v)?;
+                text = Some(parse_rich_text(&format!("{}.text_entities", message_json.json_path), v)?);
             }
             "text" if !has_text_entities => {
-                message.text = parse_rich_text(&format!("{}.text", message_json.json_path), v)?;
+                text = Some(parse_rich_text(&format!("{}.text", message_json.json_path), v)?);
             }
             _ => { /* Ignore, already consumed */ }
         }
@@ -592,9 +592,14 @@ fn parse_message(json_path: &str,
         }
     }
 
-    message.searchable_string = make_searchable_string(&message.text, message.typed.as_ref().unwrap());
-
-    Ok(ParsedMessage::Ok(message))
+    Ok(ParsedMessage::Ok(Box::new(Message::new(
+        *NO_INTERNAL_ID,
+        source_id_option,
+        timestamp.unwrap(),
+        from_id,
+        text.unwrap(),
+        typed,
+    ))))
 }
 
 fn parse_regular_message(message_json: &mut MessageJson,
@@ -652,6 +657,7 @@ fn parse_regular_message(message_json: &mut MessageJson,
                 mime_type: message_json.field_str("mime_type")?,
                 duration_sec_option: message_json.field_opt_i32("duration_seconds")?,
                 thumbnail_path_option: message_json.field_opt_path("thumbnail")?,
+                is_one_time: false,
             })),
         (Some("video_message"), None, true, false, false, false) =>
             Some(SealedValueOptional::VideoMsg(ContentVideoMsg {
@@ -661,6 +667,7 @@ fn parse_regular_message(message_json: &mut MessageJson,
                 mime_type: message_json.field_str("mime_type")?,
                 duration_sec_option: message_json.field_opt_i32("duration_seconds")?,
                 thumbnail_path_option: message_json.field_opt_path("thumbnail")?,
+                is_one_time: false,
             })),
         (Some("voice_message"), None, true, false, false, false) =>
             Some(SealedValueOptional::VoiceMsg(ContentVoiceMsg {
@@ -695,6 +702,7 @@ fn parse_regular_message(message_json: &mut MessageJson,
                 path_option: message_json.field_opt_path("photo")?,
                 width: message_json.field_i32("width")?,
                 height: message_json.field_i32("height")?,
+                is_one_time: false,
             })),
         (None, None, false, true, false, false) => {
             let (lat_str, lon_str) = {
@@ -794,6 +802,7 @@ fn parse_service_message(message_json: &mut MessageJson,
                     path_option: message_json.field_opt_path("photo")?,
                     height: message_json.field_i32("height")?,
                     width: message_json.field_i32("width")?,
+                    is_one_time: false,
                 })
             }),
         "clear_history" =>
@@ -809,6 +818,7 @@ fn parse_service_message(message_json: &mut MessageJson,
                     path_option: message_json.field_opt_path("photo")?,
                     height: message_json.field_i32("height")?,
                     width: message_json.field_i32("width")?,
+                    is_one_time: false,
                 })
             }),
         "delete_group_photo" =>

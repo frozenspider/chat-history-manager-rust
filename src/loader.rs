@@ -8,10 +8,12 @@ use uuid::Uuid;
 
 use crate::*;
 use crate::loader::telegram::TelegramDataLoader;
+use crate::loader::whatsapp_android::WhatsAppAndroidDataLoader;
 use crate::loader::whatsapp_text::WhatsAppTextDataLoader;
 use crate::protobuf::history::{Dataset, PbUuid};
 
 mod telegram;
+mod whatsapp_android;
 mod whatsapp_text;
 
 trait DataLoader {
@@ -56,9 +58,18 @@ fn ensure_file_presence(root_file: &Path) -> Result<&str> {
     Ok(root_file_str)
 }
 
+fn hash_to_id(str: &str) -> i64 {
+    use std::hash::{BuildHasher, Hasher};
+    let mut h = hasher().build_hasher();
+    // Following write_str unstable implementation
+    h.write(str.as_bytes());
+    h.write_u8(0xff);
+    (h.finish() / 2) as i64
+}
+
 thread_local! {
     static LOADERS: Vec<&'static dyn DataLoader> = {
-        let vec: Vec<&dyn DataLoader> = vec![&TelegramDataLoader, &WhatsAppTextDataLoader];
+        let vec: Vec<&dyn DataLoader> = vec![&TelegramDataLoader, &WhatsAppAndroidDataLoader, &WhatsAppTextDataLoader];
         vec
     };
 }

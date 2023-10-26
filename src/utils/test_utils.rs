@@ -256,6 +256,7 @@ impl Message {
     pub fn source_id(&self) -> MessageSourceId { MessageSourceId(self.source_id_option.unwrap()) }
 }
 
+#[must_use]
 pub struct TmpDir {
     pub path: PathBuf,
 }
@@ -264,8 +265,12 @@ impl TmpDir {
     pub fn new() -> Self {
         let dir_name = format!("chm-rust_{}", random_alphanumeric(10));
         let path = std::env::temp_dir().canonicalize().unwrap().join(dir_name);
-        fs::create_dir(&path).expect("Can't create temp directory!");
-        TmpDir { path }
+        Self::new_at(path)
+    }
+
+    pub fn new_at(full_path: PathBuf) -> Self {
+        fs::create_dir(&full_path).expect("Can't create temp directory!");
+        TmpDir { path: full_path }
     }
 }
 

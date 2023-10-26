@@ -108,7 +108,7 @@ message Message {
 
   /**
    * Unique ID assigned to this message by a DAO storage engine (even local one), always valid and >= 0.
-   * No ordering guarantees are provided in general case.
+   * No ordering guarantees are provided in general case, but some DAOs might do that.
    * Might change on dataset/chat mutation operations.
    * Should NEVER be compared across different DAOs!
    */
@@ -117,6 +117,7 @@ message Message {
   /**
    * Unique within a chat, serves as a persistent ID when merging with older/newer DB version.
    * If it's not useful for this purpose, should be empty.
+   * No ordering guarantees are provided.
    */
   optional int64 source_id_option = 2;
   // Number of epoch SECONDS (not millis!)
@@ -138,6 +139,7 @@ message MessageRegular {
   // Number of epoch SECONDS (not millis!)
   optional int64 edit_timestamp_option = 1;
   optional string forward_from_name_option = 2;
+  // References source ID
   optional int64 reply_to_message_id_option = 3;
   optional Content content_option = 4;
 }
@@ -148,6 +150,8 @@ message MessageService {
     MessageServiceSuggestProfilePhoto   suggest_profile_photo = 13;
     MessageServicePinMessage            pin_message = 2;
     MessageServiceClearHistory          clear_history = 3;
+    MessageServiceMessageDeleted        message_deleted = 14;
+    MessageServiceBlockUser             block_user = 15;
     MessageServiceGroupCreate           group_create = 4;
     MessageServiceGroupEditTitle        group_edit_title = 5;
     MessageServiceGroupEditPhoto        group_edit_photo = 6;
@@ -248,6 +252,7 @@ message ContentPhoto {
   int32 width = 2;
   // 0 if unknown
   int32 height = 3;
+  bool is_one_time = 4;
 }
 
 message ContentVoiceMsg {
@@ -270,6 +275,8 @@ message ContentVideoMsg {
 
   // Path relative to data root!
   optional string thumbnail_path_option = 6;
+
+  bool is_one_time = 7;
 }
 
 message ContentAnimation {
@@ -285,6 +292,8 @@ message ContentAnimation {
 
   // Path relative to data root!
   optional string thumbnail_path_option = 6;
+
+  bool is_one_time = 7;
 }
 
 message ContentFile {
@@ -322,6 +331,7 @@ message ContentPoll {
 message ContentSharedContact {
   optional string first_name_option = 1;
   optional string last_name_option = 2;
+  // Could hold multiple phone numbers separated by comma
   optional string phone_number_option = 3;
   // Path relative to data root!
   optional string vcard_path_option = 4;
@@ -346,6 +356,12 @@ message MessageServicePinMessage {
 
 // Note: for Telegram, `from...` is not always meaningful
 message MessageServiceClearHistory {}
+
+message MessageServiceMessageDeleted {}
+
+message MessageServiceBlockUser {
+  bool is_blocked = 1;
+}
 
 message MessageServiceGroupCreate {
   string title = 1;

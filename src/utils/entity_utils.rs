@@ -14,6 +14,7 @@ pub mod entity_equality;
 
 pub const UNNAMED: &str = "[unnamed]";
 pub const UNKNOWN: &str = "[unknown]";
+pub const SOMEONE: &str = "[someone]";
 
 pub const NO_INTERNAL_ID: MessageInternalId = MessageInternalId(-1);
 
@@ -113,14 +114,18 @@ impl Display for ShortUser {
 impl User {
     pub fn id(&self) -> UserId { UserId(self.id) }
 
-    pub fn pretty_name(&self) -> String {
+    pub fn pretty_name_option(&self) -> Option<String> {
         match (self.first_name_option.as_ref(), self.last_name_option.as_ref(), self.phone_number_option.as_ref()) {
-            (Some(first_name), Some(last_name), _) => format!("{first_name} {last_name}"),
-            (Some(first_name), None, _) => first_name.clone(),
-            (None, Some(last_name), _) => last_name.clone(),
-            (None, None, Some(phone_number)) => phone_number.clone(),
-            (None, None, None) => UNNAMED.to_owned()
+            (Some(first_name), Some(last_name), _) => Some(format!("{first_name} {last_name}")),
+            (Some(first_name), None, _) => Some(first_name.clone()),
+            (None, Some(last_name), _) => Some(last_name.clone()),
+            (None, None, Some(phone_number)) => Some(phone_number.clone()),
+            (None, None, None) => None
         }
+    }
+
+    pub fn pretty_name(&self) -> String {
+        self.pretty_name_option().unwrap_or(UNNAMED.to_owned())
     }
 }
 
@@ -171,6 +176,24 @@ impl Chat {
 }
 
 impl Message {
+    pub fn new(internal_id: i64,
+               source_id_option: Option<i64>,
+               timestamp: i64,
+               from_id: i64,
+               text: Vec<RichTextElement>,
+               typed: message::Typed) -> Self {
+        let searchable_string = make_searchable_string(&text, &typed);
+        Message {
+            internal_id,
+            source_id_option,
+            timestamp,
+            from_id,
+            text,
+            searchable_string,
+            typed: Some(typed),
+        }
+    }
+
     pub fn internal_id(&self) -> MessageInternalId { MessageInternalId(self.internal_id) }
 
     // pub fn source_id_option(&self) -> Option<MessageSourceId> { self.source_id_option.map(MessageSourceId) }
@@ -403,5 +426,9 @@ pub fn make_searchable_string(components: &[RichTextElement], typed: &message::T
 }
 
 pub fn name_or_unnamed(name_option: &Option<String>) -> String {
-    name_option.as_ref().cloned().unwrap_or(UNNAMED.to_owned())
+    name_or_unnamed_str(name_option.as_deref())
+}
+
+pub fn name_or_unnamed_str(name_option: Option<&str>) -> String {
+    name_option.unwrap_or(UNNAMED).to_owned()
 }

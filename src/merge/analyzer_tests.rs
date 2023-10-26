@@ -558,6 +558,7 @@ fn present_absent_not_downloaded() -> EmptyRes {
         path_option: Some("non/existent/path.jpg".to_owned()),
         width: 100500,
         height: 100600,
+        is_one_time: false,
     };
 
     let not_downloaded = ContentPhoto { path_option: None, ..not_found };
@@ -566,6 +567,7 @@ fn present_absent_not_downloaded() -> EmptyRes {
         path_option: Some("placeholder-1".to_owned()),
         width: -1,
         height: -1,
+        is_one_time: false,
     };
 
     let placeholder2 = ContentPhoto {
@@ -652,9 +654,9 @@ fn present_absent_not_downloaded() -> EmptyRes {
                 if photo == &not_found || photo == &not_downloaded {
                     None
                 } else if photo == &placeholder1 {
-                    Some((photo.path_option.as_ref().unwrap(), placeholder1_content.as_bytes()))
+                    Some((photo.path_option.unwrap_ref(), placeholder1_content.as_bytes()))
                 } else if photo == &placeholder2 {
-                    Some((photo.path_option.as_ref().unwrap(), placeholder2_content.as_bytes()))
+                    Some((photo.path_option.unwrap_ref(), placeholder2_content.as_bytes()))
                 } else {
                     unreachable!("{:?}", photo)
                 };

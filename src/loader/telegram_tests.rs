@@ -291,7 +291,7 @@ fn loading_2021_06_supergroup() -> EmptyRes {
             timestamp: dt("2021-03-18 17:50:23", None).timestamp(),
             from_id: myself.id,
             text: vec![],
-            searchable_string: format!("{} {}", myself.first_name_option.as_ref().unwrap(), &myself.phone_number_option.as_ref().unwrap()),
+            searchable_string: format!("{} {}", myself.first_name_option.unwrap_ref(), &myself.phone_number_option.as_ref().unwrap()),
             typed: Some(Typed::Regular(MessageRegular {
                 edit_timestamp_option: None,
                 forward_from_name_option: None,
@@ -537,6 +537,7 @@ fn loading_2023_01() -> EmptyRes {
                         path_option: None,
                         width: 640,
                         height: 640,
+                        is_one_time: false,
                     })
                 }))
             })),

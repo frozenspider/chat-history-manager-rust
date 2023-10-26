@@ -149,6 +149,7 @@ fn loading_2023_10() -> EmptyRes {
                         path_option: Some("IMG-20230630-WA0000.jpg".to_owned()),
                         width: 0,
                         height: 0,
+                        is_one_time: false,
                     }))
                 }),
             })),
@@ -172,6 +173,7 @@ fn loading_2023_10() -> EmptyRes {
                         mime_type: "video/mp4".to_owned(),
                         duration_sec_option: None,
                         thumbnail_path_option: None,
+                        is_one_time: false,
                     }))
                 }),
             })),

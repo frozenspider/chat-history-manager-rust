@@ -1,5 +1,4 @@
 use std::fs;
-use std::hash::{BuildHasher, Hasher};
 use chrono::{NaiveDateTime, TimeZone};
 
 use lazy_static::lazy_static;
@@ -103,27 +102,19 @@ fn parse_users(ds_uuid: &PbUuid, filename: &str, content: &str) -> Result<(User,
 
     Ok((User {
         ds_uuid: Some(ds_uuid.clone()),
-        id: gen_user_id(self_name),
+        id: hash_to_id(self_name),
         first_name_option: Some(self_name.to_owned()),
         last_name_option: None,
         username_option: None,
         phone_number_option: None,
     }, User {
         ds_uuid: Some(ds_uuid.clone()),
-        id: gen_user_id(other_name),
+        id: hash_to_id(other_name),
         first_name_option: if other_name.starts_with("+") { None } else { Some(other_name.to_owned()) },
         last_name_option: None,
         username_option: None,
         phone_number_option: if other_name.starts_with("+") { Some(other_name.to_owned()) } else { None },
     }))
-}
-
-fn gen_user_id(name: &str) -> i64 {
-    let mut h = hasher().build_hasher();
-    // Following write_str unstable implementation
-    h.write(name.as_bytes());
-    h.write_u8(0xff);
-    (h.finish() / 2) as i64
 }
 
 fn parse_messages(content: &String, myself: &User, other: &User) -> Result<Vec<Message>> {
@@ -179,23 +170,19 @@ fn parse_messages(content: &String, myself: &User, other: &User) -> Result<Vec<M
                 last_internal_id = MessageInternalId(*last_internal_id + 1);
 
                 let (text, content_option) = parse_message_text(&lines)?;
-                let mut message = Message {
-                    internal_id: *last_internal_id,
-                    source_id_option: None,
+                result.push(Message::new(
+                    *last_internal_id,
+                    None /* source_id_option */,
                     timestamp,
                     from_id,
                     text,
-                    searchable_string: "".to_owned() /* Temporary */,
-                    typed: Some(message::Typed::Regular(MessageRegular {
+                    message::Typed::Regular(MessageRegular {
                         edit_timestamp_option: None,
                         forward_from_name_option: None,
                         reply_to_message_id_option: None,
                         content_option,
-                    })),
-                };
-                message.searchable_string = make_searchable_string(&message.text, message.typed.as_ref().unwrap());
-                result.push(message);
-
+                    }),
+                ));
                 user_id = None;
                 lines.clear();
             }
@@ -219,6 +206,7 @@ fn parse_message_text(lines: &[&str]) -> Result<(Vec<RichTextElement>, Option<Co
                 path_option: Some(filename.to_owned()),
                 width: 0,
                 height: 0,
+                is_one_time: false,
             }),
             "STK" => Sticker(ContentSticker {
                 path_option: Some(filename.to_owned()),
@@ -236,6 +224,7 @@ fn parse_message_text(lines: &[&str]) -> Result<(Vec<RichTextElement>, Option<Co
                     mime_type: "video/mp4".to_owned(),
                     duration_sec_option: None,
                     thumbnail_path_option: None,
+                    is_one_time: false,
                 })
             }
             "AUD" => {

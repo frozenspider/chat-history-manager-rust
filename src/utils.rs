@@ -102,6 +102,8 @@ error_chain! {
         NetworkTransport(tonic::transport::Error);
         TaskJoin(tokio::task::JoinError);
         DateTimeParse(chrono::format::ParseError);
+        SqliteError(rusqlite::Error);
+        VcardParseError(ical::parser::ParserError);
     }
 }
 
