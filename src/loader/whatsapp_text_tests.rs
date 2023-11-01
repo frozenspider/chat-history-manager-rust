@@ -263,7 +263,7 @@ fn loading_2023_10() -> EmptyRes {
 fn expected_myself(ds_uuid: &PbUuid) -> User {
     User {
         ds_uuid: Some(ds_uuid.clone()),
-        id: 95602741658876022_i64,
+        id: 1_i64,
         first_name_option: Some("Aaaaa Aaaaaaaaaaa".to_owned()),
         last_name_option: None,
         username_option: None,

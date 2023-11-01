@@ -100,9 +100,10 @@ fn parse_users(ds_uuid: &PbUuid, filename: &str, content: &str) -> Result<(User,
         bail!("Expected other user to be named '{}', but users were {:?}", other_name, user_names)
     };
 
+    // Self ID is set to minimum valid one.
     Ok((User {
         ds_uuid: Some(ds_uuid.clone()),
-        id: hash_to_id(self_name),
+        id: UserId::INVALID.0 + 1,
         first_name_option: Some(self_name.to_owned()),
         last_name_option: None,
         username_option: None,
