@@ -1,0 +1,39 @@
+syntax = "proto3";
+
+package history;
+
+import "scalapb/scalapb.proto";
+import "protobuf/history.proto";
+
+option (scalapb.options) = {
+  package_name: "org.fs.chm.protobuf"
+  flat_package: true
+  single_file: true
+  no_default_values_in_constructor: true
+  enum_value_naming: CAMEL_CASE
+  enum_strip_prefix: true
+};
+
+service ChatHistoryDaoService {
+  rpc GetLoadedFiles(GetLoadedFilesRequest) returns (GetLoadedFilesResponse) {}
+  rpc Name(NameRequest) returns (NameResponse) {}
+}
+
+message GetLoadedFilesRequest {}
+
+message GetLoadedFilesResponse {
+  repeated LoadedFile files = 1;
+}
+
+message LoadedFile {
+  string key = 1;
+  string name = 2;
+}
+
+message NameRequest {
+  string key = 1;
+}
+
+message NameResponse {
+  string name = 1;
+}

@@ -5,7 +5,6 @@ use std::path::PathBuf;
 use chrono::prelude::*;
 use itertools::Itertools;
 use lazy_static::lazy_static;
-use log::info;
 use pretty_assertions::{assert_eq, assert_ne};
 
 use crate::{NoChooser, User};

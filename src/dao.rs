@@ -1,10 +1,10 @@
-use std::collections::HashSet;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use crate::protobuf::history::*;
 use crate::*;
 
 pub mod in_memory_dao;
+pub mod sqlite_dao;
 
 /**
  * Everything except for messages should be pre-cached and readily available.
@@ -22,9 +22,6 @@ pub trait ChatHistoryDao {
     /** Directory which stores eveything in the dataset. All files are guaranteed to have this as a prefix. */
     fn dataset_root(&self, ds_uuid: &PbUuid) -> DatasetRoot;
 
-    /** List all files referenced by entities of this dataset. Some might not exist. */
-    fn dataset_files(&self, ds_uuid: &PbUuid) -> Result<HashSet<PathBuf>>;
-
     fn myself(&self, ds_uuid: &PbUuid) -> Result<User>;
 
     /** Contains myself as the first element. Order must be stable. Method is expected to be fast. */
@@ -32,6 +29,7 @@ pub trait ChatHistoryDao {
 
     fn user_option(&self, ds_uuid: &PbUuid, id: i64) -> Result<Option<User>>;
 
+    /** Note: This should contain enough info to show chats list in GUI */
     fn chats(&self, ds_uuid: &PbUuid) -> Result<Vec<ChatWithDetails>>;
 
     fn chat_option(&self, ds_uuid: &PbUuid, id: i64) -> Result<Option<ChatWithDetails>>;
@@ -84,5 +82,7 @@ pub trait ChatHistoryDao {
     fn message_option_by_internal_id(&self, chat: &Chat, internal_id: MessageInternalId) -> Result<Option<Message>>;
 
     /** Whether given data path is the one loaded in this DAO */
-    fn is_loaded(&self, storage_path: &Path) -> bool;
+    fn is_loaded(&self, storage_path: &Path) -> bool {
+        self.storage_path() == storage_path
+    }
 }

@@ -22,9 +22,6 @@ use super::*;
 const RESOURCE_DIR: &str = "tinder-android";
 
 lazy_static! {
-    // TODO: Do we need cleanup?
-    static ref HTTP_CLIENT: MockHttpClient = MockHttpClient::new();
-
     static ref LOADER: TinderAndroidDataLoader<MockHttpClient> = TinderAndroidDataLoader {
         http_client: &HTTP_CLIENT
     };

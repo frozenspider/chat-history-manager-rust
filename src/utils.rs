@@ -136,6 +136,9 @@ pub fn hasher() -> Hasher {
 }
 
 //
-// HTTP
+// Misc
 //
 
+pub fn transpose_option_result<T>(x: Option<Result<T>>) -> Result<Option<T>> {
+    x.map_or(Ok(None), |v| v.map(Some))
+}

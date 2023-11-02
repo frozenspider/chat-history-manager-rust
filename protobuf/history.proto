@@ -13,12 +13,8 @@ option (scalapb.options) = {
   enum_strip_prefix: true
 };
 
-service HistoryLoader {
+service HistoryLoaderService {
   rpc ParseHistoryFile(ParseHistoryFileRequest) returns (ParseHistoryFileResponse) {}
-}
-
-service MyselfChooser {
-  rpc ChooseMyself(ChooseMyselfRequest) returns (ChooseMyselfResponse) {}
 }
 
 message ParseHistoryFileRequest {
@@ -36,6 +32,10 @@ message ParseHistoryFileResponse {
   repeated User users = 4;
 
   repeated ChatWithMessages cwms = 5;
+}
+
+service ChooseMyselfService {
+  rpc ChooseMyself(ChooseMyselfRequest) returns (ChooseMyselfResponse) {}
 }
 
 message ChooseMyselfRequest {

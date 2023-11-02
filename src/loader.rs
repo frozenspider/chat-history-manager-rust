@@ -44,7 +44,7 @@ trait DataLoader {
         measure(|| {
             let now_str = Local::now().format("%Y-%m-%d");
             let ds = Dataset {
-                uuid: Some(PbUuid { value: Uuid::new_v4().to_string().to_lowercase() }),
+                uuid: Some(PbUuid { value: Uuid::new_v4().to_string() }),
                 alias: format!("{}, loaded @ {now_str}", self.src_alias()),
                 source_type: self.src_type().to_owned(),
             };

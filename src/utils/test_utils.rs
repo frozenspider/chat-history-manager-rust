@@ -1,5 +1,5 @@
 use std::cell::RefCell;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -32,6 +32,9 @@ lazy_static! {
         reply_to_message_id_option: None,
         content_option: None,
     });
+
+    // TODO: Do we need cleanup?
+    pub static ref HTTP_CLIENT: MockHttpClient = MockHttpClient::new();
 }
 
 pub fn resource(relative_path: &str) -> PathBuf {
@@ -280,6 +283,38 @@ pub mod test_android {
 //
 // Helper traits/impls
 //
+
+pub trait ExtChatHistoryDao<D> where D: ChatHistoryDao {
+    fn dao(&self) -> &D;
+
+    /// Returns sorted paths to all files referenced by entities of this dataset. Some might not exist.
+    fn dataset_files(&self, ds_uuid: &PbUuid) -> Result<Vec<PathBuf>> {
+        let dao = self.dao();
+        let ds_root = dao.dataset_root(ds_uuid);
+        let cwds = dao.chats(ds_uuid)?;
+        let mut files: Vec<PathBuf> = cwds.iter()
+            .map(|cwd| cwd.chat.img_path_option.as_deref())
+            .flatten()
+            .map(|f| ds_root.to_absolute(f)).collect();
+        for cwd in cwds.iter() {
+            let msgs = dao.first_messages(&cwd.chat, usize::MAX)?;
+            for msg in msgs.iter() {
+                let more_files = msg.files(&ds_root);
+                files.extend(more_files.into_iter());
+            }
+        }
+        files.sort();
+        Ok(files)
+    }
+}
+
+impl<T> ExtChatHistoryDao<T> for T where T: ChatHistoryDao {
+    fn dao(&self) -> &Self { self }
+}
+
+impl<T> ExtChatHistoryDao<T> for Box<T> where T: ChatHistoryDao {
+    fn dao(&self) -> &T { self.as_ref() }
+}
 
 pub trait ExtOption<T> {
     fn unwrap_ref(&self) -> &T;

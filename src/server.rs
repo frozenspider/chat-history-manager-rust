@@ -1,6 +1,11 @@
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::fmt::Debug;
 use std::net::SocketAddr;
+use std::ops::DerefMut;
 use std::path::Path;
 use std::sync::Arc;
+use std::sync::{Mutex, MutexGuard};
 
 use itertools::Itertools;
 use tokio::runtime::Handle;
@@ -9,9 +14,12 @@ use unicode_segmentation::UnicodeSegmentation;
 
 use crate::*;
 use crate::loader::Loader;
-use crate::protobuf::history::{ChooseMyselfRequest, ParseHistoryFileRequest, ParseHistoryFileResponse, PbUuid, User};
-use crate::protobuf::history::history_loader_server::*;
-use crate::protobuf::history::myself_chooser_client::MyselfChooserClient;
+use crate::dao::ChatHistoryDao;
+use crate::dao::sqlite_dao::SqliteDao;
+use crate::protobuf::history::*;
+use crate::protobuf::history::chat_history_dao_service_server::*;
+use crate::protobuf::history::history_loader_service_server::*;
+use crate::protobuf::history::choose_myself_service_client::ChooseMyselfServiceClient;
 
 pub(crate) const FILE_DESCRIPTOR_SET: &[u8] =
     tonic::include_file_descriptor_set!("grpc_reflection_descriptor");
@@ -20,51 +28,106 @@ macro_rules! truncate_to {
     ($str:expr, $maxlen:expr) => {$str.graphemes(true).take($maxlen).collect::<String>()};
 }
 
+type StdRes<T, E> = std::result::Result<T, E>;
+type StatusResult<T> = StdRes<T, Status>;
+type TonicResult<T> = StatusResult<Response<T>>;
+
+type DaoKey = String;
+type DaoMap = HashMap<DaoKey, Box<RefCell<SqliteDao>>>;
+
 pub struct ChatHistoryManagerServer<MC: MyselfChooser> {
     loader: Arc<Loader<MC>>,
-//   db: Option<InMemoryDb>,
+    loaded_daos: Mutex<DaoMap>,
+}
+
+impl<MC: MyselfChooser> ChatHistoryManagerServer<MC> {
+    fn process_request<Q, P, L>(&self, req: &Request<Q>, mut logic: L) -> TonicResult<P>
+        where Q: Debug,
+              P: Debug,
+              L: FnMut(&Q) -> StatusResult<P> {
+        log::info!(">>> Request:  {:?}", req.get_ref());
+        let response_result = logic(req.get_ref())
+            .map(Response::new);
+        log::info!("{}", truncate_to!(format!("<<< Response: {:?}", response_result), 150));
+        response_result
+    }
+
+    fn lock_dao_map(&self) -> StatusResult<MutexGuard<DaoMap>> {
+        self.loaded_daos.lock()
+            .map_err(|e| Status::new(Code::Internal,
+                                     format!("Cannot obtain a DAO mutex lock: {}", e)))
+    }
+
+    fn process_request_with_dao<Q, P, L>(&self, req: &Request<Q>, key: &DaoKey, mut logic: L) -> TonicResult<P>
+        where Q: Debug,
+              P: Debug,
+              L: FnMut(&Q, &mut SqliteDao) -> StatusResult<P> {
+        let dao_map_lock = self.lock_dao_map()?;
+        let dao = dao_map_lock.get(key)
+            .ok_or_else(|| Status::new(Code::FailedPrecondition,
+                                       format!("Database {key} is not loaded!")))?;
+        let mut dao = dao.borrow_mut();
+        let dao = dao.deref_mut();
+
+        self.process_request(req, |req| logic(req, dao))
+    }
 }
 
 #[tonic::async_trait]
-impl<MC: MyselfChooser + 'static> HistoryLoader for ChatHistoryManagerServer<MC> {
-    async fn parse_history_file(
-        &self,
-        request: Request<ParseHistoryFileRequest>,
-    ) -> std::result::Result<Response<ParseHistoryFileResponse>, Status> {
-        log::info!(">>> Request:  {:?}", request.get_ref());
+impl<MC: MyselfChooser + 'static> HistoryLoaderService for ChatHistoryManagerServer<MC> {
+    async fn parse_history_file(&self, req: Request<ParseHistoryFileRequest>) -> TonicResult<ParseHistoryFileResponse> {
         let loader = self.loader.clone();
+        self.process_request(&req, move |req| {
+            let path = Path::new(&req.path);
+            loader.load(path)
+                .map_err(|err| {
+                    eprintln!("Load failed!\n{:?}", err);
+                    Status::new(Code::Internal, error_to_string(&err))
+                })
+                .map(|in_mem_dao|
+                    ParseHistoryFileResponse {
+                        ds: Some(in_mem_dao.dataset),
+                        root_file: String::from(in_mem_dao.ds_root.to_str().unwrap()),
+                        myself: Some(in_mem_dao.myself),
+                        users: in_mem_dao.users,
+                        cwms: in_mem_dao.cwms,
+                    }
+                )
+        })
+    }
+}
 
-        let blocking_task = tokio::task::spawn_blocking(move || {
-            let path = Path::new(&request.get_ref().path);
-            let response =
-                loader.load(path)
-                    .map_err(|err| {
-                        eprintln!("Load failed!\n{:?}", err);
-                        Status::new(Code::Internal, error_to_string(&err))
-                    })
-                    .map(|dao|
-                        ParseHistoryFileResponse {
-                            ds: Some(dao.dataset),
-                            root_file: String::from(dao.ds_root.to_str().unwrap()),
-                            myself: Some(dao.myself),
-                            users: dao.users,
-                            cwms: dao.cwms,
-                        }
-                    )
-                    .map(Response::new);
-            log::info!("{}", truncate_to!(format!("<<< Response: {:?}", response), 150));
-            response
-        });
+macro_rules! with_dao_by_key {
+    ($self:ident, $req:ident, $dao:ident, $code:block) => {
+        $self.process_request_with_dao(&$req, &$req.get_ref().key, |$req, $dao| { $code })
+    };
+}
 
-        blocking_task.await
-            .map_err(|e| Status::new(Code::Internal, e.to_string()))?
+#[tonic::async_trait]
+impl<MC: MyselfChooser + 'static> ChatHistoryDaoService for ChatHistoryManagerServer<MC> {
+    async fn get_loaded_files(&self, req: Request<GetLoadedFilesRequest>) -> TonicResult<GetLoadedFilesResponse> {
+        self.process_request(&req, |_| {
+            let dao_map_lock = self.lock_dao_map()?;
+            let files = dao_map_lock.iter()
+                .map(|(k, dao)| LoadedFile { key: k.clone(), name: dao.borrow().name().to_owned() })
+                .collect_vec();
+            Ok(GetLoadedFilesResponse { files })
+        })
+    }
+
+    async fn name(&self, req: Request<NameRequest>) -> TonicResult<NameResponse> {
+        with_dao_by_key!(self, req, dao, {
+            Ok(NameResponse {
+                name: dao.name().to_owned()
+            })
+        })
     }
 }
 
 async fn choose_myself_async(port: u16, users: Vec<User>) -> Result<usize> {
     log::info!("Connecting to myself chooser at port {}", port);
     let mut client =
-        MyselfChooserClient::connect(format!("http://127.0.0.1:{}", port))
+        ChooseMyselfServiceClient::connect(format!("http://127.0.0.1:{}", port))
             .await?;
     log::info!("Sending ChooseMyselfRequest");
     let len = users.len();
@@ -119,6 +182,7 @@ pub async fn start_server<H: HttpClient>(port: u16, http_client: &'static H) -> 
     let loader = Arc::new(Loader::new(http_client, myself_chooser));
 
     let chm_server = ChatHistoryManagerServer {
+        loaded_daos: Mutex::new(HashMap::new()),
         loader,
     };
 
@@ -130,7 +194,7 @@ pub async fn start_server<H: HttpClient>(port: u16, http_client: &'static H) -> 
     log::info!("JsonServer server listening on {}", addr);
 
     Server::builder()
-        .add_service(HistoryLoaderServer::new(chm_server))
+        .add_service(HistoryLoaderServiceServer::new(chm_server))
         .add_service(reflection_service)
         .serve(addr)
         .await?;

@@ -1,5 +1,4 @@
 use std::cmp;
-use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use deepsize::DeepSizeOf;
@@ -84,20 +83,6 @@ impl ChatHistoryDao for InMemoryDao {
 
     fn dataset_root(&self, _ds_uuid: &PbUuid) -> DatasetRoot {
         DatasetRoot(self.storage_path().to_owned())
-    }
-
-    fn dataset_files(&self, _ds_uuid: &PbUuid) -> Result<HashSet<PathBuf>> {
-        /*
-        val dsRoot       = datasetRoot(dsUuid)
-        val cwds         = chats(dsUuid)
-        val chatImgFiles = cwds.map(_.chat.imgPathOption.map(_.toFile(dsRoot))).yieldDefined.toSet
-        val msgFiles = for {
-          cwd <- cwds
-          m   <- firstMessages(cwd.chat, Int.MaxValue)
-        } yield m.files(dsRoot)
-        chatImgFiles ++ msgFiles.toSet.flatten
-        */
-        todo!()
     }
 
     fn myself(&self, _ds_uuid: &PbUuid) -> Result<User> {
@@ -220,10 +205,6 @@ impl ChatHistoryDao for InMemoryDao {
     fn message_option_by_internal_id(&self, chat: &Chat, internal_id: MessageInternalId) -> Result<Option<Message>> {
         Ok(self.messages_option(chat.id).unwrap()
             .iter().find(|m| m.internal_id == *internal_id).cloned())
-    }
-
-    fn is_loaded(&self, storage_path: &Path) -> bool {
-        self.ds_root.as_path() == storage_path
     }
 }
 
