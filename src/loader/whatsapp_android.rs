@@ -284,6 +284,7 @@ mod columns {
         pub const HEIGHT: &str = "height";
         pub const MIME_TYPE: &str = "mime_type";
         pub const DURATION: &str = "media_duration";
+        pub const CAPTION: &str = "media_caption";
     }
 
     pub mod message_location {
@@ -420,7 +421,7 @@ fn parse_chats(conn: &Connection, ds_uuid: &PbUuid, users: &mut Users) -> Result
               ORDER BY message.sort_id ASC",
             {
                 use columns::message_media::*;
-                [FILE_PATH, NAME, WIDTH, HEIGHT, MIME_TYPE, DURATION].iter()
+                [FILE_PATH, NAME, WIDTH, HEIGHT, MIME_TYPE, DURATION, CAPTION].iter()
                     .map(|c| format!("message_media.{c}")).join(", ")
             },
             {
@@ -495,7 +496,7 @@ fn parse_chats(conn: &Connection, ds_uuid: &PbUuid, users: &mut Users) -> Result
             let msg_tpe = row.get::<_, i32>(columns::message::TYPE)?;
             let msg_tpe = MessageType::try_from(msg_tpe).map_err(|_| anyhow!("Unknown message type ID: {msg_tpe}"))?;
 
-            let (typed, has_text) = {
+            let (typed, text_column) = {
                 let result_option = match msg_tpe {
                     MessageType::System | MessageType::MissedCall | MessageType::Deleted =>
                         parse_system_message(row, msg_tpe, users, &mut member_ids)?,
@@ -509,11 +510,13 @@ fn parse_chats(conn: &Connection, ds_uuid: &PbUuid, users: &mut Users) -> Result
             };
 
             // Technically, text uses markdown, but oh well
-            let text = match row.get::<_, Option<String>>(columns::message::TEXT)? {
-                _ if !has_text => vec![],
-                None => vec![],
-                Some(s) if s.is_empty() => vec![],
-                Some(text) => vec![RichText::make_plain(text)]
+            let text = text_column.map(|col| row.get::<_, Option<String>>(col));
+            let text = match text {
+                None => vec![], // Data type implies no text
+                Some(Ok(None)) => vec![], // Text not supplies
+                Some(Ok(Some(s))) if s.is_empty() => vec![],
+                Some(Ok(Some(text))) => vec![RichText::make_plain(text)],
+                Some(Err(e)) => return Err(e)?
             };
 
             let key: MessageKey = row.get(columns::message::KEY)?;
@@ -596,10 +599,10 @@ fn parse_system_message<'a>(
     msg_tpe: MessageType,
     users: &'a mut Users,
     chat_member_ids: &mut HashSet<UserId, Hasher>,
-) -> Result<Option<(message::Typed, bool)>> {
+) -> Result<Option<(message::Typed, Option<&'static str>)>> {
     use message_service::SealedValueOptional;
     use message_service::SealedValueOptional::*;
-    let mut has_text = true;
+    let mut text_column = Some(columns::message::TEXT);
     let val: SealedValueOptional = match msg_tpe {
         MessageType::System => {
             let action_type = row.get::<_, i32>("action_type")?;
@@ -630,7 +633,7 @@ fn parse_system_message<'a>(
             match action_type {
                 SystemActionType::GroupPhotoChange => {
                     // We only know some weird "new_photo_id" that leads nowhere
-                    has_text = false; // Text is a new_photo_id
+                    text_column = None; // Text is a new_photo_id
                     GroupEditPhoto(MessageServiceGroupEditPhoto {
                         photo: Some(ContentPhoto {
                             path_option: None,
@@ -641,7 +644,7 @@ fn parse_system_message<'a>(
                     })
                 }
                 SystemActionType::GroupCreate => {
-                    has_text = false; // Text is a title
+                    text_column = None; // Text is a title
                     GroupCreate(MessageServiceGroupCreate {
                         title: row.get(columns::message::TEXT)?,
                         members: vec![],
@@ -666,7 +669,7 @@ fn parse_system_message<'a>(
                     })
                 }
                 SystemActionType::BlockContact => {
-                    has_text = false; // Text is a literal true/false string
+                    text_column = None; // Text is a literal true/false string
                     BlockUser(MessageServiceBlockUser {
                         is_blocked: row.get::<_, i8>("is_blocked")? == 1
                     })
@@ -689,7 +692,7 @@ fn parse_system_message<'a>(
         _ => unreachable!()
     };
 
-    Ok(Some((message::Typed::Service(MessageService { sealed_value_optional: Some(val) }), has_text)))
+    Ok(Some((message::Typed::Service(MessageService { sealed_value_optional: Some(val) }), text_column)))
 }
 
 /// Returns `None` for rows that should be skipped.
@@ -697,9 +700,9 @@ fn parse_regular_message(
     row: &Row,
     msg_tpe: MessageType,
     msg_key_to_source_id: &HashMap<MessageKey, i64, Hasher>,
-) -> Result<Option<(message::Typed, bool)>> {
+) -> Result<Option<(message::Typed, Option<&'static str>)>> {
     use content::SealedValueOptional::*;
-    let mut has_text = true;
+    let mut text_column = Some(columns::message::TEXT);
 
     macro_rules! get_mandatory_int {
         ($col:expr, $col_name:expr) => {get_zero_as_null(row, $col)?.expect(concat!("No ", $col_name, " specified!"))};
@@ -718,7 +721,7 @@ fn parse_regular_message(
                 is_one_time: false,
             })),
         MessageType::OneTimePhoto => {
-            has_text = false;
+            text_column = None;
             Some(Photo(ContentPhoto {
                 path_option: None, // TODO!
                 width: get_mandatory_width!(),
@@ -733,7 +736,7 @@ fn parse_regular_message(
                 duration_sec_option: get_zero_as_null(row, columns::message_media::DURATION)?,
             })),
         MessageType::Video => {
-            has_text = false;
+            text_column = None;
             Some(VideoMsg(ContentVideoMsg {
                 path_option: row.get(columns::message_media::FILE_PATH)?, // TODO: One-time videos
                 width: get_mandatory_width!(),
@@ -754,13 +757,16 @@ fn parse_regular_message(
                 thumbnail_path_option: None,
                 is_one_time: true,
             })),
-        MessageType::Document =>
+        MessageType::Document => {
+            // For some reason, text is moved here
+            text_column = Some(columns::message_media::CAPTION);
             Some(File(ContentFile {
                 path_option: row.get(columns::message_media::FILE_PATH)?,
                 file_name_option: row.get(columns::message_media::NAME)?,
                 mime_type_option: row.get(columns::message_media::MIME_TYPE)?,
                 thumbnail_path_option: None,
-            })),
+            }))
+        }
         MessageType::AnimatedSticker => {
             let (mut w, mut h) = (
                 get_zero_as_null(row, columns::message_media::WIDTH)?.expect("No width specified!"),
@@ -780,7 +786,7 @@ fn parse_regular_message(
             }))
         }
         MessageType::ContactVcard => {
-            has_text = false; // Text is a contact name, we have it already
+            text_column = None; // Text is a contact name, we have it already
             Some(SharedContact(parse_vcard(&row.get::<_, String>("vcard")?)?))
         }
         MessageType::StaticLocation | MessageType::LiveLocation => {
@@ -826,7 +832,7 @@ fn parse_regular_message(
         forward_from_name_option,
         reply_to_message_id_option,
         content_option,
-    }), has_text)))
+    }), text_column)))
 }
 
 fn get_zero_as_null(row: &Row, col_name: &str) -> Result<Option<i32>> {
