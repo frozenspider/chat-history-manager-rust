@@ -7,7 +7,7 @@ use std::path::Path;
 use std::time::Instant;
 
 use chrono::Local;
-pub use error_chain::{bail, error_chain};
+pub use anyhow::{bail, anyhow, Context};
 use hashers::fx_hash::FxHasher;
 use lazy_static::lazy_static;
 
@@ -77,42 +77,24 @@ impl<'a> SmartSlice<'a> for &str {
 //
 
 pub fn path_file_name(path: &Path) -> Result<&str> {
-    path.file_name().and_then(|p: &OsStr| p.to_str()).ok_or_else(|| "Failed to convert filename to string".into())
+    path.file_name().and_then(|p: &OsStr| p.to_str()).ok_or_else(|| anyhow!("Failed to convert filename to string"))
 }
 
 pub fn path_to_str(path: &Path) -> Result<&str> {
-    path.to_str().ok_or_else(|| "Failed to convert path to a string".into())
+    path.to_str().ok_or_else(|| anyhow!("Failed to convert path to a string"))
 }
 
 //
 // Error handling
 //
 
-error_chain! {
-    types {
-        Error, ErrorKind, ResultExt, Result;
-    }
-
-    foreign_links {
-        Io(std::io::Error);
-        ParseInt(::std::num::ParseIntError);
-        ParseFloat(::std::num::ParseFloatError);
-        Json(simd_json::Error);
-        JsonTryType(simd_json::TryTypeError);
-        NetworkTransport(tonic::transport::Error);
-        TaskJoin(tokio::task::JoinError);
-        DateTimeParse(chrono::format::ParseError);
-        SqliteError(rusqlite::Error);
-        VcardParseError(ical::parser::ParserError);
-    }
-}
-
+pub type Result<T> = anyhow::Result<T>;
 pub type EmptyRes = Result<()>;
 
 #[macro_export]
 macro_rules! err {
     ($($arg:tt)*) => {{
-        Err(Error::from(format!($($arg)*)))
+        Err(anyhow!("{}", format!($($arg)*)))
     }}
 }
 
@@ -125,19 +107,8 @@ macro_rules! require {
     }}
 }
 
-pub fn error_to_string(e: &Error) -> String {
-    let mut s = String::new();
-    s.push_str(&format!("{:?}", e.kind()));
-    s.push_str(": ");
-
-    for (level, err) in e.iter().enumerate() {
-        if level > 0 {
-            s.push_str("  └> ");
-        }
-        s.push_str(&err.to_string());
-        s.push('\n');
-    }
-    s.trim_end().to_owned()
+pub fn error_to_string(e: &anyhow::Error) -> String {
+    format!("{:#}", e)
 }
 
 //

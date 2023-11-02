@@ -20,7 +20,7 @@ pub struct ParseCallback<'a> {
 #[macro_export]
 macro_rules! as_i32 {
     ($v:expr, $path:expr) => {
-        $v.try_as_i32().chain_err(|| format!("'{}' field conversion error", $path))?
+        $v.try_as_i32().with_context(|| format!("'{}' field conversion error", $path))?
     };
     ($v:expr, $path:expr, $path2:expr) => {as_i32!($v, format!("{}.{}", $path, $path2))};
 }
@@ -28,7 +28,7 @@ macro_rules! as_i32 {
 #[macro_export]
 macro_rules! as_i64 {
     ($v:expr, $path:expr) => {
-        $v.try_as_i64().chain_err(|| format!("'{}' field conversion error", $path))?
+        $v.try_as_i64().with_context(|| format!("'{}' field conversion error", $path))?
     };
     ($v:expr, $path:expr, $path2:expr) => {as_i64!($v, format!("{}.{}", $path, $path2))};
 }
@@ -36,7 +36,7 @@ macro_rules! as_i64 {
 #[macro_export]
 macro_rules! as_str_option_res {
     ($v:expr, $path:expr) => {
-        $v.try_as_str().chain_err(|| format!("'{}' field conversion: error", $path)).map(|s|
+        $v.try_as_str().with_context(|| format!("'{}' field conversion error", $path)).map(|s|
             match s {
                 "" => None,
                 s  => Some(s),
@@ -49,7 +49,7 @@ macro_rules! as_str_option_res {
 #[macro_export]
 macro_rules! as_str_res {
     ($v:expr, $path:expr) => {
-        as_str_option_res!($v, $path)?.ok_or_else(|| Error::from(format!("'{}' is an empty string", $path)))
+        as_str_option_res!($v, $path)?.ok_or_else(|| anyhow!("'{}' is an empty string", $path))
     };
     ($v:expr, $path:expr, $path2:expr) => {as_str_res!($v, format!("{}.{}", $path, $path2))};
 }
@@ -82,7 +82,7 @@ macro_rules! as_string_option {
 #[macro_export]
 macro_rules! as_array {
     ($v:expr, $path:expr) => {
-        $v.try_as_array().chain_err(|| format!("'{}' field conversion error", $path))?
+        $v.try_as_array().with_context(|| format!("'{}' field conversion error", $path))?
     };
     ($v:expr, $path:expr, $path2:expr) => {as_array!($v, format!("{}.{}", $path, $path2))};
 }
@@ -90,7 +90,7 @@ macro_rules! as_array {
 #[macro_export]
 macro_rules! as_object {
     ($v:expr, $path:expr) => {
-        $v.try_as_object().chain_err(|| format!("'{}' field conversion error", $path))?
+        $v.try_as_object().with_context(|| format!("'{}' field conversion error", $path))?
     };
     ($v:expr, $path:expr, $path2:expr) => {as_object!($v, format!("{}.{}", $path, $path2))};
 }
@@ -102,7 +102,7 @@ macro_rules! as_object {
 #[macro_export]
 macro_rules! get_field {
     ($v:expr, $path:expr, $txt:expr) => {
-        $v.get($txt).ok_or(format!("{}.{} field not found", $path, $txt))
+        $v.get($txt).ok_or(anyhow!("{}.{} field not found", $path, $txt))
     };
 }
 #[macro_export]

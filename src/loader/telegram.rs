@@ -213,7 +213,7 @@ fn parse_telegram_file(path: &Path, ds: Dataset, myself_chooser: &dyn MyselfChoo
 
     // Sanity check: every chat member is supposed to have an associated user.
     for cwm in &chats_with_messages {
-        let chat = cwm.chat.as_ref().ok_or("Chat absent!")?;
+        let chat = cwm.chat.as_ref().ok_or(anyhow!("Chat absent!"))?;
         for member_id in chat.member_ids() {
             if !users.id_to_user.contains_key(&member_id) {
                 return err!("No member with id={} found for chat with id={} '{}'",
@@ -362,7 +362,7 @@ fn parse_chat(json_path: &str,
     chat.msg_count = messages.len() as i32;
 
     // Undo the shifts introduced by Telegram 2021-05.
-    match ChatType::try_from(chat.tpe).chain_err(|| "Chat type has no associated enum")? {
+    match ChatType::try_from(chat.tpe).context("Chat type has no associated enum")? {
         ChatType::Personal if chat.id < PERSONAL_CHAT_ID_SHIFT =>
             chat.id += PERSONAL_CHAT_ID_SHIFT,
         ChatType::PrivateGroup if chat.id < GROUP_CHAT_ID_SHIFT =>
@@ -708,8 +708,8 @@ fn parse_regular_message(message_json: &mut MessageJson,
             let (lat_str, lon_str) = {
                 let loc_info =
                     as_object!(message_json.field("location_information")?, json_path, "location_information");
-                (loc_info.get("latitude").ok_or("latitude not found!")?.to_string(),
-                 loc_info.get("longitude").ok_or("longitude not found!")?.to_string())
+                (loc_info.get("latitude").ok_or(anyhow!("Latitude not found!"))?.to_string(),
+                 loc_info.get("longitude").ok_or(anyhow!("Longitude not found!"))?.to_string())
             };
             Some(SealedValueOptional::Location(ContentLocation {
                 title_option: message_json.field_opt_str("place_name")?,
@@ -1057,7 +1057,7 @@ fn parse_user_id(bw: &BorrowedValue) -> Result<UserId> {
         match s {
             s if s.starts_with("user") => Ok(UserId(s[4..].parse::<i64>()?)),
             s if s.starts_with("channel") => Ok(UserId(s[7..].parse::<i64>()?)),
-            _ => bail!(err_msg.as_str())
+            _ => bail!(err_msg.clone())
         }
     };
     match bw {
@@ -1065,12 +1065,12 @@ fn parse_user_id(bw: &BorrowedValue) -> Result<UserId> {
         Value::Static(StaticNode::U64(u)) => Ok(UserId(*u as i64)),
         Value::String(std::borrow::Cow::Borrowed(s)) => parse_str(s),
         Value::String(std::borrow::Cow::Owned(s)) => parse_str(s),
-        _ => bail!(err_msg.as_str())
+        _ => bail!(err_msg)
     }
 }
 
 fn parse_timestamp(s: &str) -> Result<i64> {
-    s.parse::<i64>().chain_err(|| format!("Failed to parse unit timestamp {s}"))
+    s.parse::<i64>().with_context(|| format!("Failed to parse unit timestamp {s}"))
 }
 
 fn parse_datetime(s: &str) -> Result<Timestamp> {
@@ -1080,13 +1080,13 @@ fn parse_datetime(s: &str) -> Result<Timestamp> {
         s.split(|c| c == '-' || c == ':' || c == 'T')
             .map(|s| s.parse::<u32>())
             .collect::<std::result::Result<Vec<u32>, ParseIntError>>()
-            .chain_err(|| format!("Failed to parse date {s}"))?;
+            .with_context(|| format!("Failed to parse date {s}"))?;
     let date =
         NaiveDate::from_ymd_opt(split[0] as i32, split[1], split[2]).unwrap()
             .and_hms_opt(split[3], split[4], split[5]).unwrap()
             .and_local_timezone(*LOCAL_TZ)
             .single()
-            .ok_or(format!("failed to parse date {}: ambiguous?", s))?;
+            .ok_or(anyhow!("Failed to parse date {}: ambiguous?", s))?;
     Ok(Timestamp(date.timestamp()))
 }
 

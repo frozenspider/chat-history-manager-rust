@@ -97,5 +97,5 @@ pub fn load(root_path: &Path, myself_chooser: &dyn MyselfChooser) -> Result<Box<
 fn first_line(path: &Path) -> Result<String> {
     let input = File::open(path)?;
     let buffered = BufReader::new(input);
-    Ok(buffered.lines().next().ok_or("File is empty")??.trim().to_owned())
+    Ok(buffered.lines().next().ok_or(anyhow!("File is empty"))??.trim().to_owned())
 }

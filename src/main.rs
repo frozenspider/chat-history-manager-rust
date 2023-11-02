@@ -29,7 +29,7 @@ fn main() {
             let parsed = match parse_file(&path) {
                 Ok(res) => res,
                 Err(why) => {
-                    eprintln!("Parsing failed!\n{}", error_to_string(&why));
+                    eprintln!("Parsing failed!\n{:?}", why);
                     process::exit(1);
                 }
             };

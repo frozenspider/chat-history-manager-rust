@@ -36,8 +36,8 @@ impl DatasetRoot {
         let ds_root = &self.0;
         assert!(ds_root.is_absolute());
         let path = path.canonicalize()?;
-        let path = path.to_str().ok_or("Path is not a valid string!")?;
-        let ds_root = ds_root.to_str().ok_or("Dataset root is not a valid string!")?;
+        let path = path.to_str().ok_or(anyhow!("Path is not a valid string!"))?;
+        let ds_root = ds_root.to_str().ok_or(anyhow!("Dataset root is not a valid string!"))?;
         if !path.starts_with(ds_root) {
             bail!("Path {} is not under dataset root {}", path, ds_root);
         }

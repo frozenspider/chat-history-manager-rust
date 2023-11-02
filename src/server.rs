@@ -37,7 +37,10 @@ impl HistoryLoader for ChatHistoryManagerServer {
             let path = Path::new(&request.get_ref().path);
             let response =
                 loader::load(path, &myself_chooser)
-                    .map_err(|err| Status::new(Code::Internal, error_to_string(&err)))
+                    .map_err(|err| {
+                        eprintln!("Load failed!\n{:?}", err);
+                        Status::new(Code::Internal, error_to_string(&err))
+                    })
                     .map(|dao|
                         ParseHistoryFileResponse {
                             ds: Some(dao.dataset),
@@ -48,7 +51,7 @@ impl HistoryLoader for ChatHistoryManagerServer {
                         }
                     )
                     .map(Response::new);
-            log::info!("{}", truncate_to!(format!("<<< Response: {:?}", response), 200));
+            log::info!("{}", truncate_to!(format!("<<< Response: {:?}", response), 150));
             response
         });
 
@@ -66,7 +69,7 @@ async fn choose_myself_async(port: u16, users: Vec<User>) -> Result<usize> {
     let len = users.len();
     let request = ChooseMyselfRequest { users };
     let response = client.choose_myself(request).await
-        .map_err(|status| Error::from(status.message()))?;
+        .map_err(|status| anyhow!("{}", status.message()))?;
     log::info!("Got response");
     let response = response.get_ref().picked_option;
     if response < 0 {
@@ -124,8 +127,7 @@ pub async fn start_server(port: u16) -> EmptyRes {
         .add_service(HistoryLoaderServer::new(chm_server))
         .add_service(reflection_service)
         .serve(addr)
-        .await
-        .map_err(|e| format!("{:?}", e))?;
+        .await?;
     Ok(())
 }
 
