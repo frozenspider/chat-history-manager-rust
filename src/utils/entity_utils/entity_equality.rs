@@ -133,8 +133,9 @@ impl<'a> PracticalEq for PET<'a, Content> {
             (Some(Sticker(c1)),       Some(Sticker(c2)))       => self.with(c1).practically_equals(&other.with(c2)),
             (Some(Photo(c1)),         Some(Photo(c2)))         => self.with(c1).practically_equals(&other.with(c2)),
             (Some(VoiceMsg(c1)),      Some(VoiceMsg(c2)))      => self.with(c1).practically_equals(&other.with(c2)),
+            (Some(Audio(c1)),         Some(Audio(c2)))         => self.with(c1).practically_equals(&other.with(c2)),
             (Some(VideoMsg(c1)),      Some(VideoMsg(c2)))      => self.with(c1).practically_equals(&other.with(c2)),
-            (Some(Animation(c1)),     Some(Animation(c2)))     => self.with(c1).practically_equals(&other.with(c2)),
+            (Some(Video(c1)),         Some(Video(c2)))         => self.with(c1).practically_equals(&other.with(c2)),
             (Some(File(c1)),          Some(File(c2)))          => self.with(c1).practically_equals(&other.with(c2)),
             (Some(Location(c1)),      Some(Location(c2)))      => self.with(c1).practically_equals(&other.with(c2)),
             (Some(Poll(c1)),          Some(Poll(c2)))          => self.with(c1).practically_equals(&other.with(c2)),
@@ -194,8 +195,9 @@ macro_rules! practical_eq_with_path {
 practical_eq_with_path!(ContentSticker, path_option, thumbnail_path_option);
 practical_eq_with_path!(ContentPhoto, path_option);
 practical_eq_with_path!(ContentVoiceMsg, path_option);
+practical_eq_with_path!(ContentAudio, path_option);
 practical_eq_with_path!(ContentVideoMsg, path_option, thumbnail_path_option);
-practical_eq_with_path!(ContentAnimation, path_option, thumbnail_path_option);
+practical_eq_with_path!(ContentVideo, path_option, thumbnail_path_option);
 practical_eq_with_path!(ContentFile, path_option, thumbnail_path_option);
 practical_eq_with_path!(ContentSharedContact, vcard_path_option);
 

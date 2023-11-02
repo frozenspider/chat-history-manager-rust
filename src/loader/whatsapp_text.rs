@@ -218,8 +218,10 @@ fn parse_message_text(lines: &[&str]) -> Result<(Vec<RichTextElement>, Option<Co
             }),
             "VID" => {
                 require!(filename.ends_with(".mp4"), "Unexpected video file extension: {}", filename);
-                Animation(ContentAnimation {
+                Video(ContentVideo {
                     path_option: Some(filename.to_owned()),
+                    title_option: None,
+                    performer_option: None,
                     width: 0,
                     height: 0,
                     mime_type: "video/mp4".to_owned(),
@@ -245,13 +247,9 @@ fn parse_message_text(lines: &[&str]) -> Result<(Vec<RichTextElement>, Option<Co
         // Since we don't know the type, represent it as a missing file.
         let content_value = File(ContentFile {
             path_option: None,
-            title: "<not available>".to_string(),
-            width_option: None,
-            height_option: None,
+            file_name_option: None,
             mime_type_option: None,
-            duration_sec_option: None,
             thumbnail_path_option: None,
-            performer_option: None,
         });
         (&lines[1..], Some(Content { sealed_value_optional: Some(content_value) }))
     } else {

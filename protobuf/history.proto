@@ -223,8 +223,9 @@ message Content {
     ContentSticker          sticker = 1;
     ContentPhoto            photo = 2;
     ContentVoiceMsg         voice_msg = 3;
+    ContentAudio            audio = 10;
     ContentVideoMsg         video_msg = 4;
-    ContentAnimation        animation = 5;
+    ContentVideo            video = 5;
     ContentFile             file = 6;
     ContentLocation         location = 7;
     ContentPoll             poll = 8;
@@ -262,6 +263,21 @@ message ContentVoiceMsg {
   optional int32 duration_sec_option = 3;
 }
 
+message ContentAudio {
+  // Path relative to data root!
+  optional string path_option = 1;
+
+  optional string title_option = 2;
+  optional string performer_option = 3;
+
+  string mime_type = 4;
+  optional int32 duration_sec_option = 5;
+
+  // Some audio files might have thumbnails - e.g. album cover
+  // Path relative to data root!
+  optional string thumbnail_path_option = 6;
+}
+
 message ContentVideoMsg {
   // Path relative to data root!
   optional string path_option = 1;
@@ -279,9 +295,13 @@ message ContentVideoMsg {
   bool is_one_time = 7;
 }
 
-message ContentAnimation {
+message ContentVideo {
   // Path relative to data root!
   optional string path_option = 1;
+
+  optional string title_option = 8;
+  optional string performer_option = 9;
+
   // 0 if unknown
   int32 width = 2;
   // 0 if unknown
@@ -299,19 +319,13 @@ message ContentAnimation {
 message ContentFile {
   // Path relative to data root!
   optional string path_option = 1;
-  string title = 2;
-  // 0 if relevant but unknown
-  optional int32 width_option = 3;
-  // 0 if relevant but unknown
-  optional int32 height_option = 4;
+  optional string file_name_option = 2;
 
   optional string mime_type_option = 5;
-  optional int32 duration_sec_option = 6;
 
   // Path relative to data root!
   optional string thumbnail_path_option = 7;
-
-  optional string performer_option = 8;
+  // Removed: width_option = 3, height_option = 4, duration_sec_option = 6, performer_option = 8
 }
 
 message ContentLocation {

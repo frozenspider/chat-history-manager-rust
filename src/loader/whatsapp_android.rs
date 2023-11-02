@@ -757,13 +757,9 @@ fn parse_regular_message(
         MessageType::Document =>
             Some(File(ContentFile {
                 path_option: row.get(columns::message_media::FILE_PATH)?,
-                title: row.get(columns::message_media::NAME)?,
-                width_option: get_zero_as_null(row, columns::message_media::WIDTH)?,
-                height_option: get_zero_as_null(row, columns::message_media::HEIGHT)?,
+                file_name_option: row.get(columns::message_media::NAME)?,
                 mime_type_option: row.get(columns::message_media::MIME_TYPE)?,
-                duration_sec_option: get_zero_as_null(row, columns::message_media::DURATION)?,
                 thumbnail_path_option: None,
-                performer_option: None,
             })),
         MessageType::AnimatedSticker => {
             let (mut w, mut h) = (

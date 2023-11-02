@@ -298,8 +298,9 @@ impl Content {
             Some(Sticker(c))   => c.path_option.as_ref().map(|c| ds_root.to_absolute(c)),
             Some(Photo(c))     => c.path_option.as_ref().map(|c| ds_root.to_absolute(c)),
             Some(VoiceMsg(c))  => c.path_option.as_ref().map(|c| ds_root.to_absolute(c)),
+            Some(Audio(c))     => c.path_option.as_ref().map(|c| ds_root.to_absolute(c)),
             Some(VideoMsg(c))  => c.path_option.as_ref().map(|c| ds_root.to_absolute(c)),
-            Some(Animation(c)) => c.path_option.as_ref().map(|c| ds_root.to_absolute(c)),
+            Some(Video(c))     => c.path_option.as_ref().map(|c| ds_root.to_absolute(c)),
             Some(File(c))      => c.path_option.as_ref().map(|c| ds_root.to_absolute(c)),
             _ => None
         } // @formatter:on
@@ -384,8 +385,12 @@ pub fn make_searchable_string(components: &[RichTextElement], typed: &message::T
             match content_option {
                 Some(Content { sealed_value_optional: Some(content::SealedValueOptional::Sticker(sticker)) }) =>
                     vec![&sticker.emoji_option].into_iter().flatten().cloned().collect_vec(),
+                Some(Content { sealed_value_optional: Some(content::SealedValueOptional::Audio(file)) }) =>
+                    vec![&file.title_option, &file.performer_option].into_iter().flatten().cloned().collect_vec(),
+                Some(Content { sealed_value_optional: Some(content::SealedValueOptional::Video(file)) }) =>
+                    vec![&file.title_option, &file.performer_option].into_iter().flatten().cloned().collect_vec(),
                 Some(Content { sealed_value_optional: Some(content::SealedValueOptional::File(file)) }) =>
-                    vec![&file.performer_option].into_iter().flatten().cloned().collect_vec(),
+                    vec![&file.file_name_option].into_iter().flatten().cloned().collect_vec(),
                 Some(Content { sealed_value_optional: Some(content::SealedValueOptional::Location(loc)) }) => {
                     let mut vec1 = vec![&loc.address_option, &loc.title_option].into_iter().flatten().collect_vec();
                     let mut vec2 = vec![&loc.lat_str, &loc.lon_str];

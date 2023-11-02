@@ -563,7 +563,8 @@ fn parse_message(json_path: &str,
         if let Some(ref mut ef) = message_json.expected_fields {
             if !ef.required_fields.remove(kr) &&
                 !ef.optional_fields.remove(kr) {
-                return err!("Unexpected message field '{kr}'");
+                return err!("Unexpected message field '{kr}'").with_context(||
+                    format!("{}[{}]", json_path, source_id_option.map(|id| id.to_string()).unwrap_or("?".to_owned())));
             }
         }
 
@@ -623,6 +624,7 @@ fn parse_regular_message(message_json: &mut MessageJson,
     regular_msg.reply_to_message_id_option = message_json.field_opt_i64("reply_to_message_id")?;
 
     let media_type_option = message_json.field_opt_str("media_type")?;
+    let mime_type_option = message_json.field_opt_str("mime_type")?;
     let photo_option = message_json.field_opt_str("photo")?;
     let file_present = message_json.field_opt_str("file")?.is_some();
     let loc_present = message_json.field_opt("location_information")?.is_some();
@@ -649,52 +651,67 @@ fn parse_regular_message(message_json: &mut MessageJson,
                 emoji_option: message_json.field_opt_str("sticker_emoji")?,
             }))
         }
-        (Some("animation"), None, true, false, false, false) =>
-            Some(SealedValueOptional::Animation(ContentAnimation {
+        (Some("voice_message"), None, true, false, false, false) =>
+            Some(SealedValueOptional::VoiceMsg(ContentVoiceMsg {
                 path_option: message_json.field_opt_path("file")?,
-                width: message_json.field_i32("width")?,
-                height: message_json.field_i32("height")?,
-                mime_type: message_json.field_str("mime_type")?,
+                mime_type: mime_type_option.unwrap(),
+                duration_sec_option: message_json.field_opt_i32("duration_seconds")?,
+            })),
+
+        (Some("audio_file"), None, true, false, false, false) |
+        _ if mime_type_option.iter().any(|mt| mt.starts_with("audio/")) =>
+            Some(SealedValueOptional::Audio(ContentAudio {
+                path_option: message_json.field_opt_path("file")?,
+                title_option: message_json.field_opt_str("title")?,
+                performer_option: message_json.field_opt_str("performer")?,
+                mime_type: mime_type_option.unwrap(),
                 duration_sec_option: message_json.field_opt_i32("duration_seconds")?,
                 thumbnail_path_option: message_json.field_opt_path("thumbnail")?,
-                is_one_time: false,
             })),
         (Some("video_message"), None, true, false, false, false) =>
             Some(SealedValueOptional::VideoMsg(ContentVideoMsg {
                 path_option: message_json.field_opt_path("file")?,
                 width: message_json.field_i32("width")?,
                 height: message_json.field_i32("height")?,
-                mime_type: message_json.field_str("mime_type")?,
+                mime_type: mime_type_option.unwrap(),
                 duration_sec_option: message_json.field_opt_i32("duration_seconds")?,
                 thumbnail_path_option: message_json.field_opt_path("thumbnail")?,
                 is_one_time: false,
             })),
-        (Some("voice_message"), None, true, false, false, false) =>
-            Some(SealedValueOptional::VoiceMsg(ContentVoiceMsg {
+        (Some("animation"), None, true, false, false, false) =>
+            Some(SealedValueOptional::Video(ContentVideo {
                 path_option: message_json.field_opt_path("file")?,
-                mime_type: message_json.field_str("mime_type")?,
-                duration_sec_option: message_json.field_opt_i32("duration_seconds")?,
-            })),
-        (Some("video_file"), None, true, false, false, false) |
-        (Some("audio_file"), None, true, false, false, false) |
-        (None, None, true, false, false, false) => {
-            let title = message_json.field_opt_str("title")?.unwrap_or_else(|| {
-                (match media_type_option.as_deref() {
-                    None => "<File>",
-                    Some("video_file") => "<Video>",
-                    Some("audio_file") => "<Audio>",
-                    Some(_) => unimplemented!("Unreachable code")
-                }).to_owned()
-            });
-            Some(SealedValueOptional::File(ContentFile {
-                path_option: message_json.field_opt_path("file")?,
-                title,
-                width_option: message_json.field_opt_i32("width")?,
-                height_option: message_json.field_opt_i32("height")?,
-                mime_type_option: message_json.field_opt_str("mime_type")?,
+                title_option: None,
+                performer_option: None,
+                width: message_json.field_i32("width")?,
+                height: message_json.field_i32("height")?,
+                mime_type: mime_type_option.unwrap(),
                 duration_sec_option: message_json.field_opt_i32("duration_seconds")?,
                 thumbnail_path_option: message_json.field_opt_path("thumbnail")?,
+                is_one_time: false,
+            })),
+        (Some("video_file"), None, true, false, false, false) |
+        _ if mime_type_option.iter().any(|mt| mt.starts_with("video/")) =>
+            Some(SealedValueOptional::Video(ContentVideo {
+                path_option: message_json.field_opt_path("file")?,
+                title_option: message_json.field_opt_str("title")?,
                 performer_option: message_json.field_opt_str("performer")?,
+                width: message_json.field_opt_i32("width")?.unwrap_or(0),
+                height: message_json.field_opt_i32("height")?.unwrap_or(0),
+                mime_type: mime_type_option.unwrap(),
+                duration_sec_option: message_json.field_opt_i32("duration_seconds")?,
+                thumbnail_path_option: message_json.field_opt_path("thumbnail")?,
+                is_one_time: false,
+            })),
+        (None, None, true, false, false, false) => {
+            // Ignoring dimensions of downloadable image
+            message_json.add_optional("width");
+            message_json.add_optional("height");
+            Some(SealedValueOptional::File(ContentFile {
+                path_option: message_json.field_opt_path("file")?,
+                file_name_option: None, // Telegram does not provide it
+                mime_type_option: mime_type_option,
+                thumbnail_path_option: message_json.field_opt_path("thumbnail")?,
             }))
         }
         (None, Some(_), false, false, false, false) =>

@@ -558,14 +558,6 @@ fn loading_2023_08() -> EmptyRes {
     let myself = &dao.myself;
     assert_eq!(myself, &expected_myself(ds_uuid));
 
-    // let member = User {
-    //     ds_uuid: Some(ds_uuid.clone()),
-    //     id: 44444444,
-    //     first_name_option: Some("Eeeee".to_owned()),
-    //     last_name_option: Some("Eeeeeeeeee".to_owned()),
-    //     username_option: None,
-    //     phone_number_option: Some("+7 999 333 44 55".to_owned()), // Taken from contacts list
-    // };
     let unnamed_user = User {
         ds_uuid: Some(ds_uuid.clone()),
         id: 5555555555 - USER_ID_SHIFT,
@@ -630,6 +622,151 @@ fn loading_2023_08() -> EmptyRes {
                 forward_from_name_option: None,
                 reply_to_message_id_option: None,
                 content_option: None,
+            })),
+        });
+    };
+    Ok(())
+}
+
+#[test]
+fn loading_2023_10_audio_video() -> EmptyRes {
+    let res = resource("telegram_2023-10_audio-video");
+    LOADER.looks_about_right(&res)?;
+
+    let dao =
+        LOADER.load(&res, &NoChooser)?;
+
+    let ds_uuid = dao.dataset.uuid.unwrap_ref();
+    let myself = &dao.myself;
+    assert_eq!(myself, &expected_myself(ds_uuid));
+
+    let unnamed_user = User {
+        ds_uuid: Some(ds_uuid.clone()),
+        id: 5555555555 - USER_ID_SHIFT,
+        first_name_option: None,
+        last_name_option: None,
+        username_option: None,
+        phone_number_option: None,
+    };
+    assert_eq!(dao.users.len(), 2);
+    assert_eq!(dao.users.iter().collect_vec(), vec![myself, &unnamed_user]);
+
+    assert_eq!(dao.cwms.len(), 1);
+
+    // Group chat
+    {
+        // Chat ID is shifted by 2^33
+        let cwm = dao.cwms.iter()
+            .find(|&c| c.chat.unwrap_ref().id == 123123123 + GROUP_CHAT_ID_SHIFT)
+            .unwrap();
+        let chat = cwm.chat.unwrap_ref();
+        assert_eq!(chat.name_option, Some("My Group".to_owned()));
+        assert_eq!(chat.tpe, ChatType::PrivateGroup as i32);
+
+        assert_eq!(chat.member_ids.len(), 2);
+        assert_eq!(chat.member_ids[0], myself.id);
+        assert_eq!(chat.member_ids[1], unnamed_user.id);
+
+        let msgs: &Vec<Message> = &cwm.messages;
+        assert_eq!(msgs.len(), 4);
+        assert_eq!(chat.msg_count, 4);
+
+        assert_eq!(msgs[0], Message {
+            internal_id: 0,
+            source_id_option: Some(11111),
+            timestamp: 1532249471,
+            from_id: unnamed_user.id,
+            text: vec![RichText::make_plain("Audio file (incomplete) message".to_owned())],
+            searchable_string: "Audio file (incomplete) message".to_owned(),
+            typed: Some(Typed::Regular(MessageRegular {
+                edit_timestamp_option: None,
+                forward_from_name_option: None,
+                reply_to_message_id_option: None,
+                content_option: Some(Content {
+                    sealed_value_optional: Some(Audio(ContentAudio {
+                        path_option: Some("audio_file.mp3".to_owned()),
+                        title_option: None,
+                        performer_option: None,
+                        mime_type: "audio/mpeg".to_owned(),
+                        duration_sec_option: None,
+                        thumbnail_path_option: None,
+                    }))
+                }),
+            })),
+        });
+        assert_eq!(msgs[1], Message {
+            internal_id: 1,
+            source_id_option: Some(11112),
+            timestamp: 1532249472,
+            from_id: unnamed_user.id,
+            text: vec![RichText::make_plain("Audio file (full) message".to_owned())],
+            searchable_string: "Audio file (full) message Song Name Audio Performer".to_owned(),
+            typed: Some(Typed::Regular(MessageRegular {
+                edit_timestamp_option: None,
+                forward_from_name_option: None,
+                reply_to_message_id_option: None,
+                content_option: Some(Content {
+                    sealed_value_optional: Some(Audio(ContentAudio {
+                        path_option: Some("audio_file.mp3".to_owned()),
+                        title_option: Some("Song Name".to_string()),
+                        performer_option: Some("Audio Performer".to_owned()),
+                        mime_type: "audio/mpeg".to_owned(),
+                        duration_sec_option: Some(123),
+                        thumbnail_path_option: Some("audio_file.mp3_thumb.jpg".to_owned()),
+                    }))
+                }),
+            })),
+        });
+        assert_eq!(msgs[2], Message {
+            internal_id: 2,
+            source_id_option: Some(21111),
+            timestamp: 1665499755,
+            from_id: unnamed_user.id,
+            text: vec![RichText::make_plain("Video file (incomplete) message".to_owned())],
+            searchable_string: "Video file (incomplete) message".to_owned(),
+            typed: Some(Typed::Regular(MessageRegular {
+                edit_timestamp_option: None,
+                forward_from_name_option: None,
+                reply_to_message_id_option: None,
+                content_option: Some(Content {
+                    sealed_value_optional: Some(Video(ContentVideo {
+                        path_option: Some("video_file.mp4".to_owned()),
+                        title_option: None,
+                        performer_option: None,
+                        width: 222,
+                        height: 333,
+                        mime_type: "video/mp4".to_owned(),
+                        duration_sec_option: Some(111),
+                        thumbnail_path_option: Some("video_file.mp4_thumb.jpg".to_owned()),
+                        is_one_time: false
+                    }))
+                }),
+            })),
+        });
+        assert_eq!(msgs[3], Message {
+            internal_id: 3,
+            source_id_option: Some(21112),
+            timestamp: 1665499756,
+            from_id: unnamed_user.id,
+            text: vec![RichText::make_plain("Video file (full) message".to_owned())],
+            searchable_string: "Video file (full) message Clip Name Video Performer".to_owned(),
+            typed: Some(Typed::Regular(MessageRegular {
+                edit_timestamp_option: None,
+                forward_from_name_option: None,
+                reply_to_message_id_option: None,
+                content_option: Some(Content {
+                    sealed_value_optional: Some(Video(ContentVideo {
+                        path_option: Some("video_file.mp4".to_owned()),
+                        title_option: Some("Clip Name".to_string()),
+                        performer_option: Some("Video Performer".to_owned()),
+                        width: 222,
+                        height: 333,
+                        mime_type: "video/mp4".to_owned(),
+                        duration_sec_option: Some(111),
+                        thumbnail_path_option: Some("video_file.mp4_thumb.jpg".to_owned()),
+                        is_one_time: false
+                    }))
+                }),
             })),
         });
     };

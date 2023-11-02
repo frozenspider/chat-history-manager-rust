@@ -166,8 +166,10 @@ fn loading_2023_10() -> EmptyRes {
                 forward_from_name_option: None,
                 reply_to_message_id_option: None,
                 content_option: Some(Content {
-                    sealed_value_optional: Some(Animation(ContentAnimation {
+                    sealed_value_optional: Some(Video(ContentVideo {
                         path_option: Some("VID-20230630-WA0001.mp4".to_owned()),
+                        title_option: None,
+                        performer_option: None,
                         width: 0,
                         height: 0,
                         mime_type: "video/mp4".to_owned(),
@@ -281,12 +283,8 @@ lazy_static! {
 
     static ref FILE_UNAVAILABLE: content::SealedValueOptional = File(ContentFile {
         path_option: None,
-        title: "<not available>".to_owned(),
-        width_option: None,
-        height_option: None,
+        file_name_option: None,
         mime_type_option: None,
-        duration_sec_option: None,
         thumbnail_path_option: None,
-        performer_option: None,
     });
 }
