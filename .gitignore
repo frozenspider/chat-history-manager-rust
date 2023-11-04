@@ -2,6 +2,10 @@
 *.iml
 .idea/
 
+# Eclipse
+.project
+.settings/
+
 # Rust/Cargo
 /target
 

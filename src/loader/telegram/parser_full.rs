@@ -11,6 +11,7 @@ pub(super) fn parse(root_obj: &Object,
         "profile_pictures" => consume(),
         "frequent_contacts" => consume(),
         "other_data" => consume(),
+        "stories" => consume(),
         "contacts" =>
             parse_bw_as_object(value, "personal_information", |CB { key, value, wrong_key_action }| match key {
                 "about" => consume(),
