@@ -1,4 +1,3 @@
-use std::collections::HashSet;
 use std::fmt::{Display, Formatter};
 use std::path::{Path, PathBuf};
 
@@ -8,8 +7,6 @@ use lazy_static::lazy_static;
 use regex::Regex;
 
 use crate::protobuf::history::*;
-use crate::protobuf::history::message::Typed;
-use crate::protobuf::history::message_service::SealedValueOptional;
 
 use super::*;
 

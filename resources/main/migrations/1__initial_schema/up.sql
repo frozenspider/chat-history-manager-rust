@@ -42,9 +42,11 @@ CREATE TABLE message (
   ds_uuid             BLOB NOT NULL REFERENCES dataset (uuid),
   chat_id             INTEGER NOT NULL,
   source_id           INTEGER,
-  message_type        TEXT NOT NULL,
+  type                TEXT NOT NULL,
+  subtype             TEXT,
   time_sent           INTEGER NOT NULL, -- epoch seconds
   time_edited         INTEGER, -- epoch seconds
+  is_deleted          INTEGER, -- boolean
   from_id             INTEGER NOT NULL,
   forward_from_name   TEXT,
   reply_to_message_id INTEGER, -- refers to source_id, although we don't declare it as FK
@@ -55,25 +57,14 @@ CREATE TABLE message (
 
 CREATE UNIQUE INDEX message_source_id ON message(ds_uuid, chat_id, source_id); -- allows duplicate NULLs
 
-CREATE TABLE message_text_element (
-  id                  INTEGER PRIMARY KEY AUTOINCREMENT,
-  message_internal_id INTEGER NOT NULL REFERENCES message (internal_id),
-  element_type        TEXT NOT NULL,
-  text                TEXT,
-  href                TEXT,
-  hidden              INTEGER, -- boolean
-  language            TEXT
-) STRICT;
-
-CREATE INDEX message_text_element_idx ON message_text_element(message_internal_id);
-
--- Stores content, as well as added data for system messages.
+-- Stores content, as well as added data for service messages.
+-- Might be absent.
 CREATE TABLE message_content (
   id                  INTEGER PRIMARY KEY AUTOINCREMENT,
   message_internal_id INTEGER NOT NULL REFERENCES message (internal_id),
 
-  content_type        TEXT,
-  element_type        TEXT NOT NULL,
+  element_type        TEXT NOT NULL, -- Will match message.subtype for service messages
+
   path                TEXT,
   thumbnail_path      TEXT,
   emoji               TEXT,
@@ -98,3 +89,15 @@ CREATE TABLE message_content (
 ) STRICT;
 
 CREATE UNIQUE INDEX message_content_idx ON message_content(message_internal_id);
+
+CREATE TABLE message_text_element (
+  id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+  message_internal_id INTEGER NOT NULL REFERENCES message (internal_id),
+  element_type        TEXT NOT NULL,
+  text                TEXT,
+  href                TEXT,
+  hidden              INTEGER, -- boolean
+  language            TEXT
+) STRICT;
+
+CREATE INDEX message_text_element_idx ON message_text_element(message_internal_id);

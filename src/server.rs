@@ -99,7 +99,7 @@ impl<MC: MyselfChooser + 'static> HistoryLoaderService for ChatHistoryManagerSer
 
 macro_rules! with_dao_by_key {
     ($self:ident, $req:ident, $dao:ident, $code:block) => {
-        $self.process_request_with_dao(&$req, &$req.get_ref().key, |$req, $dao| { $code })
+        $self.process_request_with_dao(&$req, &$req.get_ref().key, |#[allow(unused)] $req, $dao| { $code })
     };
 }
 

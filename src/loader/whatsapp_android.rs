@@ -54,7 +54,7 @@ impl Users {
 
 impl WhatsAppAndroidDataLoader {
     fn tweak_conn(&self, path: &Path, conn: &Connection) -> EmptyRes {
-        conn.execute(r#"ATTACH DATABASE ?1 AS wa_db"#, [path.join("wa.db").to_str().unwrap()])?;
+        conn.execute(r#"ATTACH DATABASE ?1 AS wa_db"#, [path_to_str(&path.join("wa.db"))?])?;
         Ok(())
     }
 

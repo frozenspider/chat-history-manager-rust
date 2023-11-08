@@ -24,13 +24,30 @@ pub trait ChatHistoryDao {
 
     fn myself(&self, ds_uuid: &PbUuid) -> Result<User>;
 
-    /** Contains myself as the first element. Order must be stable. Method is expected to be fast. */
-    fn users(&self, ds_uuid: &PbUuid) -> Result<Vec<User>>;
+    /** Contains myself as the first element, other users are sorted by ID. Method is expected to be fast. */
+    fn users(&self, ds_uuid: &PbUuid) -> Result<Vec<User>> {
+        let (mut users, myself_id) = self.users_inner(ds_uuid)?;
+        users.sort_by_key(|u| if u.id == *myself_id { i64::MIN } else { u.id });
+        Ok(users)
+    }
+
+    /** Returns all users, as well as myself ID. Method is expected to be fast. */
+    fn users_inner(&self, ds_uuid: &PbUuid) -> Result<(Vec<User>, UserId)>;
 
     fn user_option(&self, ds_uuid: &PbUuid, id: i64) -> Result<Option<User>>;
 
-    /** Note: This should contain enough info to show chats list in GUI */
-    fn chats(&self, ds_uuid: &PbUuid) -> Result<Vec<ChatWithDetails>>;
+    /**
+     * Returns chats ordered by last message timestamp, descending.
+     * Note: This should contain enough info to show chats list in GUI
+     */
+    fn chats(&self, ds_uuid: &PbUuid) -> Result<Vec<ChatWithDetails>> {
+        let mut chats = self.chats_inner(ds_uuid)?;
+        chats.sort_by_key(|cwd| // Minus used to reverse order
+            cwd.last_msg_option.as_ref().map(|m| -m.timestamp).unwrap_or(i64::MAX));
+        Ok(chats)
+    }
+
+    fn chats_inner(&self, ds_uuid: &PbUuid) -> Result<Vec<ChatWithDetails>>;
 
     fn chat_option(&self, ds_uuid: &PbUuid, id: i64) -> Result<Option<ChatWithDetails>>;
 

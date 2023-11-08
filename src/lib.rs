@@ -1,9 +1,8 @@
 extern crate core;
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use itertools::Itertools;
-use crate::dao::ChatHistoryDao;
 
 use crate::dao::in_memory_dao::InMemoryDao;
 use crate::protobuf::history::User;
@@ -26,15 +25,12 @@ mod utils;
 //
 
 pub fn parse_file(path: &str) -> Result<Box<InMemoryDao>> {
-    use prost::Message;
-    use crate::dao::sqlite_dao::*;
-    let path = PathBuf::from("/Users/fs/code/chat-history-manager/_data/__test_sqlite/data.sqlite");
-    // std::fs::remove_file(&path)?;
-    // let dao = SqliteDao::create(path)?;
-    let dao = SqliteDao::load(path)?;
-    println!("=== Datasets: {:?}", dao.datasets()?);
-    // loader::load(Path::new(path), &NoChooser)
-    todo!()
+    thread_local! {
+        static LOADER: loader::Loader<NoChooser> = loader::Loader::new(&ReqwestHttpClient, NoChooser);
+    }
+    LOADER.with(|loader| {
+        loader.load(Path::new(path))
+    })
 }
 
 pub fn start_server(port: u16) -> EmptyRes {

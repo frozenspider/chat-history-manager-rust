@@ -665,7 +665,7 @@ fn present_absent_not_downloaded() -> EmptyRes {
             if let Some((filename, content)) = filename_option {
                 let file_path = ds_root.0.join(filename);
                 if !file_path.exists() {
-                    create_named_file(&file_path, content).unwrap();
+                    create_named_file(&file_path, content);
                 }
                 photo.path_option = Some(ds_root.to_relative(&file_path).unwrap())
             }
