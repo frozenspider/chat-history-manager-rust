@@ -179,6 +179,7 @@ fn parse_messages(content: &String, myself: &User, other: &User) -> Result<Vec<M
                     text,
                     message::Typed::Regular(MessageRegular {
                         edit_timestamp_option: None,
+                        is_deleted: false,
                         forward_from_name_option: None,
                         reply_to_message_id_option: None,
                         content_option,

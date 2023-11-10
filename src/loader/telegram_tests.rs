@@ -260,6 +260,7 @@ fn loading_2021_06_supergroup() -> EmptyRes {
             searchable_string: "Message text with emoji 🙂".to_owned(),
             typed: Some(Typed::Regular(MessageRegular {
                 edit_timestamp_option: None,
+                is_deleted: false,
                 forward_from_name_option: None,
                 reply_to_message_id_option: None,
                 content_option: None,
@@ -280,6 +281,7 @@ fn loading_2021_06_supergroup() -> EmptyRes {
             searchable_string: "Message from an added user".to_owned(),
             typed: Some(Typed::Regular(MessageRegular {
                 edit_timestamp_option: None,
+                is_deleted: false,
                 forward_from_name_option: None,
                 reply_to_message_id_option: None,
                 content_option: None,
@@ -294,6 +296,7 @@ fn loading_2021_06_supergroup() -> EmptyRes {
             searchable_string: format!("{} {}", myself.first_name_option.unwrap_ref(), &myself.phone_number_option.as_ref().unwrap()),
             typed: Some(Typed::Regular(MessageRegular {
                 edit_timestamp_option: None,
+                is_deleted: false,
                 forward_from_name_option: None,
                 reply_to_message_id_option: None,
                 content_option: Some(Content {
@@ -495,6 +498,7 @@ fn loading_2023_01() -> EmptyRes {
             searchable_string: "this contains a lot of stuff: 😁 http://mylink.org/ HIDE ME".to_owned(),
             typed: Some(Typed::Regular(MessageRegular {
                 edit_timestamp_option: None,
+                is_deleted: false,
                 forward_from_name_option: None,
                 reply_to_message_id_option: None,
                 content_option: None,
@@ -619,6 +623,7 @@ fn loading_2023_08() -> EmptyRes {
             searchable_string: "My message!".to_owned(),
             typed: Some(Typed::Regular(MessageRegular {
                 edit_timestamp_option: None,
+                is_deleted: false,
                 forward_from_name_option: None,
                 reply_to_message_id_option: None,
                 content_option: None,
@@ -680,6 +685,7 @@ fn loading_2023_10_audio_video() -> EmptyRes {
             searchable_string: "Audio file (incomplete) message".to_owned(),
             typed: Some(Typed::Regular(MessageRegular {
                 edit_timestamp_option: None,
+                is_deleted: false,
                 forward_from_name_option: None,
                 reply_to_message_id_option: None,
                 content_option: Some(Content {
@@ -703,6 +709,7 @@ fn loading_2023_10_audio_video() -> EmptyRes {
             searchable_string: "Audio file (full) message Song Name Audio Performer".to_owned(),
             typed: Some(Typed::Regular(MessageRegular {
                 edit_timestamp_option: None,
+                is_deleted: false,
                 forward_from_name_option: None,
                 reply_to_message_id_option: None,
                 content_option: Some(Content {
@@ -726,6 +733,7 @@ fn loading_2023_10_audio_video() -> EmptyRes {
             searchable_string: "Video file (incomplete) message".to_owned(),
             typed: Some(Typed::Regular(MessageRegular {
                 edit_timestamp_option: None,
+                is_deleted: false,
                 forward_from_name_option: None,
                 reply_to_message_id_option: None,
                 content_option: Some(Content {
@@ -752,6 +760,7 @@ fn loading_2023_10_audio_video() -> EmptyRes {
             searchable_string: "Video file (full) message Clip Name Video Performer".to_owned(),
             typed: Some(Typed::Regular(MessageRegular {
                 edit_timestamp_option: None,
+                is_deleted: false,
                 forward_from_name_option: None,
                 reply_to_message_id_option: None,
                 content_option: Some(Content {

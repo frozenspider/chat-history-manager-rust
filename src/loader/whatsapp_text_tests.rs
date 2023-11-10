@@ -142,6 +142,7 @@ fn loading_2023_10() -> EmptyRes {
             searchable_string: "image comment".to_owned(),
             typed: Some(Typed::Regular(MessageRegular {
                 edit_timestamp_option: None,
+                is_deleted: false,
                 forward_from_name_option: None,
                 reply_to_message_id_option: None,
                 content_option: Some(Content {
@@ -163,6 +164,7 @@ fn loading_2023_10() -> EmptyRes {
             searchable_string: "".to_owned(),
             typed: Some(Typed::Regular(MessageRegular {
                 edit_timestamp_option: None,
+                is_deleted: false,
                 forward_from_name_option: None,
                 reply_to_message_id_option: None,
                 content_option: Some(Content {
@@ -189,6 +191,7 @@ fn loading_2023_10() -> EmptyRes {
             searchable_string: "".to_owned(),
             typed: Some(Typed::Regular(MessageRegular {
                 edit_timestamp_option: None,
+                is_deleted: false,
                 forward_from_name_option: None,
                 reply_to_message_id_option: None,
                 content_option: Some(Content {
@@ -209,6 +212,7 @@ fn loading_2023_10() -> EmptyRes {
             searchable_string: "".to_owned(),
             typed: Some(Typed::Regular(MessageRegular {
                 edit_timestamp_option: None,
+                is_deleted: false,
                 forward_from_name_option: None,
                 reply_to_message_id_option: None,
                 content_option: Some(Content {
@@ -231,6 +235,7 @@ fn loading_2023_10() -> EmptyRes {
             searchable_string: "".to_owned(),
             typed: Some(Typed::Regular(MessageRegular {
                 edit_timestamp_option: None,
+                is_deleted: false,
                 forward_from_name_option: None,
                 reply_to_message_id_option: None,
                 content_option: Some(Content {
@@ -247,6 +252,7 @@ fn loading_2023_10() -> EmptyRes {
             searchable_string: "".to_owned(),
             typed: Some(Typed::Regular(MessageRegular {
                 edit_timestamp_option: None,
+                is_deleted: false,
                 forward_from_name_option: None,
                 reply_to_message_id_option: None,
                 content_option: Some(Content {
@@ -276,6 +282,7 @@ fn expected_myself(ds_uuid: &PbUuid) -> User {
 lazy_static! {
     static ref MESSAGE_REGULAR_NO_CONTENT: Typed = Typed::Regular(MessageRegular {
         edit_timestamp_option: None,
+        is_deleted: false,
         forward_from_name_option: None,
         reply_to_message_id_option: None,
         content_option: None,

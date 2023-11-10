@@ -210,6 +210,7 @@ pub fn create_regular_message(idx: usize, user_id: usize) -> Message {
 
     let typed = message::Typed::Regular(MessageRegular {
         edit_timestamp_option: Some((BASE_DATE.clone() + Duration::minutes(idx as i64) + Duration::seconds(5)).timestamp()),
+        is_deleted: false,
         reply_to_message_id_option: reply_to_message_id_option,
         forward_from_name_option: Some(format!("u{user_id}")),
         content_option: Some(Content {

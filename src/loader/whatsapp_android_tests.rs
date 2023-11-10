@@ -148,6 +148,7 @@ fn loading_2023_10() -> EmptyRes {
             searchable_string: "Last group message".to_owned(),
             typed: Some(Typed::Regular(MessageRegular {
                 edit_timestamp_option: Some(1661417955),
+                is_deleted: false,
                 forward_from_name_option: Some(SOMEONE.to_owned()),
                 reply_to_message_id_option: msgs[0].source_id_option,
                 content_option: None,
@@ -164,8 +165,8 @@ fn loading_2023_10() -> EmptyRes {
         assert!(chat.member_ids.contains(&member.id));
 
         let msgs = dao.first_messages(&chat, 99999)?;
-        assert_eq!(msgs.len(), 1);
-        assert_eq!(chat.msg_count, 1);
+        assert_eq!(msgs.len(), 2);
+        assert_eq!(chat.msg_count, 2);
 
         assert_eq!(msgs[0], Message {
             internal_id: 0,
@@ -176,6 +177,7 @@ fn loading_2023_10() -> EmptyRes {
             searchable_string: "Jl. Gurita No.21x, Denpasar, Bali New Bahari -8.70385650 115.21673666".to_owned(),
             typed: Some(Typed::Regular(MessageRegular {
                 edit_timestamp_option: None,
+                is_deleted: false,
                 forward_from_name_option: None,
                 reply_to_message_id_option: None,
                 content_option: Some(Content {
@@ -187,6 +189,22 @@ fn loading_2023_10() -> EmptyRes {
                         duration_sec_option: Some(123),
                     }))
                 }),
+            })),
+        });
+
+        assert_eq!(msgs[1], Message {
+            internal_id: 1,
+            source_id_option: Some(8221205389172673925),
+            timestamp: 1693993938,
+            from_id: myself.id,
+            text: vec![],
+            searchable_string: "".to_owned(),
+            typed: Some(Typed::Regular(MessageRegular {
+                edit_timestamp_option: Some(1693993963),
+                is_deleted: true,
+                forward_from_name_option: None,
+                reply_to_message_id_option: None,
+                content_option: None,
             })),
         });
     }
@@ -243,6 +261,7 @@ fn create_databases(name_suffix: &str) -> Result<(PathBuf, TmpDir)> {
 lazy_static! {
     static ref MESSAGE_REGULAR_NO_CONTENT: Typed = Typed::Regular(MessageRegular {
         edit_timestamp_option: None,
+        is_deleted: false,
         forward_from_name_option: None,
         reply_to_message_id_option: None,
         content_option: None,

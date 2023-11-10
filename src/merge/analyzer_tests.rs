@@ -582,6 +582,7 @@ fn present_absent_not_downloaded() -> EmptyRes {
         let typed: message::Typed = if is_regular {
             message::Typed::Regular(MessageRegular {
                 edit_timestamp_option: Some((BASE_DATE.clone() + Duration::minutes(10 + idx)).timestamp()),
+                is_deleted: false,
                 reply_to_message_id_option: None,
                 forward_from_name_option: Some("some user".to_owned()),
                 content_option: Some(Content {

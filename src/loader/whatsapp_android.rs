@@ -297,6 +297,7 @@ mod columns {
 
     pub mod message_revoked {
         pub const REVOKED_KEY: &str = "revoked_key_id";
+        pub const REVOKE_TIMESTAMP: &str = "revoke_timestamp";
     }
 
     pub mod call_logs {
@@ -394,6 +395,7 @@ fn parse_chats(conn: &Connection, ds_uuid: &PbUuid, users: &mut Users) -> Result
                   {},
                   message_vcard.vcard,
                   message_revoked.{REVOKED_KEY},
+                  message_revoked.{REVOKE_TIMESTAMP},
                   message_system.action_type,
                   message_system_group.is_me_joined,
                   group_user_jid.raw_string AS {GROUP_USER_JID},
@@ -498,7 +500,7 @@ fn parse_chats(conn: &Connection, ds_uuid: &PbUuid, users: &mut Users) -> Result
 
             let (typed, text_column) = {
                 let result_option = match msg_tpe {
-                    MessageType::System | MessageType::MissedCall | MessageType::Deleted =>
+                    MessageType::System | MessageType::MissedCall =>
                         parse_system_message(row, msg_tpe, users, &mut member_ids)?,
                     _ =>
                         parse_regular_message(row, msg_tpe, &msg_key_to_source_id)?
@@ -686,9 +688,6 @@ fn parse_system_message<'a>(
                 duration_sec_option: None,
                 discard_reason_option: Some("missed".to_owned()),
             }),
-        MessageType::Deleted => {
-            MessageDeleted(MessageServiceMessageDeleted {})
-        }
         _ => unreachable!()
     };
 
@@ -806,13 +805,16 @@ fn parse_regular_message(
                 duration_sec_option: row.get(columns::message_location::DURATION)?,
             }))
         }
+        MessageType::Deleted => {
+            // No content available.
+            None
+        }
         // We're not interested in these
         MessageType::WaitingForMessage | MessageType::BusinessItem | MessageType::BusinessItemTemplated |
         MessageType::OneTimePassword | MessageType::WhatsAppMessage | MessageType::DisappearTimerSet =>
             return Ok(None),
         MessageType::System => unreachable!(),
         MessageType::MissedCall => unreachable!(),
-        MessageType::Deleted => unreachable!(),
     }.map(|c| Content { sealed_value_optional: Some(c) });
 
     // WhatsApp does not preserve real source
@@ -827,8 +829,12 @@ fn parse_regular_message(
                 .expect(&format!("No parent message with key {key_id}!")))
             .map(|&r| r);
 
+    let is_deleted = msg_tpe == MessageType::Deleted;
+    // For deleted messages, edit time is deletion time.
+    let edit_timestamp_col = if is_deleted { columns::message_revoked::REVOKE_TIMESTAMP } else { "edited_timestamp" };
     Ok(Some((message::Typed::Regular(MessageRegular {
-        edit_timestamp_option: row.get::<_, Option<i64>>("edited_timestamp")?.map(|ts| ts / 1000),
+        edit_timestamp_option: row.get::<_, Option<i64>>(edit_timestamp_col)?.map(|ts| ts / 1000),
+        is_deleted,
         forward_from_name_option,
         reply_to_message_id_option,
         content_option,

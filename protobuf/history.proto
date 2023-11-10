@@ -138,6 +138,8 @@ message Message {
 message MessageRegular {
   // Number of epoch SECONDS (not millis!)
   optional int64 edit_timestamp_option = 1;
+  // If true, edit timestamp refers to deletion time (if known)
+  bool is_deleted = 5;
   optional string forward_from_name_option = 2;
   // References source ID
   optional int64 reply_to_message_id_option = 3;
@@ -150,7 +152,6 @@ message MessageService {
     MessageServiceSuggestProfilePhoto   suggest_profile_photo = 13;
     MessageServicePinMessage            pin_message = 2;
     MessageServiceClearHistory          clear_history = 3;
-    MessageServiceMessageDeleted        message_deleted = 14;
     MessageServiceBlockUser             block_user = 15;
     MessageServiceGroupCreate           group_create = 4;
     MessageServiceGroupEditTitle        group_edit_title = 5;
@@ -161,6 +162,8 @@ message MessageService {
     MessageServiceGroupMigrateFrom      group_migrate_from = 9;
     MessageServiceGroupMigrateTo        group_migrate_to = 10;
     MessageServiceGroupCall             group_call = 11; // TODO: Unite with PhoneCall
+
+    // Removed: message_deleted = 14
   }
 }
 
@@ -370,8 +373,6 @@ message MessageServicePinMessage {
 
 // Note: for Telegram, `from...` is not always meaningful
 message MessageServiceClearHistory {}
-
-message MessageServiceMessageDeleted {}
 
 message MessageServiceBlockUser {
   bool is_blocked = 1;
