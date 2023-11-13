@@ -131,7 +131,7 @@ impl ChatHistoryDao for InMemoryDao {
     fn scroll_messages(&self, chat: &Chat, offset: usize, limit: usize) -> Result<Vec<Message>> {
         Ok(self.messages_option(chat.id)
             .map(|msgs| cutout(msgs, offset, offset + limit))
-            .unwrap_or(vec![]))
+            .unwrap_or_default())
     }
 
     fn last_messages(&self, chat: &Chat, limit: usize) -> Result<Vec<Message>> {
@@ -139,7 +139,7 @@ impl ChatHistoryDao for InMemoryDao {
             .map(|msgs| {
                 cutout(msgs, subtract_or_zero!(msgs.len(), limit), msgs.len()).to_vec()
             })
-            .unwrap_or(vec![]))
+            .unwrap_or_default())
     }
 
     fn messages_before_impl(&self, chat: &Chat, msg: &Message, limit: usize) -> Result<Vec<Message>> {

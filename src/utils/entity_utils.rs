@@ -428,7 +428,7 @@ pub fn make_searchable_string(components: &[RichTextElement], typed: &message::T
         _ => unreachable!()
     };
 
-    vec![joined_text, typed_component_text.join(" ")].iter()
+    [joined_text, typed_component_text.join(" ")].iter()
         .map(|s| s.trim())
         .filter(|s| !s.is_empty())
         .join(" ")

@@ -25,23 +25,23 @@ pub struct PracticalEqTuple<'a, T: 'a> {
 // General
 //
 
-type PET<'a, T> = PracticalEqTuple<'a, T>;
+type Tup<'a, T> = PracticalEqTuple<'a, T>;
 
-impl<'a, T: 'a> PET<'a, T> {
+impl<'a, T: 'a> Tup<'a, T> {
     pub fn new(v: &'a T, ds_root: &'a DatasetRoot, cwd: &'a ChatWithDetails) -> Self {
         Self { v, ds_root, cwd }
     }
 
-    pub fn with<U>(&self, u: &'a U) -> PET<'a, U> {
-        PET::new(u, self.ds_root, self.cwd)
+    pub fn with<U>(&self, u: &'a U) -> Tup<'a, U> {
+        Tup::new(u, self.ds_root, self.cwd)
     }
 
-    pub fn apply<U>(&self, f: fn(&T) -> &U) -> PET<'a, U> {
-        PET::new(f(self.v), self.ds_root, self.cwd)
+    pub fn apply<U>(&self, f: fn(&T) -> &U) -> Tup<'a, U> {
+        Tup::new(f(self.v), self.ds_root, self.cwd)
     }
 }
 
-impl<'a, T: 'a> PracticalEq for PET<'a, Option<T>> where for<'b> PET<'a, T>: PracticalEq {
+impl<'a, T: 'a> PracticalEq for Tup<'a, Option<T>> where for<'b> Tup<'a, T>: PracticalEq {
     fn practically_equals(&self, other: &Self) -> Result<bool> {
         match (self.v, other.v) {
             (None, None) => Ok(true),
@@ -61,14 +61,14 @@ macro_rules! cloned_equals_without {
     };
 }
 
-impl<'a> PracticalEq for PET<'a, Message> {
+impl<'a> PracticalEq for Tup<'a, Message> {
     fn practically_equals(&self, other: &Self) -> Result<bool> {
         Ok(cloned_equals_without!(self.v, other.v, Message, internal_id: 0, searchable_string: "".to_owned(), typed: None) &&
             self.apply(|v| &v.typed).practically_equals(&other.apply(|v| &v.typed))?)
     }
 }
 
-impl<'a> PracticalEq for PET<'a, message::Typed> {
+impl<'a> PracticalEq for Tup<'a, message::Typed> {
     fn practically_equals(&self, other: &Self) -> Result<bool> {
         use message::Typed::*;
         match (self.v, other.v) {
@@ -79,14 +79,14 @@ impl<'a> PracticalEq for PET<'a, message::Typed> {
     }
 }
 
-impl<'a> PracticalEq for PET<'a, MessageRegular> {
+impl<'a> PracticalEq for Tup<'a, MessageRegular> {
     fn practically_equals(&self, other: &Self) -> Result<bool> {
         Ok(cloned_equals_without!(self.v, other.v, MessageRegular, forward_from_name_option: None, content_option: None) &&
             self.apply(|v| &v.content_option).practically_equals(&other.apply(|v| &v.content_option))?)
     }
 }
 
-impl<'a> PracticalEq for PET<'a, MessageService> {
+impl<'a> PracticalEq for Tup<'a, MessageService> {
     fn practically_equals(&self, other: &Self) -> Result<bool> {
         use message_service::SealedValueOptional::*;
         macro_rules! case {
@@ -126,7 +126,7 @@ impl<'a> PracticalEq for PET<'a, MessageService> {
 // Content
 //
 
-impl<'a> PracticalEq for PET<'a, Content> {
+impl<'a> PracticalEq for Tup<'a, Content> {
     fn practically_equals(&self, other: &Self) -> Result<bool> {
         use content::SealedValueOptional::*;
         match (self.v.sealed_value_optional.as_ref(), other.v.sealed_value_optional.as_ref()) { // @formatter:off
@@ -147,7 +147,7 @@ impl<'a> PracticalEq for PET<'a, Content> {
 
 /// Treating String as Relative Path here.
 /// (Cannot use newtype idiom - there's nobody to own the value)
-impl<'a> PracticalEq for PET<'a, String> {
+impl<'a> PracticalEq for Tup<'a, String> {
     fn practically_equals(&self, other: &Self) -> Result<bool> {
         let path1 = self.ds_root.0.join(self.v);
         let path2 = other.ds_root.0.join(other.v);
@@ -182,7 +182,7 @@ impl<'a> PracticalEq for PET<'a, String> {
 
 macro_rules! practical_eq_with_path {
     ($T:ident, $($x:ident),+) => {
-        impl<'a> PracticalEq for PET<'a, $T> {
+        impl<'a> PracticalEq for Tup<'a, $T> {
             fn practically_equals(&self, other: &Self) -> Result<bool> {
                 Ok($( self.apply(|v| &v.$x).practically_equals(&other.apply(|v| &v.$x))? && )*
                     $T { $( $x: None, )* ..(*self.v).clone() } == $T { $( $x: None, )* ..(*other.v).clone() } &&
@@ -201,14 +201,14 @@ practical_eq_with_path!(ContentVideo, path_option, thumbnail_path_option);
 practical_eq_with_path!(ContentFile, path_option, thumbnail_path_option);
 practical_eq_with_path!(ContentSharedContact, vcard_path_option);
 
-impl<'a> PracticalEq for PET<'a, ContentPoll> {
+impl<'a> PracticalEq for Tup<'a, ContentPoll> {
     fn practically_equals(&self, other: &Self) -> Result<bool> {
         // We don't really care about poll result
         Ok(self.v == other.v)
     }
 }
 
-impl<'a> PracticalEq for PET<'a, ContentLocation> {
+impl<'a> PracticalEq for Tup<'a, ContentLocation> {
     fn practically_equals(&self, other: &Self) -> Result<bool> {
         // lat/lon are strings, trailing zeros should be ignored,
         Ok(self.v.lat()? == other.v.lat()? && self.v.lon()? == other.v.lon()? &&

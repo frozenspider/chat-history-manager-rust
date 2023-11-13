@@ -69,7 +69,7 @@ impl<MC: MyselfChooser> Loader<MC> {
                 Box::new(WhatsAppAndroidDataLoader),
                 Box::new(WhatsAppTextDataLoader),
             ],
-            myself_chooser: myself_chooser,
+            myself_chooser
         }
     }
 

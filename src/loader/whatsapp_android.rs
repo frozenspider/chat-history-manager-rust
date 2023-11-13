@@ -41,12 +41,12 @@ impl Users {
     fn add_or_get_user_id(&mut self, jid: Jid) -> UserId {
         match self.jids.entry(jid) {
             Entry::Occupied(ref occ) =>
-                occ.get().clone(),
+                *occ.get(),
             Entry::Vacant(vac) => {
                 let user_id = UserId(hash_to_id(vac.key()));
                 assert!(!self.occupied_user_ids.contains(&user_id));
                 self.occupied_user_ids.insert(user_id);
-                vac.insert(user_id).clone()
+                *vac.insert(user_id)
             }
         }
     }
@@ -63,9 +63,8 @@ impl WhatsAppAndroidDataLoader {
         // Filter out users not participating in chats.
         let participating_user_ids: HashSet<i64, Hasher> = cwms.iter()
             .map(|cwm| cwm.chat.as_ref().unwrap())
-            .map(|c| &c.member_ids)
-            .flatten()
-            .map(|&id| id)
+            .flat_map(|c| &c.member_ids)
+            .copied()
             .collect();
         let mut users = users.id_to_user.into_values()
             .filter(|u| u.id == *myself_id || participating_user_ids.contains(&u.id))
@@ -326,8 +325,8 @@ fn parse_chats(conn: &Connection, ds_uuid: &PbUuid, users: &mut Users) -> Result
         cwms_map.insert(jid, ChatWithMessages {
             chat: Some(Chat {
                 ds_uuid: Some(ds_uuid.clone()),
-                id: id,
-                name_option: name_option,
+                id,
+                name_option,
                 tpe: tpe as i32,
                 img_path_option: None,
                 member_ids: vec![],
@@ -588,7 +587,8 @@ fn parse_system_message<'a>(
                 if row.get::<_, Option<i8>>("is_me_joined")? == Some(1) {
                     // Found a second reference to myself! Time to update
                     // Also, workaround for mut-immut borrowing from id_to_user
-                    let user = users.id_to_user.get(&user_id).expect(&row.get::<_, String>(column)?).clone();
+                    let user = users.id_to_user.get(&user_id)
+                        .unwrap_or_else(|| panic!("{}", row.get::<_, String>(column).unwrap())).clone();
                     let myself_id = users.myself_id.unwrap();
                     chat_member_ids.insert(myself_id);
                     let myself: &mut User = users.id_to_user.get_mut(&myself_id).unwrap();
@@ -797,8 +797,8 @@ fn parse_regular_message(
     let reply_to_message_id_option =
         row.get::<_, Option<MessageKey>>(columns::PARENT_KEY_ID)?
             .map(|key_id| msg_key_to_source_id.get(&key_id)
-                .expect(&format!("No parent message with key {key_id}!")))
-            .map(|&r| r);
+                .unwrap_or_else(|| panic!("No parent message with key {key_id}!")))
+            .copied();
 
     let is_deleted = msg_tpe == MessageType::Deleted;
     // For deleted messages, edit time is deletion time.

@@ -195,9 +195,9 @@ fn parse_telegram_file(path: &Path, ds: Dataset, myself_chooser: &dyn MyselfChoo
     let keys = root_obj.keys().map(|s| s.deref()).collect::<HashSet<_>>();
     let (users, chats_with_messages) =
         if single_chat_keys.is_superset(&keys) {
-            parser_single::parse(root_obj, &ds_uuid, &mut myself, myself_chooser)?
+            parser_single::parse(root_obj, ds_uuid, &mut myself, myself_chooser)?
         } else {
-            parser_full::parse(root_obj, &ds_uuid, &mut myself)?
+            parser_full::parse(root_obj, ds_uuid, &mut myself)?
         };
 
     log::info!("Processed in {} ms", start_time.elapsed().as_millis());
@@ -631,6 +631,32 @@ fn parse_regular_message(message_json: &mut MessageJson,
         Some(poll) => as_object!(poll, json_path, "poll").get("question").is_some(),
     };
     let contact_info_present = message_json.field_opt("contact_information")?.is_some();
+
+    // Helpers to reduce boilerplate, since we can't have match guards for separate pattern arms.
+    let make_content_audio = |message_json: &mut MessageJson| -> Result<Option<_>> {
+        Ok(Some(SealedValueOptional::Audio(ContentAudio {
+            path_option: message_json.field_opt_path("file")?,
+            title_option: message_json.field_opt_str("title")?,
+            performer_option: message_json.field_opt_str("performer")?,
+            mime_type: mime_type_option.clone().unwrap(),
+            duration_sec_option: message_json.field_opt_i32("duration_seconds")?,
+            thumbnail_path_option: message_json.field_opt_path("thumbnail")?,
+        })))
+    };
+    let make_content_video = |message_json: &mut MessageJson| -> Result<Option<_>> {
+        Ok(Some(SealedValueOptional::Video(ContentVideo {
+            path_option: message_json.field_opt_path("file")?,
+            title_option: message_json.field_opt_str("title")?,
+            performer_option: message_json.field_opt_str("performer")?,
+            width: message_json.field_opt_i32("width")?.unwrap_or(0),
+            height: message_json.field_opt_i32("height")?.unwrap_or(0),
+            mime_type: mime_type_option.clone().unwrap(),
+            duration_sec_option: message_json.field_opt_i32("duration_seconds")?,
+            thumbnail_path_option: message_json.field_opt_path("thumbnail")?,
+            is_one_time: false,
+        })))
+    };
+
     let content_val: Option<SealedValueOptional> = match (media_type_option.as_deref(),
                                                           photo_option.as_deref(),
                                                           file_present,
@@ -655,17 +681,10 @@ fn parse_regular_message(message_json: &mut MessageJson,
                 mime_type: mime_type_option.unwrap(),
                 duration_sec_option: message_json.field_opt_i32("duration_seconds")?,
             })),
-
-        (Some("audio_file"), None, true, false, false, false) |
+        (Some("audio_file"), None, true, false, false, false) =>
+            make_content_audio(message_json)?,
         _ if mime_type_option.iter().any(|mt| mt.starts_with("audio/")) =>
-            Some(SealedValueOptional::Audio(ContentAudio {
-                path_option: message_json.field_opt_path("file")?,
-                title_option: message_json.field_opt_str("title")?,
-                performer_option: message_json.field_opt_str("performer")?,
-                mime_type: mime_type_option.unwrap(),
-                duration_sec_option: message_json.field_opt_i32("duration_seconds")?,
-                thumbnail_path_option: message_json.field_opt_path("thumbnail")?,
-            })),
+            make_content_audio(message_json)?,
         (Some("video_message"), None, true, false, false, false) =>
             Some(SealedValueOptional::VideoMsg(ContentVideoMsg {
                 path_option: message_json.field_opt_path("file")?,
@@ -688,19 +707,10 @@ fn parse_regular_message(message_json: &mut MessageJson,
                 thumbnail_path_option: message_json.field_opt_path("thumbnail")?,
                 is_one_time: false,
             })),
-        (Some("video_file"), None, true, false, false, false) |
+        (Some("video_file"), None, true, false, false, false) =>
+            make_content_video(message_json)?,
         _ if mime_type_option.iter().any(|mt| mt.starts_with("video/")) =>
-            Some(SealedValueOptional::Video(ContentVideo {
-                path_option: message_json.field_opt_path("file")?,
-                title_option: message_json.field_opt_str("title")?,
-                performer_option: message_json.field_opt_str("performer")?,
-                width: message_json.field_opt_i32("width")?.unwrap_or(0),
-                height: message_json.field_opt_i32("height")?.unwrap_or(0),
-                mime_type: mime_type_option.unwrap(),
-                duration_sec_option: message_json.field_opt_i32("duration_seconds")?,
-                thumbnail_path_option: message_json.field_opt_path("thumbnail")?,
-                is_one_time: false,
-            })),
+            make_content_video(message_json)?,
         (None, None, true, false, false, false) => {
             // Ignoring dimensions of downloadable image
             message_json.add_optional("width");
@@ -708,7 +718,7 @@ fn parse_regular_message(message_json: &mut MessageJson,
             Some(SealedValueOptional::File(ContentFile {
                 path_option: message_json.field_opt_path("file")?,
                 file_name_option: None, // Telegram does not provide it
-                mime_type_option: mime_type_option,
+                mime_type_option,
                 thumbnail_path_option: message_json.field_opt_path("thumbnail")?,
             }))
         }
@@ -900,7 +910,7 @@ fn parse_rich_text(json_path: &str, rt_json: &Value) -> Result<Vec<RichTextEleme
         Value::Static(StaticNode::Null) =>
             Ok(vec![]),
         Value::String(s) => {
-            Ok(parse_plain_option(s).map(|plain| vec![plain]).unwrap_or(vec![]))
+            Ok(parse_plain_option(s).map(|plain| vec![plain]).unwrap_or_default())
         }
         Value::Array(arr) => {
             let mut result: Vec<RichTextElement> = vec![];

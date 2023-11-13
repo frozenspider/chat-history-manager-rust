@@ -136,7 +136,7 @@ impl<H: HttpClient + 'static> TinderAndroidDataLoader<H> {
 
                 messages.push(Message::new(
                     *NO_INTERNAL_ID,
-                    Some(source_id as i64),
+                    Some(source_id),
                     timestamp,
                     from_id,
                     text,

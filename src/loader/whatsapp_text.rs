@@ -36,8 +36,8 @@ impl DataLoader for WhatsAppTextDataLoader {
         if !FILENAME_REGEX.is_match(filename) {
             bail!("File {} is not named as expected", filename);
         }
-        if !TIMESTAMP_REGEX.is_match(first_line(&path)?.as_str()) {
-            bail!("File {} does not start with a timestamp as expected", path_to_str(&path)?);
+        if !TIMESTAMP_REGEX.is_match(first_line(path)?.as_str()) {
+            bail!("File {} does not start with a timestamp as expected", path_to_str(path)?);
         }
         Ok(())
     }
@@ -50,7 +50,7 @@ impl DataLoader for WhatsAppTextDataLoader {
 fn parse_whatsapp_text_file(path: &Path, ds: Dataset) -> Result<Box<InMemoryDao>> {
     let ds_uuid = ds.uuid.as_ref().unwrap();
 
-    let file_content = fs::read_to_string(&path)?;
+    let file_content = fs::read_to_string(path)?;
     let (myself, other) = parse_users(ds_uuid, path_file_name(path)?, &file_content)?;
 
     let messages = parse_messages(&file_content, &myself, &other)?;
@@ -65,7 +65,7 @@ fn parse_whatsapp_text_file(path: &Path, ds: Dataset) -> Result<Box<InMemoryDao>
             member_ids: vec![myself.id, other.id],
             msg_count: messages.len() as i32,
         }),
-        messages: messages,
+        messages
     }];
 
     let parent_name = path_file_name(path.parent().unwrap())?;
@@ -109,14 +109,14 @@ fn parse_users(ds_uuid: &PbUuid, filename: &str, content: &str) -> Result<(User,
     }, User {
         ds_uuid: Some(ds_uuid.clone()),
         id: hash_to_id(other_name),
-        first_name_option: if other_name.starts_with("+") { None } else { Some(other_name.to_owned()) },
+        first_name_option: if other_name.starts_with('+') { None } else { Some(other_name.to_owned()) },
         last_name_option: None,
         username_option: None,
-        phone_number_option: if other_name.starts_with("+") { Some(other_name.to_owned()) } else { None },
+        phone_number_option: if other_name.starts_with('+') { Some(other_name.to_owned()) } else { None },
     }))
 }
 
-fn parse_messages(content: &String, myself: &User, other: &User) -> Result<Vec<Message>> {
+fn parse_messages(content: &str, myself: &User, other: &User) -> Result<Vec<Message>> {
     const NOTICE_LINE: &str = "Messages and calls are end-to-end encrypted.";
     const TIMER_LINE: &str = "updated the message timer. New messages will disappear from this chat";
 
@@ -144,7 +144,7 @@ fn parse_messages(content: &String, myself: &User, other: &User) -> Result<Vec<M
                 }
 
                 let username_str = capture.get(2).unwrap().as_str();
-                user_id = Some(if username_str == &myself.pretty_name() {
+                user_id = Some(if username_str == myself.pretty_name() {
                     myself.id()
                 } else {
                     other.id()
