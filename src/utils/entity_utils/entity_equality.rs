@@ -25,21 +25,21 @@ pub struct PracticalEqTuple<'a, T: 'a> {
 // General
 //
 
-impl<'a, T: 'a> PracticalEqTuple<'a, T> {
-    pub fn new<'b, U: 'b>(v: &'b U, ds_root: &'b DatasetRoot, cwd: &'b ChatWithDetails) -> PracticalEqTuple<'b, U> {
-        PracticalEqTuple { v, ds_root, cwd }
+type PET<'a, T> = PracticalEqTuple<'a, T>;
+
+impl<'a, T: 'a> PET<'a, T> {
+    pub fn new(v: &'a T, ds_root: &'a DatasetRoot, cwd: &'a ChatWithDetails) -> Self {
+        Self { v, ds_root, cwd }
     }
 
-    pub fn with<U>(&self, u: &'a U) -> PracticalEqTuple<'a, U> {
-        Self::new(u, self.ds_root, self.cwd)
+    pub fn with<U>(&self, u: &'a U) -> PET<'a, U> {
+        PET::new(u, self.ds_root, self.cwd)
     }
 
-    pub fn apply<U>(&self, f: fn(&T) -> &U) -> PracticalEqTuple<'a, U> {
-        Self::new(f(self.v), self.ds_root, self.cwd)
+    pub fn apply<U>(&self, f: fn(&T) -> &U) -> PET<'a, U> {
+        PET::new(f(self.v), self.ds_root, self.cwd)
     }
 }
-
-type PET<'a, T> = PracticalEqTuple<'a, T>;
 
 impl<'a, T: 'a> PracticalEq for PET<'a, Option<T>> where for<'b> PET<'a, T>: PracticalEq {
     fn practically_equals(&self, other: &Self) -> Result<bool> {

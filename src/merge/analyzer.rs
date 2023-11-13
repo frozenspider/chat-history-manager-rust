@@ -57,8 +57,8 @@ impl<'a> DatasetDiffAnalyzer<'a> {
         let mut acc: Vec<MergeAnalysisSection> = vec![];
 
         let matches = |mm: &MasterMessage, sm: &SlaveMessage|
-            equals_with_no_mismatching_content(PracticalEqTuple::<MasterMessage>::new(mm, &self.m_root, cx.m_cwd),
-                                               PracticalEqTuple::<SlaveMessage>::new(sm, &self.s_root, cx.s_cwd));
+            equals_with_no_mismatching_content(PracticalEqTuple::new(mm, &self.m_root, cx.m_cwd),
+                                               PracticalEqTuple::new(sm, &self.s_root, cx.s_cwd));
         loop {
             match (cx.peek(), &state) {
                 //
