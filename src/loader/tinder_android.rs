@@ -124,8 +124,8 @@ impl<H: HttpClient + 'static> TinderAndroidDataLoader<H> {
                     (vec![], Some(Content {
                         sealed_value_optional: Some(content::SealedValueOptional::Sticker(ContentSticker {
                             path_option: Some(format!("{RELATIVE_MEDIA_DIR}/{filename}")),
-                            width,
-                            height,
+                            width: width * 2,
+                            height: height * 2,
                             thumbnail_path_option: None,
                             emoji_option: None,
                         }))
