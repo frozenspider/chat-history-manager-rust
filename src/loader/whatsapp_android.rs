@@ -464,7 +464,7 @@ fn parse_chats(conn: &Connection, ds_uuid: &PbUuid, users: &mut Users) -> Result
         let mut msg_rows = msgs_stmt.query([jid])?;
         let mut call_rows = calls_stmt.query([jid])?;
         let chat: &mut Chat = cwm.chat.as_mut().unwrap();
-        let chat_tpe = ChatType::try_from(chat.tpe).unwrap();
+        let chat_tpe = ChatType::resolve(chat.tpe).unwrap();
 
         let mut member_ids: HashSet<UserId, Hasher> = Default::default();
         member_ids.insert(myself_id);

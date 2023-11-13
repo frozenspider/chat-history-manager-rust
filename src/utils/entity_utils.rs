@@ -175,6 +175,12 @@ impl Chat {
     }
 }
 
+impl ChatType {
+    pub fn resolve(tpe: i32) -> Result<ChatType> {
+        ChatType::try_from(tpe).with_context(|| format!("Chat type {tpe} has no associated enum"))
+    }
+}
+
 impl Message {
     pub fn new(internal_id: i64,
                source_id_option: Option<i64>,
