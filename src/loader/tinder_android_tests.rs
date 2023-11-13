@@ -70,14 +70,32 @@ fn loading_2023_11() -> EmptyRes {
             searchable_string: "Sending you a text!".to_owned(),
             typed: Some(MESSAGE_REGULAR_NO_CONTENT.clone()),
         });
-        assert_eq!(msgs[1], Message { // TODO: Tenor links should be parsed as GIFs
+        assert_eq!(msgs[1], Message {
             internal_id: 1,
             source_id_option: Some(5405907581016140653),
             timestamp: 1699813000,
             from_id: member.id,
-            text: vec![RichText::make_plain("https://media.tenor.com/mYFQztB4EHoAAAAC/house-hugh-laurie.gif?width=271&height=279".to_owned())],
-            searchable_string: "https://media.tenor.com/mYFQztB4EHoAAAAC/house-hugh-laurie.gif?width=271&height=279".to_owned(),
-            typed: Some(MESSAGE_REGULAR_NO_CONTENT.clone()),
+            text: vec![],
+            searchable_string: "".to_owned(),
+            typed: Some(Typed::Regular(MessageRegular {
+                edit_timestamp_option: None,
+                is_deleted: false,
+                forward_from_name_option: None,
+                reply_to_message_id_option: None,
+                content_option: Some(Content {
+                    sealed_value_optional: Some(Sticker(ContentSticker {
+                        path_option: Some(_db_dir.path
+                            .parent().unwrap()
+                            .join(MEDIA_PATH)
+                            .join("_downloaded")
+                            .join("848013095925873688.gif").to_string_lossy().to_string()),
+                        width: 271,
+                        height: 279,
+                        thumbnail_path_option: None,
+                        emoji_option: None,
+                    }))
+                }),
+            })),
         });
     }
 

@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::fs;
 
 use rusqlite::Connection;
 
@@ -15,6 +16,8 @@ mod tests;
 
 android_sqlite_loader!(tinder, "Tinder", TinderAndroidDataLoader, "tinder-3.db",
                        tweak_conn, parse_users, parse_chats, normalize_users);
+
+const MEDIA_PATH: &str = "Media";
 
 /// Using a first legal ID (i.e. "1") for myself
 const MYSELF_ID: UserId = UserId(UserId::INVALID.0 + 1);
@@ -68,8 +71,11 @@ fn parse_users(conn: &Connection, ds_uuid: &PbUuid) -> Result<Users> {
     Ok(users)
 }
 
-fn parse_chats(conn: &Connection, ds_uuid: &PbUuid, users: &Users) -> Result<Vec<ChatWithMessages>> {
+fn parse_chats(conn: &Connection, ds_uuid: &PbUuid, users: &Users, path: &Path) -> Result<Vec<ChatWithMessages>> {
     let mut cwms = vec![];
+
+    let media_path = path.join(MEDIA_PATH).join("_downloaded");
+    fs::create_dir_all(&media_path)?;
 
     let mut stmt = conn.prepare(r"
         SELECT *
@@ -94,7 +100,33 @@ fn parse_chats(conn: &Connection, ds_uuid: &PbUuid, users: &Users) -> Result<Vec
             let from_id = if &row.get::<_, String>("from_id")? == key { user.id } else { *MYSELF_ID };
 
             let text = row.get::<_, String>("text")?;
-            let text = vec![RichText::make_plain(text)];
+            let (text, content_option) = if text.starts_with("https://media.tenor.com/") {
+                // This is a GIF, let's download it and include it as a sticker.
+                // Example: https://media.tenor.com/mYFQztB4EHoAAAAM/house-hugh-laurie.gif?width=220&height=226
+                let hash = hash_to_id(&text);
+                let gif_path = media_path.join(format!("{}.gif", hash));
+                if !gif_path.exists() {
+                    log::info!("Downloading {}", text);
+                    let bytes = reqwest::blocking::get(&text)?.bytes()?;
+                    fs::write(&gif_path, bytes)?;
+                }
+                let (width, height) = {
+                    let split = text.split(['?', '&']).skip(1).collect_vec();
+                    (split.iter().find(|s| s.starts_with("width=")).map(|s| s[6..].parse()).unwrap_or(Ok(0))?,
+                     split.iter().find(|s| s.starts_with("height=")).map(|s| s[7..].parse()).unwrap_or(Ok(0))?)
+                };
+                (vec![], Some(Content {
+                    sealed_value_optional: Some(content::SealedValueOptional::Sticker(ContentSticker {
+                        path_option: Some(gif_path.to_str().unwrap().to_owned()),
+                        width,
+                        height,
+                        thumbnail_path_option: None,
+                        emoji_option: None,
+                    }))
+                }))
+            } else {
+                (vec![RichText::make_plain(text)], None)
+            };
 
             messages.push(Message::new(
                 *NO_INTERNAL_ID,
@@ -107,7 +139,7 @@ fn parse_chats(conn: &Connection, ds_uuid: &PbUuid, users: &Users) -> Result<Vec
                     is_deleted: false,
                     forward_from_name_option: None,
                     reply_to_message_id_option: None,
-                    content_option: None,
+                    content_option,
                 }), ));
         }
         messages.iter_mut().enumerate().for_each(|(i, m)| m.internal_id = i as i64);

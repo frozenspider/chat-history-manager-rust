@@ -151,20 +151,20 @@ pub mod android {
                 let conn = Connection::open(path.join($db_filename))?;
                 $tweak_conn(path, &conn)?;
 
-                let mut users = $parse_users(&conn, ds_uuid)?;
-                let cwms = parse_chats(&conn, ds_uuid, &mut users)?;
-
-                let users = $normalize_users(users, &cwms)?;
-
-                let root_path = if path_file_name(path)? == android::DATABASES {
+                let path = if path_file_name(path)? == android::DATABASES {
                     path.parent().unwrap()
                 } else {
                     path
                 };
+
+                let mut users = $parse_users(&conn, ds_uuid)?;
+                let cwms = parse_chats(&conn, ds_uuid, &mut users, &path)?;
+
+                let users = $normalize_users(users, &cwms)?;
                 Ok(Box::new(InMemoryDao::new(
-                    format!("{} ({})", $name, path_file_name(root_path)?),
+                    format!("{} ({})", $name, path_file_name(path)?),
                     ds,
-                    root_path.to_path_buf(),
+                    path.to_path_buf(),
                     users[0].clone(),
                     users,
                     cwms,

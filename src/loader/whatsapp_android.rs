@@ -273,7 +273,7 @@ mod columns {
     pub const PARENT_KEY_ID: &str = "parent_key_id";
 }
 
-fn parse_chats(conn: &Connection, ds_uuid: &PbUuid, users: &mut Users) -> Result<Vec<ChatWithMessages>> {
+fn parse_chats(conn: &Connection, ds_uuid: &PbUuid, users: &mut Users, _path: &Path) -> Result<Vec<ChatWithMessages>> {
     let mut cwms_map: HashMap<Jid, ChatWithMessages> = Default::default();
     let myself_id = users.myself_id.unwrap();
 
