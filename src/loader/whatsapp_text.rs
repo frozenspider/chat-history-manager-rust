@@ -29,8 +29,6 @@ pub struct WhatsAppTextDataLoader;
 impl DataLoader for WhatsAppTextDataLoader {
     fn name(&self) -> &'static str { "WhatsApp (text)" }
 
-    fn src_alias(&self) -> &'static str { "WhatsApp (text)" }
-
     fn src_type(&self) -> &'static str { "whatsapp-text" }
 
     fn looks_about_right_inner(&self, path: &Path) -> EmptyRes {

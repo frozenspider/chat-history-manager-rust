@@ -3,16 +3,19 @@ use std::io::{BufRead, BufReader};
 use std::path::Path;
 
 use chrono::Local;
+use const_format::concatcp;
 use itertools::{Either, Itertools};
 use uuid::Uuid;
 
 use crate::*;
 use crate::loader::telegram::TelegramDataLoader;
+use crate::loader::tinder_android::TinderAndroidDataLoader;
 use crate::loader::whatsapp_android::WhatsAppAndroidDataLoader;
 use crate::loader::whatsapp_text::WhatsAppTextDataLoader;
 use crate::protobuf::history::{Dataset, PbUuid};
 
 mod telegram;
+mod tinder_android;
 mod whatsapp_android;
 mod whatsapp_text;
 
@@ -20,7 +23,9 @@ trait DataLoader {
     fn name(&self) -> &'static str;
 
     /// Used in dataset alias
-    fn src_alias(&self) -> &'static str;
+    fn src_alias(&self) -> &'static str {
+        self.name()
+    }
 
     /// Used as a dataset source type
     fn src_type(&self) -> &'static str;
@@ -68,10 +73,12 @@ fn hash_to_id(str: &str) -> i64 {
 }
 
 thread_local! {
-    static LOADERS: Vec<&'static dyn DataLoader> = {
-        let vec: Vec<&dyn DataLoader> = vec![&TelegramDataLoader, &WhatsAppAndroidDataLoader, &WhatsAppTextDataLoader];
-        vec
-    };
+    static LOADERS: Vec<&'static dyn DataLoader> =  vec![
+        &TelegramDataLoader,
+        &TinderAndroidDataLoader,
+        &WhatsAppAndroidDataLoader,
+        &WhatsAppTextDataLoader,
+    ];
 }
 
 pub fn load(root_path: &Path, myself_chooser: &dyn MyselfChooser) -> Result<Box<InMemoryDao>> {
@@ -98,4 +105,71 @@ fn first_line(path: &Path) -> Result<String> {
     let input = File::open(path)?;
     let buffered = BufReader::new(input);
     Ok(buffered.lines().next().ok_or(anyhow!("File is empty"))??.trim().to_owned())
+}
+
+// Android-specific helpers.
+pub mod android {
+    pub const DATABASES: &str = "databases";
+
+    /// Boilerplate for a data loader of salvaged Android sqlite database.
+    /// First construct a custom users structure, use it to read chats, then normalize the structure into
+    /// plain old Vec<User>.
+    /// Produced users should have myself as a first user.
+    #[macro_export]
+    macro_rules! android_sqlite_loader {
+        ($tpe:ident, $name:literal, $loader_name:ident, $db_filename:literal,
+         $tweak_conn:ident, $parse_users:ident, $parse_chats:ident, $normalize_users:ident) => {
+            #[allow(dead_code)]
+            const DB_FILENAME: &str = $db_filename;
+
+            pub struct $loader_name;
+
+            impl DataLoader for $loader_name {
+                fn name(&self) -> &'static str { concatcp!($name, " (db)") }
+
+                fn src_alias(&self) -> &'static str { self.name() }
+
+                fn src_type(&self) -> &'static str { stringify!($tpe) }
+
+                fn looks_about_right_inner(&self, path: &Path) -> EmptyRes {
+                    let filename = path_file_name(path)?;
+                    if filename != $db_filename {
+                        bail!("File is not {}", $db_filename);
+                    }
+                    Ok(())
+                }
+
+                fn load_inner(&self, path: &Path, ds: Dataset, _myself_chooser: &dyn MyselfChooser) -> Result<Box<InMemoryDao>> {
+                    parse_android_db(path, ds)
+                }
+            }
+
+            fn parse_android_db(path: &Path, ds: Dataset) -> Result<Box<InMemoryDao>> {
+                let path = path.parent().unwrap();
+                let ds_uuid = ds.uuid.as_ref().unwrap();
+
+                let conn = Connection::open(path.join($db_filename))?;
+                $tweak_conn(path, &conn)?;
+
+                let mut users = $parse_users(&conn, ds_uuid)?;
+                let cwms = parse_chats(&conn, ds_uuid, &mut users)?;
+
+                let users = $normalize_users(users, &cwms)?;
+
+                let root_path = if path_file_name(path)? == android::DATABASES {
+                    path.parent().unwrap()
+                } else {
+                    path
+                };
+                Ok(Box::new(InMemoryDao::new(
+                    format!("{} ({})", $name, path_file_name(root_path)?),
+                    ds,
+                    root_path.to_path_buf(),
+                    users[0].clone(),
+                    users,
+                    cwms,
+                )))
+            }
+        };
+    }
 }

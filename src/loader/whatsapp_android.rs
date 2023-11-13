@@ -18,35 +18,12 @@ use super::*;
 #[path = "whatsapp_android_tests.rs"]
 mod tests;
 
-const DATABASES: &str = "databases";
-const MSGSTORE_FILENAME: &str = "msgstore.db";
-const WA_FILENAME: &str = "wa.db";
-
 lazy_static! {
     static ref PHONE_JID_REGEX: Regex = Regex::new(r"^([\d]{5,})@s.whatsapp.net$").unwrap();
 }
 
-pub struct WhatsAppAndroidDataLoader;
-
-impl DataLoader for WhatsAppAndroidDataLoader {
-    fn name(&self) -> &'static str { "WhatsApp (db)" }
-
-    fn src_alias(&self) -> &'static str { "WhatsApp (db)" }
-
-    fn src_type(&self) -> &'static str { "whatsapp" }
-
-    fn looks_about_right_inner(&self, path: &Path) -> EmptyRes {
-        let filename = path_file_name(path)?;
-        if filename != MSGSTORE_FILENAME {
-            bail!("File is not {}", MSGSTORE_FILENAME);
-        }
-        Ok(())
-    }
-
-    fn load_inner(&self, path: &Path, ds: Dataset, _myself_chooser: &dyn MyselfChooser) -> Result<Box<InMemoryDao>> {
-        parse_whatsapp_db(path, ds)
-    }
-}
+android_sqlite_loader!(whatsapp, "WhatsApp", WhatsAppAndroidDataLoader, "msgstore.db",
+                       tweak_conn, parse_users, parse_chats, normalize_users);
 
 type Jid = String;
 type MessageKey = String;
@@ -74,16 +51,12 @@ impl Users {
     }
 }
 
-fn parse_whatsapp_db(path: &Path, ds: Dataset) -> Result<Box<InMemoryDao>> {
-    let path = path.parent().unwrap();
-    let ds_uuid = ds.uuid.as_ref().unwrap();
+fn tweak_conn(path: &Path, conn: &Connection) -> EmptyRes {
+    conn.execute(r#"ATTACH DATABASE ?1 AS wa_db"#, [path.join("wa.db").to_str().unwrap()])?;
+    Ok(())
+}
 
-    let conn = Connection::open(path.join(MSGSTORE_FILENAME))?;
-    conn.execute(r#"ATTACH DATABASE ?1 AS wa_db"#, [path.join(WA_FILENAME).to_str().unwrap()])?;
-
-    let mut users = parse_users(&conn, ds_uuid)?;
-    let cwms = parse_chats(&conn, ds_uuid, &mut users)?;
-
+fn normalize_users(users: Users, cwms: &[ChatWithMessages]) -> Result<Vec<User>> {
     let myself_id = users.myself_id.unwrap();
     // Filter out users not participating in chats.
     let participating_user_ids: HashSet<i64, Hasher> = cwms.iter()
@@ -97,20 +70,7 @@ fn parse_whatsapp_db(path: &Path, ds: Dataset) -> Result<Box<InMemoryDao>> {
         .collect_vec();
     // Set myself to be a first member (not required by convention but to match existing behaviour).
     users.sort_by_key(|u| if u.id == *myself_id { *UserId::MIN } else { u.id });
-
-    let root_path = if path_file_name(path)? == DATABASES {
-        path.parent().unwrap()
-    } else {
-        path
-    };
-    Ok(Box::new(InMemoryDao::new(
-        format!("WhatsApp ({})", path_file_name(root_path)?),
-        ds,
-        root_path.to_path_buf(),
-        users[0].clone(),
-        users,
-        cwms,
-    )))
+    Ok(users)
 }
 
 fn parse_users(conn: &Connection, ds_uuid: &PbUuid) -> Result<Users> {
