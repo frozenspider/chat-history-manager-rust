@@ -19,7 +19,9 @@ pub struct TinderAndroidDataLoader<H: HttpClient + 'static> {
 
 android_sqlite_loader!(TinderAndroidDataLoader<H: HttpClient>, tinder, "Tinder", "tinder-3.db");
 
-const MEDIA_PATH: &str = "Media";
+const MEDIA_DIR: &str = "Media";
+const MEDIA_DOWNLOADED_SUBDIR: &str = "_downloaded";
+const RELATIVE_MEDIA_DIR: &str = concatcp!(MEDIA_DIR, "/", MEDIA_DOWNLOADED_SUBDIR);
 
 /// Using a first legal ID (i.e. "1") for myself
 const MYSELF_ID: UserId = UserId(UserId::INVALID.0 + 1);
@@ -31,7 +33,6 @@ type UserKey = String;
 type Users = HashMap<UserKey, User>;
 
 impl<H: HttpClient + 'static> TinderAndroidDataLoader<H> {
-
     fn tweak_conn(&self, _path: &Path, _conn: &Connection) -> EmptyRes { Ok(()) }
 
     fn normalize_users(&self, users: Users, _cwms: &[ChatWithMessages]) -> Result<Vec<User>> {
@@ -78,8 +79,8 @@ impl<H: HttpClient + 'static> TinderAndroidDataLoader<H> {
     fn parse_chats(&self, conn: &Connection, ds_uuid: &PbUuid, users: &Users, path: &Path) -> Result<Vec<ChatWithMessages>> {
         let mut cwms = vec![];
 
-        let media_path = path.join(MEDIA_PATH).join("_downloaded");
-        fs::create_dir_all(&media_path)?;
+        let downloaded_media_path = path.join(RELATIVE_MEDIA_DIR);
+        fs::create_dir_all(&downloaded_media_path)?;
 
         let mut stmt = conn.prepare(r"
             SELECT *
@@ -108,7 +109,8 @@ impl<H: HttpClient + 'static> TinderAndroidDataLoader<H> {
                     // This is a GIF, let's download it and include it as a sticker.
                     // Example: https://media.tenor.com/mYFQztB4EHoAAAAM/house-hugh-laurie.gif?width=220&height=226
                     let hash = hash_to_id(&text);
-                    let gif_path = media_path.join(format!("{}.gif", hash));
+                    let filename = format!("{}.gif", hash);
+                    let gif_path = downloaded_media_path.join(&filename);
                     if !gif_path.exists() {
                         log::info!("Downloading {}", text);
                         let bytes = self.http_client.get_bytes(&text)?;
@@ -121,7 +123,7 @@ impl<H: HttpClient + 'static> TinderAndroidDataLoader<H> {
                     };
                     (vec![], Some(Content {
                         sealed_value_optional: Some(content::SealedValueOptional::Sticker(ContentSticker {
-                            path_option: Some(gif_path.to_str().unwrap().to_owned()),
+                            path_option: Some(format!("{RELATIVE_MEDIA_DIR}/{filename}")),
                             width,
                             height,
                             thumbnail_path_option: None,

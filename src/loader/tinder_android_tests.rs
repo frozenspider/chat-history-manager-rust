@@ -1,5 +1,6 @@
 #![allow(unused_imports)]
 
+use std::fmt::format;
 use std::fs;
 use std::path::PathBuf;
 use chrono::prelude::*;
@@ -36,7 +37,7 @@ lazy_static! {
 #[test]
 fn loading_2023_11() -> EmptyRes {
     let (res, db_dir) = test_android::create_databases(RESOURCE_DIR, "2023-11", DB_FILENAME)?;
-    let media_dir = TmpDir::new_at(db_dir.path.parent().unwrap().join(MEDIA_PATH));
+    let _media_dir = TmpDir::new_at(db_dir.path.parent().unwrap().join(MEDIA_DIR));
 
     LOADER.looks_about_right(&res)?;
     let dao = LOADER.load(&res, &NoChooser)?;
@@ -93,8 +94,7 @@ fn loading_2023_11() -> EmptyRes {
                 reply_to_message_id_option: None,
                 content_option: Some(Content {
                     sealed_value_optional: Some(Sticker(ContentSticker {
-                        path_option: Some(media_dir.path.join("_downloaded").join("848013095925873688.gif")
-                            .to_string_lossy().to_string()),
+                        path_option: Some(format!("{RELATIVE_MEDIA_DIR}/848013095925873688.gif")),
                         width: 271,
                         height: 279,
                         thumbnail_path_option: None,
