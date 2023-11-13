@@ -19,7 +19,15 @@ use crate::protobuf::history::message_service::SealedValueOptional::*;
 use super::*;
 
 const RESOURCE_DIR: &str = "tinder-android";
-const LOADER: TinderAndroidDataLoader = TinderAndroidDataLoader;
+
+lazy_static! {
+    // TODO: Do we need cleanup?
+    static ref HTTP_CLIENT: MockHttpClient = MockHttpClient::new();
+
+    static ref LOADER: TinderAndroidDataLoader<MockHttpClient> = TinderAndroidDataLoader {
+        http_client: &HTTP_CLIENT
+    };
+}
 
 //
 // Tests
@@ -27,9 +35,10 @@ const LOADER: TinderAndroidDataLoader = TinderAndroidDataLoader;
 
 #[test]
 fn loading_2023_11() -> EmptyRes {
-    let (res, _db_dir) = test_android::create_databases(RESOURCE_DIR, "2023-11", DB_FILENAME)?;
-    LOADER.looks_about_right(&res)?;
+    let (res, db_dir) = test_android::create_databases(RESOURCE_DIR, "2023-11", DB_FILENAME)?;
+    let media_dir = TmpDir::new_at(db_dir.path.parent().unwrap().join(MEDIA_PATH));
 
+    LOADER.looks_about_right(&res)?;
     let dao = LOADER.load(&res, &NoChooser)?;
 
     let ds_uuid = dao.dataset.uuid.unwrap_ref();
@@ -84,11 +93,8 @@ fn loading_2023_11() -> EmptyRes {
                 reply_to_message_id_option: None,
                 content_option: Some(Content {
                     sealed_value_optional: Some(Sticker(ContentSticker {
-                        path_option: Some(_db_dir.path
-                            .parent().unwrap()
-                            .join(MEDIA_PATH)
-                            .join("_downloaded")
-                            .join("848013095925873688.gif").to_string_lossy().to_string()),
+                        path_option: Some(media_dir.path.join("_downloaded").join("848013095925873688.gif")
+                            .to_string_lossy().to_string()),
                         width: 271,
                         height: 279,
                         thumbnail_path_option: None,
@@ -98,6 +104,9 @@ fn loading_2023_11() -> EmptyRes {
             })),
         });
     }
+
+    assert_eq!(HTTP_CLIENT.calls_copy(),
+               vec!["https://media.tenor.com/mYFQztB4EHoAAAAC/house-hugh-laurie.gif?width=271&height=279"]);
 
     Ok(())
 }

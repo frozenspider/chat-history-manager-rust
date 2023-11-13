@@ -55,6 +55,49 @@ trait DataLoader {
     fn load_inner(&self, path: &Path, ds: Dataset, myself_chooser: &dyn MyselfChooser) -> Result<Box<InMemoryDao>>;
 }
 
+pub struct Loader<MC: MyselfChooser> {
+    loaders: Vec<Box<dyn DataLoader + Sync>>,
+    myself_chooser: MC,
+}
+
+impl<MC: MyselfChooser> Loader<MC> {
+    pub fn new<H: HttpClient>(http_client: &'static H, myself_chooser: MC) -> Loader<MC> {
+        Loader {
+            loaders: vec![
+                Box::new(TelegramDataLoader),
+                Box::new(TinderAndroidDataLoader { http_client }),
+                Box::new(WhatsAppAndroidDataLoader),
+                Box::new(WhatsAppTextDataLoader),
+            ],
+            myself_chooser: myself_chooser,
+        }
+    }
+
+    pub fn load(&self, root_path: &Path) -> Result<Box<InMemoryDao>> {
+        let (named_errors, loads): (Vec<_>, Vec<_>) =
+            self.loaders.iter()
+                .partition_map(|loader| match loader.looks_about_right(root_path) {
+                    Ok(()) => Either::Right(|| loader.load(root_path, &self.myself_chooser)),
+                    Err(why) => Either::Left((loader.name(), why)),
+                });
+        match loads.first() {
+            Some(load) =>
+                load(),
+            None => {
+                // Report why everyone rejected the file.
+                err!("No loader accepted the file:\n{}",
+                 named_errors.iter().map(|(name, why)| format!("{}: {}", name, why)).join("\n"))
+            }
+        }
+    }
+}
+
+// Loader is stateless after construction, so it's safe to be shared between threads.
+
+unsafe impl<MC: MyselfChooser> Send for Loader<MC> {}
+
+unsafe impl<MC: MyselfChooser> Sync for Loader<MC> {}
+
 fn ensure_file_presence(root_file: &Path) -> Result<&str> {
     let root_file_str = path_to_str(root_file)?;
     if !root_file.exists() {
@@ -70,35 +113,6 @@ fn hash_to_id(str: &str) -> i64 {
     h.write(str.as_bytes());
     h.write_u8(0xff);
     (h.finish() / 2) as i64
-}
-
-thread_local! {
-    static LOADERS: Vec<&'static dyn DataLoader> =  vec![
-        &TelegramDataLoader,
-        &TinderAndroidDataLoader,
-        &WhatsAppAndroidDataLoader,
-        &WhatsAppTextDataLoader,
-    ];
-}
-
-pub fn load(root_path: &Path, myself_chooser: &dyn MyselfChooser) -> Result<Box<InMemoryDao>> {
-    LOADERS.with(|loaders: &Vec<&dyn DataLoader>| {
-        let (named_errors, loads): (Vec<_>, Vec<_>) =
-            loaders.iter()
-                .partition_map(|loader| match loader.looks_about_right(root_path) {
-                    Ok(()) => Either::Right(|| loader.load(root_path, myself_chooser)),
-                    Err(why) => Either::Left((loader.name(), why)),
-                });
-        match loads.first() {
-            Some(load) =>
-                load(),
-            None => {
-                // Report why everyone rejected the file.
-                err!("No loader accepted the file:\n{}",
-                     named_errors.iter().map(|(name, why)| format!("{}: {}", name, why)).join("\n"))
-            }
-        }
-    })
 }
 
 fn first_line(path: &Path) -> Result<String> {
@@ -117,14 +131,26 @@ pub mod android {
     /// Produced users should have myself as a first user.
     #[macro_export]
     macro_rules! android_sqlite_loader {
-        ($tpe:ident, $name:literal, $loader_name:ident, $db_filename:literal,
-         $tweak_conn:ident, $parse_users:ident, $parse_chats:ident, $normalize_users:ident) => {
+        (
+            $loader_name:ident $(<
+                $(
+                    $generic_type_name:ident
+                    $(: $generic_type_bound:ident $(+ $generic_type_bound2:ident)* )?
+                ),+
+            >)?,
+            $tpe:ident,
+            $name:literal,
+            $db_filename:literal
+        ) => {
             #[allow(dead_code)]
             const DB_FILENAME: &str = $db_filename;
 
-            pub struct $loader_name;
-
-            impl DataLoader for $loader_name {
+            impl$(
+                <$(
+                    $generic_type_name
+                    $(: $generic_type_bound $(+ $generic_type_bound2:ident)* )?
+                ),*>
+            )? DataLoader for $loader_name$(<$($generic_type_name),*>)? {
                 fn name(&self) -> &'static str { concatcp!($name, " (db)") }
 
                 fn src_alias(&self) -> &'static str { self.name() }
@@ -140,16 +166,21 @@ pub mod android {
                 }
 
                 fn load_inner(&self, path: &Path, ds: Dataset, _myself_chooser: &dyn MyselfChooser) -> Result<Box<InMemoryDao>> {
-                    parse_android_db(path, ds)
+                    parse_android_db(self, path, ds)
                 }
             }
 
-            fn parse_android_db(path: &Path, ds: Dataset) -> Result<Box<InMemoryDao>> {
+            fn parse_android_db$(
+                <$(
+                    $generic_type_name
+                    $(: $generic_type_bound $(+ $generic_type_bound2:ident)* )?
+                ),*>
+            )? (this: &$loader_name$(<$($generic_type_name),*>)?, path: &Path, ds: Dataset) -> Result<Box<InMemoryDao>> {
                 let path = path.parent().unwrap();
                 let ds_uuid = ds.uuid.as_ref().unwrap();
 
                 let conn = Connection::open(path.join($db_filename))?;
-                $tweak_conn(path, &conn)?;
+                this.tweak_conn(path, &conn)?;
 
                 let path = if path_file_name(path)? == android::DATABASES {
                     path.parent().unwrap()
@@ -157,10 +188,10 @@ pub mod android {
                     path
                 };
 
-                let mut users = $parse_users(&conn, ds_uuid)?;
-                let cwms = parse_chats(&conn, ds_uuid, &mut users, &path)?;
+                let mut users = this.parse_users(&conn, ds_uuid)?;
+                let cwms = this.parse_chats(&conn, ds_uuid, &mut users, &path)?;
 
-                let users = $normalize_users(users, &cwms)?;
+                let users = this.normalize_users(users, &cwms)?;
                 Ok(Box::new(InMemoryDao::new(
                     format!("{} ({})", $name, path_file_name(path)?),
                     ds,

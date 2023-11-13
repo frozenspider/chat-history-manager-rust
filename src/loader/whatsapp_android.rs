@@ -22,8 +22,9 @@ lazy_static! {
     static ref PHONE_JID_REGEX: Regex = Regex::new(r"^([\d]{5,})@s.whatsapp.net$").unwrap();
 }
 
-android_sqlite_loader!(whatsapp, "WhatsApp", WhatsAppAndroidDataLoader, "msgstore.db",
-                       tweak_conn, parse_users, parse_chats, normalize_users);
+pub struct WhatsAppAndroidDataLoader;
+
+android_sqlite_loader!(WhatsAppAndroidDataLoader, whatsapp, "WhatsApp", "msgstore.db");
 
 type Jid = String;
 type MessageKey = String;
@@ -51,76 +52,86 @@ impl Users {
     }
 }
 
-fn tweak_conn(path: &Path, conn: &Connection) -> EmptyRes {
-    conn.execute(r#"ATTACH DATABASE ?1 AS wa_db"#, [path.join("wa.db").to_str().unwrap()])?;
-    Ok(())
-}
+impl WhatsAppAndroidDataLoader {
+    fn tweak_conn(&self, path: &Path, conn: &Connection) -> EmptyRes {
+        conn.execute(r#"ATTACH DATABASE ?1 AS wa_db"#, [path.join("wa.db").to_str().unwrap()])?;
+        Ok(())
+    }
 
-fn normalize_users(users: Users, cwms: &[ChatWithMessages]) -> Result<Vec<User>> {
-    let myself_id = users.myself_id.unwrap();
-    // Filter out users not participating in chats.
-    let participating_user_ids: HashSet<i64, Hasher> = cwms.iter()
-        .map(|cwm| cwm.chat.as_ref().unwrap())
-        .map(|c| &c.member_ids)
-        .flatten()
-        .map(|&id| id)
-        .collect();
-    let mut users = users.id_to_user.into_values()
-        .filter(|u| u.id == *myself_id || participating_user_ids.contains(&u.id))
-        .collect_vec();
-    // Set myself to be a first member (not required by convention but to match existing behaviour).
-    users.sort_by_key(|u| if u.id == *myself_id { *UserId::MIN } else { u.id });
-    Ok(users)
-}
+    fn normalize_users(&self, users: Users, cwms: &[ChatWithMessages]) -> Result<Vec<User>> {
+        let myself_id = users.myself_id.unwrap();
+        // Filter out users not participating in chats.
+        let participating_user_ids: HashSet<i64, Hasher> = cwms.iter()
+            .map(|cwm| cwm.chat.as_ref().unwrap())
+            .map(|c| &c.member_ids)
+            .flatten()
+            .map(|&id| id)
+            .collect();
+        let mut users = users.id_to_user.into_values()
+            .filter(|u| u.id == *myself_id || participating_user_ids.contains(&u.id))
+            .collect_vec();
+        // Set myself to be a first member (not required by convention but to match existing behaviour).
+        users.sort_by_key(|u| if u.id == *myself_id { *UserId::MIN } else { u.id });
+        Ok(users)
+    }
 
-fn parse_users(conn: &Connection, ds_uuid: &PbUuid) -> Result<Users> {
-    let mut users: Users = Default::default();
+    fn parse_users(&self, conn: &Connection, ds_uuid: &PbUuid) -> Result<Users> {
+        let mut users: Users = Default::default();
 
-    // 1-on-1 chat users
-    parse_users_from_stmt(&mut conn.prepare(r"
-        SELECT
-            jid.raw_string as jid,
-            wa_contacts.*
-        FROM jid
-        LEFT JOIN wa_contacts ON wa_contacts.jid = jid.raw_string
-        GROUP BY jid.raw_string
-    ")?, ds_uuid, &mut users)?;
+        // 1-on-1 chat users
+        parse_users_from_stmt(&mut conn.prepare(r"
+            SELECT
+                jid.raw_string as jid,
+                wa_contacts.*
+            FROM jid
+            LEFT JOIN wa_contacts ON wa_contacts.jid = jid.raw_string
+            GROUP BY jid.raw_string
+        ")?, ds_uuid, &mut users)?;
 
-    // Group chat users
-    parse_users_from_stmt(&mut conn.prepare(r"
-        SELECT
-            jid.raw_string as jid,
-            wa_contacts.*
-        FROM message
-        LEFT JOIN jid ON jid._id = message.sender_jid_row_id
-        LEFT JOIN wa_contacts ON wa_contacts.jid = jid.raw_string
-        WHERE message.sender_jid_row_id > 0
-        GROUP BY jid.raw_string
-    ")?, ds_uuid, &mut users)?;
+        // Group chat users
+        parse_users_from_stmt(&mut conn.prepare(r"
+            SELECT
+                jid.raw_string as jid,
+                wa_contacts.*
+            FROM message
+            LEFT JOIN jid ON jid._id = message.sender_jid_row_id
+            LEFT JOIN wa_contacts ON wa_contacts.jid = jid.raw_string
+            WHERE message.sender_jid_row_id > 0
+            GROUP BY jid.raw_string
+        ")?, ds_uuid, &mut users)?;
 
-    // It's not clear how to get own ID from WhatsApp.
-    // As such:
-    // - Using a first legal ID (i.e. "1") for myself.
-    // - Can only discover JID (and populate phone number) when group join message is found.
-    //   However, better keep myself as id = 1.
-    const MYSELF_ID: UserId = UserId(UserId::INVALID.0 + 1);
-    users.myself_id = Some(MYSELF_ID);
-    assert!(!users.occupied_user_ids.contains(&MYSELF_ID));
+        // It's not clear how to get own ID from WhatsApp.
+        // As such:
+        // - Using a first legal ID (i.e. "1") for myself.
+        // - Can only discover JID (and populate phone number) when group join message is found.
+        //   However, better keep myself as id = 1.
+        const MYSELF_ID: UserId = UserId(UserId::INVALID.0 + 1);
+        users.myself_id = Some(MYSELF_ID);
+        assert!(!users.occupied_user_ids.contains(&MYSELF_ID));
 
-    let my_name_option = conn.query_row("SELECT value FROM props WHERE key = 'user_push_name'",
-                                        [], |r| r.get::<_, Option<String>>(0))
-        .optional().map(|o| o.flatten())?;
+        let my_name_option = conn.query_row("SELECT value FROM props WHERE key = 'user_push_name'",
+                                            [], |r| r.get::<_, Option<String>>(0))
+            .optional().map(|o| o.flatten())?;
 
-    users.id_to_user.insert(MYSELF_ID, User {
-        ds_uuid: Some(ds_uuid.clone()),
-        id: *MYSELF_ID,
-        first_name_option: my_name_option,
-        last_name_option: None,
-        username_option: None,
-        phone_number_option: None,
-    });
+        users.id_to_user.insert(MYSELF_ID, User {
+            ds_uuid: Some(ds_uuid.clone()),
+            id: *MYSELF_ID,
+            first_name_option: my_name_option,
+            last_name_option: None,
+            username_option: None,
+            phone_number_option: None,
+        });
 
-    Ok(users)
+        Ok(users)
+    }
+
+    fn parse_chats(&self,
+                   conn: &Connection,
+                   ds_uuid: &PbUuid,
+                   users: &mut Users,
+                   _path: &Path) -> Result<Vec<ChatWithMessages>> {
+        parse_chats(conn, ds_uuid, users)
+    }
 }
 
 fn parse_users_from_stmt(stmt: &mut Statement, ds_uuid: &PbUuid, users: &mut Users) -> EmptyRes {
@@ -273,7 +284,7 @@ mod columns {
     pub const PARENT_KEY_ID: &str = "parent_key_id";
 }
 
-fn parse_chats(conn: &Connection, ds_uuid: &PbUuid, users: &mut Users, _path: &Path) -> Result<Vec<ChatWithMessages>> {
+fn parse_chats(conn: &Connection, ds_uuid: &PbUuid, users: &mut Users) -> Result<Vec<ChatWithMessages>> {
     let mut cwms_map: HashMap<Jid, ChatWithMessages> = Default::default();
     let myself_id = users.myself_id.unwrap();
 

@@ -1,7 +1,9 @@
+use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
 
 use chrono::*;
 use itertools::Itertools;
@@ -320,5 +322,32 @@ impl TmpDir {
 impl Drop for TmpDir {
     fn drop(&mut self) {
         fs::remove_dir_all(&self.path).expect(format!("Failed to remove temporary dir '{}'", self.path.to_str().unwrap()).as_str())
+    }
+}
+
+pub struct MockHttpClient {
+    pub calls: Arc<Mutex<RefCell<Vec<String>>>>,
+}
+
+impl MockHttpClient {
+    pub fn new() -> Self {
+        MockHttpClient { calls: Arc::new(Mutex::new(RefCell::new(vec![]))) }
+    }
+
+    pub fn calls_copy(&self) -> Vec<String> {
+        let lock = self.calls.lock().unwrap();
+        let cell = &*lock;
+        let vec: &Vec<String> = &(*cell.borrow());
+        vec.clone()
+    }
+}
+
+impl HttpClient for MockHttpClient {
+    fn get_bytes(&self, url: &str) -> Result<Vec<u8>> {
+        log::info!("Mocking request to {}", url);
+        let lock = self.calls.lock().unwrap();
+        let cell = &*lock;
+        cell.borrow_mut().push(url.to_owned());
+        Ok(Vec::from(url.as_bytes()))
     }
 }
