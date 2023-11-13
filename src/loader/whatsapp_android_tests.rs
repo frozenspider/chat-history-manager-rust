@@ -18,6 +18,7 @@ use crate::protobuf::history::message_service::SealedValueOptional::*;
 
 use super::*;
 
+const RESOURCE_DIR: &str = "whatsapp-android";
 const LOADER: WhatsAppAndroidDataLoader = WhatsAppAndroidDataLoader;
 
 //
@@ -85,7 +86,7 @@ fn vcards() -> EmptyRes {
 
 #[test]
 fn loading_2023_10() -> EmptyRes {
-    let (res, _db_dir) = create_databases("2023-10")?;
+    let (res, _db_dir) = test_android::create_databases(RESOURCE_DIR, "2023-10", DB_FILENAME)?;
     LOADER.looks_about_right(&res)?;
 
     let dao = LOADER.load(&res, &NoChooser)?;
@@ -228,42 +229,4 @@ fn expected_myself(ds_uuid: &PbUuid) -> User {
 
 fn trim_vcard_string(s: &str) -> String {
     s.trim().lines().map(|s| s.trim()).join("\n")
-}
-
-fn create_databases(name_suffix: &str) -> Result<(PathBuf, TmpDir)> {
-    let folder = resource(&format!("whatsapp-android_{}", name_suffix));
-    assert!(folder.exists());
-
-    let databases = folder.join(DATABASES);
-    if databases.exists() { fs::remove_dir_all(databases.clone())?; }
-    let databases = TmpDir::new_at(databases);
-
-    let files: Vec<(String, PathBuf)> =
-        folder.read_dir().unwrap()
-            .map(|res| res.unwrap().path())
-            .filter(|child| path_file_name(child).unwrap().ends_with(".sql"))
-            .map(|child| {
-                (path_file_name(&child).unwrap().smart_slice(..-4).to_owned(), child.clone())
-            })
-            .collect_vec();
-
-    for (table_name, file) in files.into_iter() {
-        let target_db_path = databases.path.join(format!("{}.db", table_name));
-        info!("Creating table {}", table_name);
-        let conn = Connection::open(target_db_path)?;
-        let sql = fs::read_to_string(&file)?;
-        conn.execute_batch(&sql)?;
-    }
-
-    Ok((databases.path.join(MSGSTORE_FILENAME), databases))
-}
-
-lazy_static! {
-    static ref MESSAGE_REGULAR_NO_CONTENT: Typed = Typed::Regular(MessageRegular {
-        edit_timestamp_option: None,
-        is_deleted: false,
-        forward_from_name_option: None,
-        reply_to_message_id_option: None,
-        content_option: None,
-    });
 }

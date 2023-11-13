@@ -134,3 +134,8 @@ pub type Hasher = BuildHasherDefault<FxHasher>;
 pub fn hasher() -> Hasher {
     BuildHasherDefault::<FxHasher>::default()
 }
+
+//
+// HTTP
+//
+

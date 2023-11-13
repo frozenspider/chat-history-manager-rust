@@ -18,35 +18,13 @@ use super::*;
 #[path = "whatsapp_android_tests.rs"]
 mod tests;
 
-const DATABASES: &str = "databases";
-const MSGSTORE_FILENAME: &str = "msgstore.db";
-const WA_FILENAME: &str = "wa.db";
-
 lazy_static! {
     static ref PHONE_JID_REGEX: Regex = Regex::new(r"^([\d]{5,})@s.whatsapp.net$").unwrap();
 }
 
 pub struct WhatsAppAndroidDataLoader;
 
-impl DataLoader for WhatsAppAndroidDataLoader {
-    fn name(&self) -> &'static str { "WhatsApp (db)" }
-
-    fn src_alias(&self) -> &'static str { "WhatsApp (db)" }
-
-    fn src_type(&self) -> &'static str { "whatsapp" }
-
-    fn looks_about_right_inner(&self, path: &Path) -> EmptyRes {
-        let filename = path_file_name(path)?;
-        if filename != MSGSTORE_FILENAME {
-            bail!("File is not {}", MSGSTORE_FILENAME);
-        }
-        Ok(())
-    }
-
-    fn load_inner(&self, path: &Path, ds: Dataset, _myself_chooser: &dyn MyselfChooser) -> Result<Box<InMemoryDao>> {
-        parse_whatsapp_db(path, ds)
-    }
-}
+android_sqlite_loader!(WhatsAppAndroidDataLoader, whatsapp, "WhatsApp", "msgstore.db");
 
 type Jid = String;
 type MessageKey = String;
@@ -74,93 +52,86 @@ impl Users {
     }
 }
 
-fn parse_whatsapp_db(path: &Path, ds: Dataset) -> Result<Box<InMemoryDao>> {
-    let path = path.parent().unwrap();
-    let ds_uuid = ds.uuid.as_ref().unwrap();
+impl WhatsAppAndroidDataLoader {
+    fn tweak_conn(&self, path: &Path, conn: &Connection) -> EmptyRes {
+        conn.execute(r#"ATTACH DATABASE ?1 AS wa_db"#, [path.join("wa.db").to_str().unwrap()])?;
+        Ok(())
+    }
 
-    let conn = Connection::open(path.join(MSGSTORE_FILENAME))?;
-    conn.execute(r#"ATTACH DATABASE ?1 AS wa_db"#, [path.join(WA_FILENAME).to_str().unwrap()])?;
+    fn normalize_users(&self, users: Users, cwms: &[ChatWithMessages]) -> Result<Vec<User>> {
+        let myself_id = users.myself_id.unwrap();
+        // Filter out users not participating in chats.
+        let participating_user_ids: HashSet<i64, Hasher> = cwms.iter()
+            .map(|cwm| cwm.chat.as_ref().unwrap())
+            .map(|c| &c.member_ids)
+            .flatten()
+            .map(|&id| id)
+            .collect();
+        let mut users = users.id_to_user.into_values()
+            .filter(|u| u.id == *myself_id || participating_user_ids.contains(&u.id))
+            .collect_vec();
+        // Set myself to be a first member (not required by convention but to match existing behaviour).
+        users.sort_by_key(|u| if u.id == *myself_id { *UserId::MIN } else { u.id });
+        Ok(users)
+    }
 
-    let mut users = parse_users(&conn, ds_uuid)?;
-    let cwms = parse_chats(&conn, ds_uuid, &mut users)?;
+    fn parse_users(&self, conn: &Connection, ds_uuid: &PbUuid) -> Result<Users> {
+        let mut users: Users = Default::default();
 
-    let myself_id = users.myself_id.unwrap();
-    // Filter out users not participating in chats.
-    let participating_user_ids: HashSet<i64, Hasher> = cwms.iter()
-        .map(|cwm| cwm.chat.as_ref().unwrap())
-        .map(|c| &c.member_ids)
-        .flatten()
-        .map(|&id| id)
-        .collect();
-    let mut users = users.id_to_user.into_values()
-        .filter(|u| u.id == *myself_id || participating_user_ids.contains(&u.id))
-        .collect_vec();
-    // Set myself to be a first member (not required by convention but to match existing behaviour).
-    users.sort_by_key(|u| if u.id == *myself_id { *UserId::MIN } else { u.id });
+        // 1-on-1 chat users
+        parse_users_from_stmt(&mut conn.prepare(r"
+            SELECT
+                jid.raw_string as jid,
+                wa_contacts.*
+            FROM jid
+            LEFT JOIN wa_contacts ON wa_contacts.jid = jid.raw_string
+            GROUP BY jid.raw_string
+        ")?, ds_uuid, &mut users)?;
 
-    let root_path = if path_file_name(path)? == DATABASES {
-        path.parent().unwrap()
-    } else {
-        path
-    };
-    Ok(Box::new(InMemoryDao::new(
-        format!("WhatsApp ({})", path_file_name(root_path)?),
-        ds,
-        root_path.to_path_buf(),
-        users[0].clone(),
-        users,
-        cwms,
-    )))
-}
+        // Group chat users
+        parse_users_from_stmt(&mut conn.prepare(r"
+            SELECT
+                jid.raw_string as jid,
+                wa_contacts.*
+            FROM message
+            LEFT JOIN jid ON jid._id = message.sender_jid_row_id
+            LEFT JOIN wa_contacts ON wa_contacts.jid = jid.raw_string
+            WHERE message.sender_jid_row_id > 0
+            GROUP BY jid.raw_string
+        ")?, ds_uuid, &mut users)?;
 
-fn parse_users(conn: &Connection, ds_uuid: &PbUuid) -> Result<Users> {
-    let mut users: Users = Default::default();
+        // It's not clear how to get own ID from WhatsApp.
+        // As such:
+        // - Using a first legal ID (i.e. "1") for myself.
+        // - Can only discover JID (and populate phone number) when group join message is found.
+        //   However, better keep myself as id = 1.
+        const MYSELF_ID: UserId = UserId(UserId::INVALID.0 + 1);
+        users.myself_id = Some(MYSELF_ID);
+        assert!(!users.occupied_user_ids.contains(&MYSELF_ID));
 
-    // 1-on-1 chat users
-    parse_users_from_stmt(&mut conn.prepare(r"
-        SELECT
-            jid.raw_string as jid,
-            wa_contacts.*
-        FROM jid
-        LEFT JOIN wa_contacts ON wa_contacts.jid = jid.raw_string
-        GROUP BY jid.raw_string
-    ")?, ds_uuid, &mut users)?;
+        let my_name_option = conn.query_row("SELECT value FROM props WHERE key = 'user_push_name'",
+                                            [], |r| r.get::<_, Option<String>>(0))
+            .optional().map(|o| o.flatten())?;
 
-    // Group chat users
-    parse_users_from_stmt(&mut conn.prepare(r"
-        SELECT
-            jid.raw_string as jid,
-            wa_contacts.*
-        FROM message
-        LEFT JOIN jid ON jid._id = message.sender_jid_row_id
-        LEFT JOIN wa_contacts ON wa_contacts.jid = jid.raw_string
-        WHERE message.sender_jid_row_id > 0
-        GROUP BY jid.raw_string
-    ")?, ds_uuid, &mut users)?;
+        users.id_to_user.insert(MYSELF_ID, User {
+            ds_uuid: Some(ds_uuid.clone()),
+            id: *MYSELF_ID,
+            first_name_option: my_name_option,
+            last_name_option: None,
+            username_option: None,
+            phone_number_option: None,
+        });
 
-    // It's not clear how to get own ID from WhatsApp.
-    // As such:
-    // - Using a first legal ID (i.e. "1") for myself.
-    // - Can only discover JID (and populate phone number) when group join message is found.
-    //   However, better keep myself as id = 1.
-    const MYSELF_ID: UserId = UserId(UserId::INVALID.0 + 1);
-    users.myself_id = Some(MYSELF_ID);
-    assert!(!users.occupied_user_ids.contains(&MYSELF_ID));
+        Ok(users)
+    }
 
-    let my_name_option = conn.query_row("SELECT value FROM props WHERE key = 'user_push_name'",
-                                        [], |r| r.get::<_, Option<String>>(0))
-        .optional().map(|o| o.flatten())?;
-
-    users.id_to_user.insert(MYSELF_ID, User {
-        ds_uuid: Some(ds_uuid.clone()),
-        id: *MYSELF_ID,
-        first_name_option: my_name_option,
-        last_name_option: None,
-        username_option: None,
-        phone_number_option: None,
-    });
-
-    Ok(users)
+    fn parse_chats(&self,
+                   conn: &Connection,
+                   ds_uuid: &PbUuid,
+                   users: &mut Users,
+                   _path: &Path) -> Result<Vec<ChatWithMessages>> {
+        parse_chats(conn, ds_uuid, users)
+    }
 }
 
 fn parse_users_from_stmt(stmt: &mut Statement, ds_uuid: &PbUuid, users: &mut Users) -> EmptyRes {

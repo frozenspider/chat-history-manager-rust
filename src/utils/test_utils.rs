@@ -1,16 +1,18 @@
+use std::cell::RefCell;
 use std::collections::BTreeMap;
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
 
 use chrono::*;
 use itertools::Itertools;
 use lazy_static::lazy_static;
 use rand::Rng;
 use uuid::Uuid;
-use crate::dao::ChatHistoryDao;
 
 use crate::*;
+use crate::dao::ChatHistoryDao;
 use crate::protobuf::history::*;
 
 lazy_static! {
@@ -22,6 +24,14 @@ lazy_static! {
 
     pub static ref RESOURCES_DIR: String =
         concat!(env!("CARGO_MANIFEST_DIR"), "/resources/test").replace("//", "/");
+
+    pub static ref MESSAGE_REGULAR_NO_CONTENT: message::Typed = message::Typed::Regular(MessageRegular {
+        edit_timestamp_option: None,
+        is_deleted: false,
+        forward_from_name_option: None,
+        reply_to_message_id_option: None,
+        content_option: None,
+    });
 }
 
 pub fn resource(relative_path: &str) -> PathBuf {
@@ -233,6 +243,40 @@ pub fn create_regular_message(idx: usize, user_id: usize) -> Message {
     }
 }
 
+pub mod test_android {
+    use rusqlite::Connection;
+
+    use super::*;
+
+    pub fn create_databases(name: &str, name_suffix: &str, db_filename: &str) -> Result<(PathBuf, TmpDir)> {
+        let folder = resource(&format!("{}_{}", name, name_suffix));
+        assert!(folder.exists());
+
+        let databases = folder.join(loader::android::DATABASES);
+        if databases.exists() { fs::remove_dir_all(databases.clone())?; }
+        let databases = TmpDir::new_at(databases);
+
+        let files: Vec<(String, PathBuf)> =
+            folder.read_dir().unwrap()
+                .map(|res| res.unwrap().path())
+                .filter(|child| path_file_name(child).unwrap().ends_with(".sql"))
+                .map(|child| {
+                    (path_file_name(&child).unwrap().smart_slice(..-4).to_owned(), child.clone())
+                })
+                .collect_vec();
+
+        for (table_name, file) in files.into_iter() {
+            let target_db_path = databases.path.join(format!("{}.db", table_name));
+            log::info!("Creating table {}", table_name);
+            let conn = Connection::open(target_db_path)?;
+            let sql = fs::read_to_string(&file)?;
+            conn.execute_batch(&sql)?;
+        }
+
+        Ok((databases.path.join(db_filename), databases))
+    }
+}
+
 //
 // Helper traits/impls
 //
@@ -278,5 +322,32 @@ impl TmpDir {
 impl Drop for TmpDir {
     fn drop(&mut self) {
         fs::remove_dir_all(&self.path).expect(format!("Failed to remove temporary dir '{}'", self.path.to_str().unwrap()).as_str())
+    }
+}
+
+pub struct MockHttpClient {
+    pub calls: Arc<Mutex<RefCell<Vec<String>>>>,
+}
+
+impl MockHttpClient {
+    pub fn new() -> Self {
+        MockHttpClient { calls: Arc::new(Mutex::new(RefCell::new(vec![]))) }
+    }
+
+    pub fn calls_copy(&self) -> Vec<String> {
+        let lock = self.calls.lock().unwrap();
+        let cell = &*lock;
+        let vec: &Vec<String> = &(*cell.borrow());
+        vec.clone()
+    }
+}
+
+impl HttpClient for MockHttpClient {
+    fn get_bytes(&self, url: &str) -> Result<Vec<u8>> {
+        log::info!("Mocking request to {}", url);
+        let lock = self.calls.lock().unwrap();
+        let cell = &*lock;
+        cell.borrow_mut().push(url.to_owned());
+        Ok(Vec::from(url.as_bytes()))
     }
 }

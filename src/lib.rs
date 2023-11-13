@@ -25,11 +25,16 @@ mod utils;
 //
 
 pub fn parse_file(path: &str) -> Result<Box<InMemoryDao>> {
-    loader::load(Path::new(path), &NoChooser)
+    thread_local! {
+        static LOADER: loader::Loader<NoChooser> = loader::Loader::new(&ReqwestHttpClient, NoChooser);
+    }
+    LOADER.with(|loader| {
+        loader.load(Path::new(path))
+    })
 }
 
 pub fn start_server(port: u16) -> EmptyRes {
-    server::start_server(port)
+    server::start_server(port, &ReqwestHttpClient)
 }
 
 pub fn debug_request_myself(port: u16) -> EmptyRes {
@@ -46,10 +51,23 @@ pub trait MyselfChooser {
     fn choose_myself(&self, users: &[&User]) -> Result<usize>;
 }
 
+#[derive(Clone, Copy)]
 pub struct NoChooser;
 
 impl MyselfChooser for NoChooser {
     fn choose_myself(&self, _pretty_names: &[&User]) -> Result<usize> {
         err!("No way to choose myself!")
+    }
+}
+
+pub trait HttpClient: Send + Sync {
+    fn get_bytes(&self, url: &str) -> Result<Vec<u8>>;
+}
+
+pub struct ReqwestHttpClient;
+
+impl HttpClient for ReqwestHttpClient {
+    fn get_bytes(&self, url: &str) -> Result<Vec<u8>> {
+        Ok(reqwest::blocking::get(url)?.bytes()?.to_vec())
     }
 }

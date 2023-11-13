@@ -1,5 +1,6 @@
 use std::net::SocketAddr;
 use std::path::Path;
+use std::sync::Arc;
 
 use itertools::Itertools;
 use tokio::runtime::Handle;
@@ -7,6 +8,7 @@ use tonic::{Code, Request, Response, Status, transport::Server};
 use unicode_segmentation::UnicodeSegmentation;
 
 use crate::*;
+use crate::loader::Loader;
 use crate::protobuf::history::{ChooseMyselfRequest, ParseHistoryFileRequest, ParseHistoryFileResponse, PbUuid, User};
 use crate::protobuf::history::history_loader_server::*;
 use crate::protobuf::history::myself_chooser_client::MyselfChooserClient;
@@ -18,25 +20,24 @@ macro_rules! truncate_to {
     ($str:expr, $maxlen:expr) => {$str.graphemes(true).take($maxlen).collect::<String>()};
 }
 
-pub struct ChatHistoryManagerServer {
-    myself_chooser_port: u16,
+pub struct ChatHistoryManagerServer<MC: MyselfChooser> {
+    loader: Arc<Loader<MC>>,
 //   db: Option<InMemoryDb>,
 }
 
 #[tonic::async_trait]
-impl HistoryLoader for ChatHistoryManagerServer {
+impl<MC: MyselfChooser + 'static> HistoryLoader for ChatHistoryManagerServer<MC> {
     async fn parse_history_file(
         &self,
         request: Request<ParseHistoryFileRequest>,
     ) -> std::result::Result<Response<ParseHistoryFileResponse>, Status> {
         log::info!(">>> Request:  {:?}", request.get_ref());
-        let myself_chooser_port = self.myself_chooser_port;
+        let loader = self.loader.clone();
 
         let blocking_task = tokio::task::spawn_blocking(move || {
-            let myself_chooser = ChooseMyselfImpl { myself_chooser_port };
             let path = Path::new(&request.get_ref().path);
             let response =
-                loader::load(path, &myself_chooser)
+                loader.load(path)
                     .map_err(|err| {
                         eprintln!("Load failed!\n{:?}", err);
                         Status::new(Code::Internal, error_to_string(&err))
@@ -110,10 +111,15 @@ impl MyselfChooser for ChooseMyselfImpl {
 
 // https://betterprogramming.pub/building-a-grpc-server-with-rust-be2c52f0860e
 #[tokio::main]
-pub async fn start_server(port: u16) -> EmptyRes {
+pub async fn start_server<H: HttpClient>(port: u16, http_client: &'static H) -> EmptyRes {
     let addr = format!("127.0.0.1:{port}").parse::<SocketAddr>().unwrap();
+
+    let myself_chooser_port = port + 1;
+    let myself_chooser = ChooseMyselfImpl { myself_chooser_port };
+    let loader = Arc::new(Loader::new(http_client, myself_chooser));
+
     let chm_server = ChatHistoryManagerServer {
-        myself_chooser_port: port + 1,
+        loader,
     };
 
     let reflection_service = tonic_reflection::server::Builder::configure()

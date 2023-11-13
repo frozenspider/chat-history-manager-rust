@@ -2,7 +2,6 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use crate::protobuf::history::*;
-use crate::entity_utils::*;
 use crate::*;
 
 pub mod in_memory_dao;
