@@ -561,7 +561,7 @@ fn parse_chats(conn: &Connection, ds_uuid: &PbUuid, users: &mut Users) -> Result
     // changing phone number. These chats are not interesting.
     Ok(cwms_map.into_values()
         .filter(|cwm| cwm.chat.as_ref().is_some_and(|c| c.msg_count > 0))
-        .filter(|cwm| cwm.messages.iter().any(|m| m.typed.as_ref().is_some_and(|m| matches!(m, message::Typed::Regular(_)))))
+        .filter(|cwm| cwm.messages.iter().any(|m| matches!(m.typed(), message::Typed::Regular(_))))
         .collect_vec())
 }
 

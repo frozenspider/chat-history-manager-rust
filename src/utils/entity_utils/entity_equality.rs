@@ -64,7 +64,7 @@ macro_rules! cloned_equals_without {
 impl<'a> PracticalEq for Tup<'a, Message> {
     fn practically_equals(&self, other: &Self) -> Result<bool> {
         Ok(cloned_equals_without!(self.v, other.v, Message, internal_id: 0, searchable_string: "".to_owned(), typed: None) &&
-            self.apply(|v| &v.typed).practically_equals(&other.apply(|v| &v.typed))?)
+            self.apply(|v| v.typed()).practically_equals(&other.apply(|v| v.typed()))?)
     }
 }
 

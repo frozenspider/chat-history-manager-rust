@@ -133,6 +133,7 @@ impl Dataset {
     pub fn uuid(&self) -> &PbUuid { self.uuid.as_ref().unwrap() }
 }
 
+#[derive(Debug)]
 pub struct ChatWithDetails {
     pub chat: Chat,
     pub last_msg_option: Option<Message>,
@@ -205,6 +206,60 @@ impl Message {
     // pub fn source_id_option(&self) -> Option<MessageSourceId> { self.source_id_option.map(MessageSourceId) }
 
     pub fn timestamp(&self) -> Timestamp { Timestamp(self.timestamp) }
+
+    pub fn typed(&self) -> &message::Typed {
+        self.typed.as_ref().expect("Invalid typed message")
+    }
+
+    pub fn typed_mut(&mut self) -> &mut message::Typed {
+        self.typed.as_mut().expect("Invalid typed message")
+    }
+
+    pub fn files_relative(&self) -> Vec<&str> {
+        let possibilities: Vec<Option<&str>> = match self.typed() {
+            message::Typed::Regular(ref mr) => {
+                use content::SealedValueOptional::*;
+                match mr.content_option.as_ref().and_then(|c| c.sealed_value_optional.as_ref()) {
+                    Some(Sticker(v)) => vec![v.path_option.as_deref(), v.thumbnail_path_option.as_deref()],
+                    Some(Photo(v)) => vec![v.path_option.as_deref()],
+                    Some(VoiceMsg(v)) => vec![v.path_option.as_deref()],
+                    Some(Audio(v)) => vec![v.path_option.as_deref()],
+                    Some(VideoMsg(v)) => vec![v.path_option.as_deref(), v.thumbnail_path_option.as_deref()],
+                    Some(Video(v)) => vec![v.path_option.as_deref(), v.thumbnail_path_option.as_deref()],
+                    Some(File(v)) => vec![v.path_option.as_deref(), v.thumbnail_path_option.as_deref()],
+                    Some(Location(_)) => vec![],
+                    Some(Poll(_)) => vec![],
+                    Some(SharedContact(v)) => vec![v.vcard_path_option.as_deref()],
+                    None => vec![],
+                }
+            }
+            message::Typed::Service(MessageService { sealed_value_optional: ref ms }) => {
+                use message_service::SealedValueOptional::*;
+                match ms {
+                    Some(PhoneCall(_)) => vec![],
+                    Some(SuggestProfilePhoto(v)) => vec![v.photo.as_ref().and_then(|p| p.path_option.as_deref())],
+                    Some(PinMessage(_)) => vec![],
+                    Some(ClearHistory(_)) => vec![],
+                    Some(BlockUser(_)) => vec![],
+                    Some(GroupCreate(_)) => vec![],
+                    Some(GroupEditTitle(_)) => vec![],
+                    Some(GroupEditPhoto(v)) => vec![v.photo.as_ref().and_then(|p| p.path_option.as_deref())],
+                    Some(GroupDeletePhoto(_)) => vec![],
+                    Some(GroupInviteMembers(_)) => vec![],
+                    Some(GroupRemoveMembers(_)) => vec![],
+                    Some(GroupMigrateFrom(_)) => vec![],
+                    Some(GroupMigrateTo(_)) => vec![],
+                    Some(GroupCall(_)) => vec![],
+                    None => unreachable!("Unexpected MessageService type: {:?}", ms)
+                }
+            }
+        };
+        possibilities.into_iter().flatten().collect()
+    }
+
+    pub fn files(&self, ds_root: &DatasetRoot) -> Vec<PathBuf> {
+        self.files_relative().iter().map(|p| ds_root.to_absolute(p)).collect()
+    }
 }
 
 pub struct RichText {}

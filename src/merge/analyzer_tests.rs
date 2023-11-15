@@ -10,6 +10,7 @@ use pretty_assertions::{assert_eq, assert_ne};
 use crate::*;
 use crate::dao::ChatHistoryDao;
 use crate::protobuf::history::*;
+use crate::protobuf::history::message::Typed;
 
 use super::*;
 
@@ -672,11 +673,11 @@ fn present_absent_not_downloaded() -> EmptyRes {
         use message::Typed::*;
         use content::SealedValueOptional::*;
         use message_service::SealedValueOptional::*;
-        match msg.typed {
-            Some(Regular(MessageRegular { content_option: Some(Content { sealed_value_optional: Some(Photo(ref mut photo)) }), .. })) => {
+        match msg.typed_mut() {
+            Regular(MessageRegular { content_option: Some(Content { sealed_value_optional: Some(Photo(ref mut photo)) }), .. }) => {
                 transform(photo)
             }
-            Some(Service(MessageService { sealed_value_optional: Some(GroupEditPhoto(ref mut edit_photo)) })) => {
+            Service(MessageService { sealed_value_optional: Some(GroupEditPhoto(ref mut edit_photo)) }) => {
                 transform(edit_photo.photo.as_mut().unwrap())
             }
             _ => unreachable!()

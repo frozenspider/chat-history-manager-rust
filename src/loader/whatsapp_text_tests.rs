@@ -59,7 +59,7 @@ fn loading_2023_10() -> EmptyRes {
         assert_eq!(chat.msg_count, 10);
 
         msgs.iter().for_each(|m| {
-            assert!(matches!(m.typed.unwrap_ref(), Typed::Regular(_)));
+            assert!(matches!(m.typed(), Typed::Regular(_)));
         });
 
         assert_eq!(msgs[0], Message {

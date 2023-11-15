@@ -411,8 +411,8 @@ fn equals_with_no_mismatching_content(mm_eq: PracticalEqTuple<MasterMessage>,
     }
     let mm_eq_sm = || mm_eq.apply(|m| &m.0).practically_equals(&sm_eq.apply(|m| &m.0));
 
-    match (mm_eq.v.0.typed.as_ref(), sm_eq.v.0.typed.as_ref()) {
-        (Some(Regular(mm_regular)), Some(Regular(sm_regular))) => {
+    match (mm_eq.v.0.typed(), sm_eq.v.0.typed()) {
+        (Regular(mm_regular), Regular(sm_regular)) => {
             let mm_copy = Message {
                 typed: Some(Regular(MessageRegular {
                     content_option: None,
@@ -441,15 +441,15 @@ fn equals_with_no_mismatching_content(mm_eq: PracticalEqTuple<MasterMessage>,
 
             mm_eq.with(&mm_regular.content_option).practically_equals(&sm_eq.with(&sm_regular.content_option))
         }
-        (Some(Service(MessageService { sealed_value_optional: Some(GroupEditPhoto(MessageServiceGroupEditPhoto { photo: mm_photo })) })),
-            Some(Service(MessageService { sealed_value_optional: Some(GroupEditPhoto(MessageServiceGroupEditPhoto { photo: sm_photo })) }))) => {
+        (Service(MessageService { sealed_value_optional: Some(GroupEditPhoto(MessageServiceGroupEditPhoto { photo: mm_photo })) }),
+            Service(MessageService { sealed_value_optional: Some(GroupEditPhoto(MessageServiceGroupEditPhoto { photo: sm_photo })) })) => {
             if !photo_has_content(mm_photo, mm_eq.ds_root) || !photo_has_content(sm_photo, sm_eq.ds_root) {
                 return Ok(true);
             }
             mm_eq_sm()
         }
-        (Some(Service(MessageService { sealed_value_optional: Some(SuggestProfilePhoto(MessageServiceSuggestProfilePhoto { photo: mm_photo })) })),
-            Some(Service(MessageService { sealed_value_optional: Some(SuggestProfilePhoto(MessageServiceSuggestProfilePhoto { photo: sm_photo })) }))) => {
+        (Service(MessageService { sealed_value_optional: Some(SuggestProfilePhoto(MessageServiceSuggestProfilePhoto { photo: mm_photo })) }),
+            Service(MessageService { sealed_value_optional: Some(SuggestProfilePhoto(MessageServiceSuggestProfilePhoto { photo: sm_photo })) })) => {
             if !photo_has_content(mm_photo, mm_eq.ds_root) || !photo_has_content(sm_photo, sm_eq.ds_root) {
                 return Ok(true);
             }
