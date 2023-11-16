@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use const_format::concatcp;
 use diesel::prelude::*;
 use diesel::sql_query;
