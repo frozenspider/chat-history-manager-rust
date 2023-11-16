@@ -1,5 +1,4 @@
 use std::cmp;
-use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use deepsize::DeepSizeOf;
@@ -86,41 +85,20 @@ impl ChatHistoryDao for InMemoryDao {
         DatasetRoot(self.storage_path().to_owned())
     }
 
-    fn dataset_files(&self, _ds_uuid: &PbUuid) -> Result<HashSet<PathBuf>> {
-        /*
-        val dsRoot       = datasetRoot(dsUuid)
-        val cwds         = chats(dsUuid)
-        val chatImgFiles = cwds.map(_.chat.imgPathOption.map(_.toFile(dsRoot))).yieldDefined.toSet
-        val msgFiles = for {
-          cwd <- cwds
-          m   <- firstMessages(cwd.chat, Int.MaxValue)
-        } yield m.files(dsRoot)
-        chatImgFiles ++ msgFiles.toSet.flatten
-        */
-        todo!()
-    }
-
     fn myself(&self, _ds_uuid: &PbUuid) -> Result<User> {
         Ok(self.myself.clone())
     }
 
-    fn users(&self, _ds_uuid: &PbUuid) -> Result<Vec<User>> {
-        let mut result =
-            self.users.iter().filter(|&u| *u != self.myself).cloned().collect_vec();
-        result.insert(0, self.myself.clone());
-        Ok(result)
+    fn users_inner(&self, _ds_uuid: &PbUuid) -> Result<(Vec<User>, UserId)> {
+        Ok((self.users.clone(), self.myself.id()))
     }
 
     fn user_option(&self, _ds_uuid: &PbUuid, id: i64) -> Result<Option<User>> {
         Ok(self.users.iter().find(|u| u.id == id).cloned())
     }
 
-    fn chats(&self, _ds_uuid: &PbUuid) -> Result<Vec<ChatWithDetails>> {
-        Ok(self.cwms.iter()
-            .map(|cwm| self.cwm_to_cwd(cwm))
-            .sorted_by_key(|cwd| // Minus used to reverse order
-                cwd.last_msg_option.as_ref().map(|m| -m.timestamp).unwrap_or(i64::MAX))
-            .collect_vec())
+    fn chats_inner(&self, _ds_uuid: &PbUuid) -> Result<Vec<ChatWithDetails>> {
+        Ok(self.cwms.iter().map(|cwm| self.cwm_to_cwd(cwm)).collect_vec())
     }
 
     fn chat_option(&self, _ds_uuid: &PbUuid, id: i64) -> Result<Option<ChatWithDetails>> {
@@ -172,17 +150,12 @@ impl ChatHistoryDao for InMemoryDao {
         match (idx1, idx2) {
             (None, _) => err!("Message 1 not found!"),
             (_, None) => err!("Message 2 not found!"),
-            (Some(idx1), Some(idx2)) if idx1 == idx2 =>
-                Ok(vec![]),
-            (Some(idx1), Some(idx2)) => {
-                assert!(idx1 < idx2);
-                Ok(msgs[(idx1 + 1)..idx2].to_vec())
-            }
+            (Some(idx1), Some(idx2)) if idx1 >= idx2 => Ok(vec![]),
+            (Some(idx1), Some(idx2)) => Ok(msgs[(idx1 + 1)..idx2].to_vec())
         }
     }
 
     fn count_messages_between(&self, chat: &Chat, msg1: &Message, msg2: &Message) -> Result<usize> {
-        assert!(msg1.internal_id <= msg2.internal_id);
         // Inefficient!
         let between = self.messages_between(chat, msg1, msg2)?;
         if between.is_empty() {
@@ -220,10 +193,6 @@ impl ChatHistoryDao for InMemoryDao {
     fn message_option_by_internal_id(&self, chat: &Chat, internal_id: MessageInternalId) -> Result<Option<Message>> {
         Ok(self.messages_option(chat.id).unwrap()
             .iter().find(|m| m.internal_id == *internal_id).cloned())
-    }
-
-    fn is_loaded(&self, storage_path: &Path) -> bool {
-        self.ds_root.as_path() == storage_path
     }
 }
 

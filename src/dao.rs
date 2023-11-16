@@ -1,10 +1,10 @@
-use std::collections::HashSet;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use crate::protobuf::history::*;
 use crate::*;
 
 pub mod in_memory_dao;
+pub mod sqlite_dao;
 
 /**
  * Everything except for messages should be pre-cached and readily available.
@@ -22,17 +22,32 @@ pub trait ChatHistoryDao {
     /** Directory which stores eveything in the dataset. All files are guaranteed to have this as a prefix. */
     fn dataset_root(&self, ds_uuid: &PbUuid) -> DatasetRoot;
 
-    /** List all files referenced by entities of this dataset. Some might not exist. */
-    fn dataset_files(&self, ds_uuid: &PbUuid) -> Result<HashSet<PathBuf>>;
-
     fn myself(&self, ds_uuid: &PbUuid) -> Result<User>;
 
-    /** Contains myself as the first element. Order must be stable. Method is expected to be fast. */
-    fn users(&self, ds_uuid: &PbUuid) -> Result<Vec<User>>;
+    /** Contains myself as the first element, other users are sorted by ID. Method is expected to be fast. */
+    fn users(&self, ds_uuid: &PbUuid) -> Result<Vec<User>> {
+        let (mut users, myself_id) = self.users_inner(ds_uuid)?;
+        users.sort_by_key(|u| if u.id == *myself_id { i64::MIN } else { u.id });
+        Ok(users)
+    }
+
+    /** Returns all users, as well as myself ID. Method is expected to be fast. */
+    fn users_inner(&self, ds_uuid: &PbUuid) -> Result<(Vec<User>, UserId)>;
 
     fn user_option(&self, ds_uuid: &PbUuid, id: i64) -> Result<Option<User>>;
 
-    fn chats(&self, ds_uuid: &PbUuid) -> Result<Vec<ChatWithDetails>>;
+    /**
+     * Returns chats ordered by last message timestamp, descending.
+     * Note: This should contain enough info to show chats list in GUI
+     */
+    fn chats(&self, ds_uuid: &PbUuid) -> Result<Vec<ChatWithDetails>> {
+        let mut chats = self.chats_inner(ds_uuid)?;
+        chats.sort_by_key(|cwd| // Minus used to reverse order
+            cwd.last_msg_option.as_ref().map(|m| -m.timestamp).unwrap_or(i64::MAX));
+        Ok(chats)
+    }
+
+    fn chats_inner(&self, ds_uuid: &PbUuid) -> Result<Vec<ChatWithDetails>>;
 
     fn chat_option(&self, ds_uuid: &PbUuid, id: i64) -> Result<Option<ChatWithDetails>>;
 
@@ -84,5 +99,7 @@ pub trait ChatHistoryDao {
     fn message_option_by_internal_id(&self, chat: &Chat, internal_id: MessageInternalId) -> Result<Option<Message>>;
 
     /** Whether given data path is the one loaded in this DAO */
-    fn is_loaded(&self, storage_path: &Path) -> bool;
+    fn is_loaded(&self, storage_path: &Path) -> bool {
+        self.storage_path() == storage_path
+    }
 }

@@ -5,7 +5,6 @@ use std::path::PathBuf;
 use chrono::prelude::*;
 use itertools::Itertools;
 use lazy_static::lazy_static;
-use log::info;
 use pretty_assertions::{assert_eq, assert_ne};
 
 use crate::{NoChooser, User};
@@ -86,7 +85,7 @@ fn vcards() -> EmptyRes {
 
 #[test]
 fn loading_2023_10() -> EmptyRes {
-    let (res, _db_dir) = test_android::create_databases(RESOURCE_DIR, "2023-10", DB_FILENAME)?;
+    let (res, _db_dir) = test_android::create_databases(RESOURCE_DIR, "2023-10", DB_FILENAME);
     LOADER.looks_about_right(&res)?;
 
     let dao = LOADER.load(&res, &NoChooser)?;

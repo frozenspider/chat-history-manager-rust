@@ -173,7 +173,7 @@ fn parse_telegram_file(path: &Path, ds: Dataset, myself_chooser: &dyn MyselfChoo
     let path = get_real_path(path);
     assert!(path.exists()); // Should be checked by looks_about_right already.
 
-    log::info!("Parsing '{}'", path.to_str().unwrap());
+    log::info!("Parsing '{}'", path_to_str(&path)?);
 
     let start_time = Instant::now();
     let ds_uuid = ds.uuid.as_ref().unwrap();

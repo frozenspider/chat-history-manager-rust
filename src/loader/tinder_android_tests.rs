@@ -22,9 +22,6 @@ use super::*;
 const RESOURCE_DIR: &str = "tinder-android";
 
 lazy_static! {
-    // TODO: Do we need cleanup?
-    static ref HTTP_CLIENT: MockHttpClient = MockHttpClient::new();
-
     static ref LOADER: TinderAndroidDataLoader<MockHttpClient> = TinderAndroidDataLoader {
         http_client: &HTTP_CLIENT
     };
@@ -36,7 +33,7 @@ lazy_static! {
 
 #[test]
 fn loading_2023_11() -> EmptyRes {
-    let (res, db_dir) = test_android::create_databases(RESOURCE_DIR, "2023-11", DB_FILENAME)?;
+    let (res, db_dir) = test_android::create_databases(RESOURCE_DIR, "2023-11", DB_FILENAME);
     let _media_dir = TmpDir::new_at(db_dir.path.parent().unwrap().join(MEDIA_DIR));
 
     LOADER.looks_about_right(&res)?;

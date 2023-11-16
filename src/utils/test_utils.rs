@@ -8,6 +8,7 @@ use std::sync::{Arc, Mutex};
 use chrono::*;
 use itertools::Itertools;
 use lazy_static::lazy_static;
+use pretty_assertions::assert_eq;
 use rand::Rng;
 use uuid::Uuid;
 
@@ -32,6 +33,9 @@ lazy_static! {
         reply_to_message_id_option: None,
         content_option: None,
     });
+
+    // TODO: Do we need cleanup?
+    pub static ref HTTP_CLIENT: MockHttpClient = MockHttpClient::new();
 }
 
 pub fn resource(relative_path: &str) -> PathBuf {
@@ -52,22 +56,53 @@ pub fn random_alphanumeric(length: usize) -> String {
         .collect()
 }
 
-pub fn create_named_file(path: &Path, content: &[u8]) -> EmptyRes {
-    let mut file = fs::File::create(&path)?;
-    file.write(content)?;
-    Ok(())
+pub fn create_named_file(path: &Path, content: &[u8]) {
+    let mut file = fs::File::create(&path).unwrap();
+    file.write(content).unwrap();
 }
 
-pub fn create_random_named_file(path: &Path) -> EmptyRes {
+pub fn create_random_named_file(path: &Path) {
     create_named_file(path, random_alphanumeric(256).as_bytes())
 }
 
-pub fn create_random_file(parent: &Path) -> Result<PathBuf> {
+pub fn create_random_file(parent: &Path) -> PathBuf {
     let path = parent.join(&format!("{}.bin", random_alphanumeric(30)));
-    create_random_named_file(&path)?;
-    Ok(path)
+    create_random_named_file(&path);
+    path
 }
 
+
+/// Returns paths to all files referenced by entities of this dataset. Some might not exist.
+/// Files order matches the chats and messages order returned by DAO.
+pub fn dataset_files(dao: &impl ChatHistoryDao, ds_uuid: &PbUuid) -> Vec<PathBuf> {
+    let ds_root = dao.dataset_root(ds_uuid);
+    let cwds = dao.chats(ds_uuid).unwrap();
+    let mut files: Vec<PathBuf> = cwds.iter()
+        .map(|cwd| cwd.chat.img_path_option.as_deref())
+        .flatten()
+        .map(|f| ds_root.to_absolute(f)).collect();
+    for cwd in cwds.iter() {
+        let msgs = dao.first_messages(&cwd.chat, usize::MAX).unwrap();
+        for msg in msgs.iter() {
+            let more_files = msg.files(&ds_root);
+            files.extend(more_files.into_iter());
+        }
+    }
+    files
+}
+
+
+pub fn assert_files(src_files: &[PathBuf], dst_files: &[PathBuf]) {
+    assert_eq!(src_files.len(), dst_files.len());
+    for (src, dst) in src_files.iter().zip(dst_files.iter()) {
+        assert!(src.exists(), "File {} not found! Bug in test?", src.to_str().unwrap());
+        assert!(dst.exists(), "File {} wasn't copied from source", dst.to_str().unwrap());
+        let src_content = fs::read(src).unwrap();
+        let dst_content = fs::read(dst).unwrap();
+        let content_eq = src_content == dst_content;
+        assert!(content_eq, "Content of {} didn't match its source {}", dst.to_str().unwrap(), src.to_str().unwrap());
+    }
+}
 //
 // Entity creation helpers
 //
@@ -96,7 +131,7 @@ impl MergerHelper {
 
     pub fn new_as_is(msgs1: Vec<Message>,
                      msgs2: Vec<Message>) -> Self {
-        Self::new(msgs1, msgs2, &|_, _, _| ())
+        Self::new(msgs1, msgs2, &|_, _, _| {})
     }
 
     pub fn new(msgs1: Vec<Message>,
@@ -137,7 +172,7 @@ fn get_simple_dao_entities(dao: &impl ChatHistoryDao)
     (ds, ds_root, users, cwd, msgs)
 }
 
-fn create_simple_dao(
+pub fn create_simple_dao(
     is_master: bool,
     name_suffix: &str,
     messages: Vec<Message>,
@@ -248,12 +283,12 @@ pub mod test_android {
 
     use super::*;
 
-    pub fn create_databases(name: &str, name_suffix: &str, db_filename: &str) -> Result<(PathBuf, TmpDir)> {
+    pub fn create_databases(name: &str, name_suffix: &str, db_filename: &str) -> (PathBuf, TmpDir) {
         let folder = resource(&format!("{}_{}", name, name_suffix));
         assert!(folder.exists());
 
         let databases = folder.join(loader::android::DATABASES);
-        if databases.exists() { fs::remove_dir_all(databases.clone())?; }
+        if databases.exists() { fs::remove_dir_all(databases.clone()).unwrap(); }
         let databases = TmpDir::new_at(databases);
 
         let files: Vec<(String, PathBuf)> =
@@ -268,12 +303,12 @@ pub mod test_android {
         for (table_name, file) in files.into_iter() {
             let target_db_path = databases.path.join(format!("{}.db", table_name));
             log::info!("Creating table {}", table_name);
-            let conn = Connection::open(target_db_path)?;
-            let sql = fs::read_to_string(&file)?;
-            conn.execute_batch(&sql)?;
+            let conn = Connection::open(target_db_path).unwrap();
+            let sql = fs::read_to_string(&file).unwrap();
+            conn.execute_batch(&sql).unwrap();
         }
 
-        Ok((databases.path.join(db_filename), databases))
+        (databases.path.join(db_filename), databases)
     }
 }
 
@@ -294,11 +329,25 @@ pub struct InMemoryDaoHolder {
 
     // We need to hold tmp_dir here to prevent early destruction.
     #[allow(unused)]
-    tmp_dir: TmpDir,
+    pub tmp_dir: TmpDir,
 }
 
 impl Message {
     pub fn source_id(&self) -> MessageSourceId { MessageSourceId(self.source_id_option.unwrap()) }
+}
+
+impl<'a, T> PracticalEq for PracticalEqTuple<'a, Vec<T>> where for<'b> PracticalEqTuple<'a, T>: PracticalEq {
+    fn practically_equals(&self, other: &Self) -> Result<bool> {
+        if self.v.len() != other.v.len() {
+            return Ok(false);
+        }
+        for (v1, v2) in self.v.iter().zip(other.v.iter()) {
+            if !self.with(v1).practically_equals(&other.with(v2))? {
+                return Ok(false);
+            }
+        }
+        Ok(true)
+    }
 }
 
 #[must_use]
