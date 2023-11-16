@@ -460,7 +460,7 @@ fn init_from(src_dao: Box<InMemoryDao>, src_dir: PathBuf, src_dao_tmpdir: Option
 fn create_sqlite_dao() -> (SqliteDao, TmpDir) {
     let tmp_dir = TmpDir::new();
     log::info!("Using temp dir {} for Sqlite DAO", path_to_str(&tmp_dir.path).unwrap());
-    let dao = SqliteDao::create(tmp_dir.path.join(SqliteDao::FILENAME)).unwrap();
+    let dao = SqliteDao::create(&tmp_dir.path.join(SqliteDao::FILENAME)).unwrap();
     (dao, tmp_dir)
 }
 

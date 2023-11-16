@@ -143,7 +143,7 @@ impl ChatHistoryDao for InMemoryDao {
         }
     }
 
-    fn messages_between_impl(&self, chat: &Chat, msg1: &Message, msg2: &Message) -> Result<Vec<Message>> {
+    fn messages_between(&self, chat: &Chat, msg1: &Message, msg2: &Message) -> Result<Vec<Message>> {
         let msgs = self.messages_option(chat.id).unwrap();
         let idx1 = msgs.iter().position(|m| m.internal_id == msg1.internal_id);
         let idx2 = msgs.iter().rposition(|m| m.internal_id == msg2.internal_id);

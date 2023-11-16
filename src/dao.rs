@@ -10,7 +10,7 @@ pub mod sqlite_dao;
  * Everything except for messages should be pre-cached and readily available.
  * Should support equality.
  */
-pub trait ChatHistoryDao {
+pub trait ChatHistoryDao: Send {
     /** User-friendly name of a loaded data */
     fn name(&self) -> &str;
 
@@ -81,12 +81,7 @@ pub trait ChatHistoryDao {
     fn messages_after_impl(&self, chat: &Chat, msg: &Message, limit: usize) -> Result<Vec<Message>>;
 
     /// Return N messages between the given ones (exclusive). Messages must be present.
-    fn messages_between(&self, chat: &Chat, msg1: &Message, msg2: &Message) -> Result<Vec<Message>> {
-        let result = self.messages_between_impl(chat, msg1, msg2)?;
-        Ok(result)
-    }
-
-    fn messages_between_impl(&self, chat: &Chat, msg1: &Message, msg2: &Message) -> Result<Vec<Message>>;
+    fn messages_between(&self, chat: &Chat, msg1: &Message, msg2: &Message) -> Result<Vec<Message>>;
 
     /// Count messages between the given ones (exclusive). Messages must be present.
     fn count_messages_between(&self, chat: &Chat, msg1: &Message, msg2: &Message) -> Result<usize>;

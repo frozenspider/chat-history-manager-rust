@@ -40,13 +40,13 @@ impl SqliteDao {
     const MIGRATIONS: EmbeddedMigrations = embed_migrations!("./resources/main/migrations");
     const FILENAME: &'static str = "data.sqlite";
 
-    pub fn create(db_file: PathBuf) -> Result<Self> {
+    pub fn create(db_file: &Path) -> Result<Self> {
         require!(!db_file.exists(), "File {} already exists!", path_to_str(&db_file)?);
         Self::create_load_inner(db_file)
     }
 
     #[allow(unused)]
-    pub fn load(db_file: PathBuf) -> Result<Self> {
+    pub fn load(db_file: &Path) -> Result<Self> {
         require!(db_file.exists(), "File {} does not exist!", path_to_str(&db_file)?);
         Self::create_load_inner(db_file)
     }
@@ -59,7 +59,7 @@ impl SqliteDao {
         Ok(())
     }
 
-    fn create_load_inner(db_file: PathBuf) -> Result<Self> {
+    fn create_load_inner(db_file: &Path) -> Result<Self> {
         Self::check_db_file_path(&db_file)?;
         let absolute_path = fs::canonicalize(db_file.parent().unwrap())?.join(path_file_name(&db_file)?);
         let absolute_path = absolute_path.to_str().expect("Cannot get absolute DB path!");
@@ -80,7 +80,7 @@ impl SqliteDao {
 
         Ok(SqliteDao {
             name: format!("{} database", path_file_name(&db_file)?),
-            db_file,
+            db_file: db_file.to_path_buf(),
             conn,
             cache: SqliteCache::new_wrapped(),
         })
@@ -157,23 +157,23 @@ impl SqliteDao {
                     let src_ds_root = src.dataset_root(ds_uuid);
                     let dst_ds_root = self.dataset_root(ds_uuid);
 
-                    for src_cwm in src.chats(ds_uuid)?.iter() {
-                        require!(src_cwm.chat.id > 0, "IDs should be positive!");
+                    for src_cwd in src.chats(ds_uuid)?.iter() {
+                        require!(src_cwd.chat.id > 0, "IDs should be positive!");
 
                         self.conn.borrow_mut().transaction(|txn| {
-                            let mut raw_chat = utils::chat::serialize(&src_cwm.chat, &raw_ds.uuid)?;
-                            if let Some(ref img) = src_cwm.chat.img_path_option {
+                            let mut raw_chat = utils::chat::serialize(&src_cwd.chat, &raw_ds.uuid)?;
+                            if let Some(ref img) = src_cwd.chat.img_path_option {
                                 raw_chat.img_path =
                                     copy_file(&img, &None, &subpaths::ROOT,
-                                              src_cwm.chat.id, &src_ds_root, &dst_ds_root)?;
+                                              src_cwd.chat.id, &src_ds_root, &dst_ds_root)?;
                             }
                             insert_into(chat::table).values(raw_chat).execute(txn)?;
                             insert_into(chat_member::table)
-                                .values(src_cwm.chat.member_ids.iter()
+                                .values(src_cwd.chat.member_ids.iter()
                                     .map(|&user_id|
                                         RawChatMember {
                                             ds_uuid: raw_ds.uuid.clone(),
-                                            chat_id: src_cwm.chat.id,
+                                            chat_id: src_cwd.chat.id,
                                             user_id,
                                         })
                                     .collect_vec())
@@ -184,10 +184,10 @@ impl SqliteDao {
                         const BATCH_SIZE: usize = 1000;
                         let mut offset: usize = 0;
                         loop {
-                            let src_msgs = src.scroll_messages(&src_cwm.chat, offset, BATCH_SIZE)?;
+                            let src_msgs = src.scroll_messages(&src_cwd.chat, offset, BATCH_SIZE)?;
                             let full_raw_msgs: Vec<FullRawMessage> = src_msgs.iter()
                                 .map(|m| utils::message::serialize_and_copy_files(
-                                    m, src_cwm.chat.id, &raw_ds.uuid, &src_ds_root, &dst_ds_root))
+                                    m, src_cwd.chat.id, &raw_ds.uuid, &src_ds_root, &dst_ds_root))
                                 .try_collect()?;
 
                             // copy_file
@@ -441,7 +441,7 @@ impl ChatHistoryDao for SqliteDao {
         })
     }
 
-    fn messages_between_impl(&self, chat: &Chat, msg1: &Message, msg2: &Message) -> Result<Vec<Message>> {
+    fn messages_between(&self, chat: &Chat, msg1: &Message, msg2: &Message) -> Result<Vec<Message>> {
         use schema::message::*;
         self.fetch_messages(|conn| {
             Ok(table

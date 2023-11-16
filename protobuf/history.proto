@@ -14,14 +14,17 @@ option (scalapb.options) = {
 };
 
 service HistoryLoaderService {
-  rpc ParseHistoryFile(ParseHistoryFileRequest) returns (ParseHistoryFileResponse) {}
+  // Parse a history file and return it entirely
+  rpc ParseReturnFull(ParseRequest) returns (ParseReturnFullResponse) {}
+  // Parse a history file and return its DAO handle
+  rpc ParseReturnHandle(ParseRequest) returns (ParseReturnHandleResponse) {}
 }
 
-message ParseHistoryFileRequest {
+message ParseRequest {
   string path = 1;
 }
 
-message ParseHistoryFileResponse {
+message ParseReturnFullResponse {
   Dataset ds = 1 [(scalapb.field).no_box = true];
 
   string root_file = 2;
@@ -32,6 +35,10 @@ message ParseHistoryFileResponse {
   repeated User users = 4;
 
   repeated ChatWithMessages cwms = 5;
+}
+message ParseReturnHandleResponse {
+  // Can be used for querying ChatHistoryDaoService.
+  LoadedFile file = 1;
 }
 
 service ChooseMyselfService {
@@ -420,4 +427,157 @@ message MessageServiceGroupMigrateTo {
 // This is different to PhoneCall
 message MessageServiceGroupCall {
   repeated string members = 1;
+}
+
+//
+// ChatHistoryDaoService
+//
+
+service ChatHistoryDaoService {
+  rpc GetLoadedFiles(GetLoadedFilesRequest) returns (GetLoadedFilesResponse) {}
+  rpc Name(NameRequest) returns (NameResponse) {}
+  rpc StoragePath(StoragePathRequest) returns (StoragePathResponse) {}
+  rpc Datasets(DatasetsRequest) returns (DatasetsResponse) {}
+  rpc DatasetRoot(DatasetRootRequest) returns (DatasetRootResponse) {}
+  rpc Myself(MyselfRequest) returns (MyselfResponse) {}
+  rpc Users(UsersRequest) returns (UsersResponse) {}
+  rpc Chats(ChatsRequest) returns (ChatsResponse) {}
+  rpc ScrollMessages(ScrollMessagesRequest) returns (MessagesResponse) {}
+  rpc LastMessages(LastMessagesRequest) returns (MessagesResponse) {}
+  // Return N messages before the given one (exclusive). Message must be present.
+  rpc MessagesBefore(MessagesBeforeRequest) returns (MessagesResponse) {}
+  // Return N messages after the given one (exclusive). Message must be present.
+  rpc MessagesAfter(MessagesAfterRequest) returns (MessagesResponse) {}
+  // Return N messages between the given ones (exclusive). Messages must be present.
+  rpc MessagesBetween(MessagesBetweenRequest) returns (MessagesResponse) {}
+  // Count messages between the given ones (exclusive). Messages must be present.
+  rpc CountMessagesBetween(MessagesBetweenRequest) returns (CountMessagesResponse) {}
+  rpc MessageOption(MessageOptionRequest) returns (MessageOptionResponse) {}
+  // Whether given data path is the one loaded in this DAO.
+  rpc IsLoaded(IsLoadedRequest) returns (IsLoadedResponse) {}
+}
+
+message GetLoadedFilesRequest {}
+message GetLoadedFilesResponse {
+  repeated LoadedFile files = 1;
+}
+
+message LoadedFile {
+  string key = 1;
+  string name = 2;
+}
+
+message NameRequest {
+  string key = 1;
+}
+message NameResponse {
+  string name = 1;
+}
+
+message StoragePathRequest {
+  string key = 1;
+}
+message StoragePathResponse {
+  string path = 1;
+}
+
+message DatasetsRequest {
+  string key = 1;
+}
+message DatasetsResponse {
+  repeated Dataset datasets = 1;
+}
+
+message DatasetRootRequest {
+  string key = 1;
+  PbUuid dsUuid = 2 [(scalapb.field).no_box = true];
+}
+message DatasetRootResponse {
+  string path = 1;
+}
+
+message MyselfRequest {
+  string key = 1;
+  PbUuid dsUuid = 2 [(scalapb.field).no_box = true];
+}
+message MyselfResponse {
+  User myself = 1 [(scalapb.field).no_box = true];
+}
+
+message UsersRequest {
+  string key = 1;
+  PbUuid dsUuid = 2 [(scalapb.field).no_box = true];
+}
+message UsersResponse {
+  repeated User users = 1;
+}
+
+message ChatsRequest {
+  string key = 1;
+  PbUuid dsUuid = 2 [(scalapb.field).no_box = true];
+}
+message ChatsResponse {
+  repeated ChatWithDetailsPB cwds = 1;
+}
+message ChatWithDetailsPB {
+  Chat chat = 1 [(scalapb.field).no_box = true];
+
+  optional Message last_msg_option = 2 [(scalapb.field).no_box = false];
+
+  // First element MUST be myself, the rest should be in some fixed order.
+  repeated User members = 3;
+}
+
+message ScrollMessagesRequest {
+  string key = 1;
+  Chat chat = 2 [(scalapb.field).no_box = true];
+  int64 offset = 3;
+  int64 limit = 4;
+}
+message LastMessagesRequest {
+  string key = 1;
+  Chat chat = 2 [(scalapb.field).no_box = true];
+  int64 limit = 3;
+}
+message MessagesBeforeRequest {
+  string key = 1;
+  Chat chat = 2 [(scalapb.field).no_box = true];
+  Message message = 3 [(scalapb.field).no_box = true];
+  int64 limit = 4;
+}
+message MessagesAfterRequest {
+  string key = 1;
+  Chat chat = 2 [(scalapb.field).no_box = true];
+  Message message = 3 [(scalapb.field).no_box = true];
+  int64 limit = 4;
+}
+message MessagesBetweenRequest {
+  string key = 1;
+  Chat chat = 2 [(scalapb.field).no_box = true];
+  Message message1 = 3 [(scalapb.field).no_box = true];
+  Message message2 = 4 [(scalapb.field).no_box = true];
+}
+
+message MessagesResponse {
+  repeated Message messages = 1;
+}
+message CountMessagesResponse {
+  int32 messages_count = 1;
+}
+
+message MessageOptionRequest {
+  string key = 1;
+  Chat chat = 2 [(scalapb.field).no_box = true];
+  int64 source_id = 3;
+}
+message MessageOptionResponse {
+  optional Message message = 1 [(scalapb.field).no_box = false];
+}
+
+message IsLoadedRequest {
+  string key = 1;
+  string storage_path = 2;
+}
+message IsLoadedResponse {
+  bool is_loaded = 1;
 }
