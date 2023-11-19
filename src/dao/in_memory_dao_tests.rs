@@ -181,6 +181,7 @@ pub fn create_specific_dao() -> InMemoryDaoHolder {
                 ds_uuid: Some(ZERO_PB_UUID.clone()),
                 id: 1,
                 name_option: Some("Chat One".to_owned()),
+                source_type: SourceType::Telegram as i32,
                 tpe: ChatType::PrivateGroup as i32,
                 img_path_option: None,
                 member_ids: users.iter().map(|u| u.id).collect_vec(),

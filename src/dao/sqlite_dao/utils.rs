@@ -30,6 +30,44 @@ fn deserialize_bool(bi: i32) -> bool {
     }
 }
 
+trait EnumSerialization: Sized {
+    fn serialize(v: i32) -> Result<String>;
+
+    fn deserialize(v: &str) -> Result<i32>;
+}
+
+macro_rules! impl_enum_serialization {
+    ($self:ident, {$($key:ident=>$value:literal),+}) =>
+    {
+        impl EnumSerialization for $self {
+            fn serialize(v: i32) -> Result<String> {
+                Ok(match $self::resolve(v)? {
+                    $($self::$key => $value),+
+                }.to_owned())
+            }
+
+            fn deserialize(v: &str) -> Result<i32> {
+                Ok(match v {
+                    $($value => $self::$key),+,
+                    x => bail!("Unrecognized {} {x}", stringify!($self)),
+                } as i32)
+            }
+        }
+    };
+}
+
+impl_enum_serialization!(SourceType, {
+    TextImport  => "text_import",
+    Telegram    => "telegram",
+    WhatsappDb  => "whatsapp",
+    TinderDb    => "tinder"
+});
+
+impl_enum_serialization!(ChatType, {
+    Personal     => "personal",
+    PrivateGroup => "private_group"
+});
+
 //
 // Per-entity serialization
 //
@@ -41,7 +79,6 @@ pub mod dataset {
         Ok(Dataset {
             uuid: Some(PbUuid { value: Uuid::from_slice(&raw.uuid)?.to_string() }),
             alias: raw.alias,
-            source_type: raw.source_type,
         })
     }
 
@@ -50,7 +87,6 @@ pub mod dataset {
         RawDataset {
             uuid: Vec::from(uuid.as_ref()),
             alias: ds.alias.clone(),
-            source_type: ds.source_type.clone(),
         }
     }
 }
@@ -123,10 +159,8 @@ pub mod chat {
             ds_uuid: raw_uuid.clone(),
             id: chat.id,
             name: chat.name_option.clone(),
-            tpe: match ChatType::resolve(chat.tpe)? {
-                ChatType::Personal => "personal",
-                ChatType::PrivateGroup => "private_group"
-            }.to_owned(),
+            source_type: SourceType::serialize(chat.source_type)?,
+            tpe: ChatType::serialize(chat.tpe)?,
             img_path: chat.img_path_option.clone(),
             msg_count: chat.msg_count,
         })
@@ -150,11 +184,8 @@ pub mod chat {
                 ds_uuid: Some(ds_uuid.clone()),
                 id: raw.chat.id,
                 name_option: raw.chat.name,
-                tpe: match raw.chat.tpe.as_str() {
-                    "personal" => ChatType::Personal,
-                    "private_group" => ChatType::PrivateGroup,
-                    x => bail!("Unrecognized chat type {x}"),
-                } as i32,
+                source_type: SourceType::deserialize(raw.chat.source_type.as_str())?,
+                tpe: ChatType::deserialize(raw.chat.tpe.as_str())?,
                 img_path_option: raw.chat.img_path,
                 member_ids: raw.member_ids
                     .map(|s| s.split(',').map(|s| s.parse::<i64>()).try_collect())

@@ -24,7 +24,7 @@ lazy_static! {
 
 pub struct WhatsAppAndroidDataLoader;
 
-android_sqlite_loader!(WhatsAppAndroidDataLoader, whatsapp, "WhatsApp", "msgstore.db");
+android_sqlite_loader!(WhatsAppAndroidDataLoader, WhatsappDb, "WhatsApp", "msgstore.db");
 
 type Jid = String;
 type MessageKey = String;
@@ -327,6 +327,7 @@ fn parse_chats(conn: &Connection, ds_uuid: &PbUuid, users: &mut Users) -> Result
                 ds_uuid: Some(ds_uuid.clone()),
                 id,
                 name_option,
+                source_type: SourceType::WhatsappDb as i32,
                 tpe: tpe as i32,
                 img_path_option: None,
                 member_ids: vec![],

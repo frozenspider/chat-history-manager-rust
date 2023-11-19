@@ -29,7 +29,7 @@ pub struct WhatsAppTextDataLoader;
 impl DataLoader for WhatsAppTextDataLoader {
     fn name(&self) -> &'static str { "WhatsApp (text)" }
 
-    fn src_type(&self) -> &'static str { "whatsapp-text" }
+    fn src_type(&self) -> SourceType { SourceType::TextImport }
 
     fn looks_about_right_inner(&self, path: &Path) -> EmptyRes {
         let filename = path_file_name(path)?;
@@ -60,6 +60,7 @@ fn parse_whatsapp_text_file(path: &Path, ds: Dataset) -> Result<Box<InMemoryDao>
             ds_uuid: Some(ds_uuid.clone()),
             id: other.id, // Using user ID as a chat ID
             name_option: Some(other.pretty_name()),
+            source_type: SourceType::TextImport as i32,
             tpe: ChatType::Personal as i32,
             img_path_option: None,
             member_ids: vec![myself.id, other.id],

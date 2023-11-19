@@ -202,7 +202,6 @@ pub fn create_dao(
     let ds = Dataset {
         uuid: Some(PbUuid { value: Uuid::new_v4().to_string() }),
         alias: format!("Dataset {name_suffix}"),
-        source_type: "test source".to_owned(),
     };
 
     let mut users = users;
@@ -240,6 +239,7 @@ fn create_group_chat(ds_uuid: &PbUuid, id: i64, name_suffix: &str, member_ids: V
         ds_uuid: Some(ds_uuid.clone()),
         id: id,
         name_option: Some(format!("Chat {}", name_suffix)),
+        source_type: SourceType::Telegram as i32,
         tpe: ChatType::PrivateGroup as i32,
         img_path_option: None,
         member_ids: member_ids,

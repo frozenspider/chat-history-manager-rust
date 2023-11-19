@@ -17,7 +17,7 @@ pub struct TinderAndroidDataLoader<H: HttpClient + 'static> {
     pub http_client: &'static H,
 }
 
-android_sqlite_loader!(TinderAndroidDataLoader<H: HttpClient>, tinder, "Tinder", "tinder-3.db");
+android_sqlite_loader!(TinderAndroidDataLoader<H: HttpClient>, TinderDb, "Tinder", "tinder-3.db");
 
 const MEDIA_DIR: &str = "Media";
 const MEDIA_DOWNLOADED_SUBDIR: &str = "_downloaded";
@@ -155,6 +155,7 @@ impl<H: HttpClient + 'static> TinderAndroidDataLoader<H> {
                     ds_uuid: Some(ds_uuid.clone()),
                     id: user.id,
                     name_option: user.first_name_option.clone(),
+                    source_type: SourceType::TinderDb as i32,
                     tpe: ChatType::Personal as i32,
                     img_path_option: None,
                     member_ids: vec![*MYSELF_ID, user.id],

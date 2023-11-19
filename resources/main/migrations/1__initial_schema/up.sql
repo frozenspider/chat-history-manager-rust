@@ -3,14 +3,14 @@
 
 CREATE TABLE dataset (
   uuid                BLOB NOT NULL PRIMARY KEY,
-  alias               TEXT NOT NULL,
-  source_type         TEXT NOT NULL
+  alias               TEXT NOT NULL
 ) STRICT, WITHOUT ROWID;
 
 CREATE TABLE chat (
   ds_uuid             BLOB NOT NULL REFERENCES dataset (uuid),
   id                  INTEGER NOT NULL,
   name                TEXT,
+  source_type         TEXT NOT NULL,
   type                TEXT NOT NULL,
   msg_count           INTEGER NOT NULL,
   img_path            TEXT,

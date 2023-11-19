@@ -6,7 +6,6 @@ pub mod schema {
         dataset (uuid) {
             uuid -> Binary,
             alias -> Text,
-            source_type -> Text,
         }
     }
 
@@ -27,6 +26,7 @@ pub mod schema {
             ds_uuid -> Binary,
             id -> BigInt,
             name -> Nullable<Text>,
+            source_type -> Text,
             #[sql_name = "type"]
             tpe -> Text,
             img_path -> Nullable<Text>,
@@ -138,7 +138,6 @@ pub mod schema {
 pub struct RawDataset {
     pub uuid: Vec<u8>,
     pub alias: String,
-    pub source_type: String,
 }
 
 #[derive(Debug, PartialEq, Selectable, Queryable, Insertable)]
@@ -161,6 +160,7 @@ pub struct RawChat {
     pub ds_uuid: Vec<u8>,
     pub id: i64,
     pub name: Option<String>,
+    pub source_type: String,
     pub tpe: String,
     pub img_path: Option<String>,
     pub msg_count: i32,

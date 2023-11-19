@@ -49,7 +49,6 @@ message ChooseMyselfResponse {
 message Dataset {
   PbUuid uuid = 1 [(scalapb.field).no_box = true];
   string alias = 2;
-  string source_type = 3;
 }
 
 message User {
@@ -81,6 +80,7 @@ message Chat {
 
   // Can actually be none sometimes
   optional string name_option = 3;
+  SourceType source_type = 8;
   ChatType tpe = 4;
 
   // Path relative to data root!
@@ -89,6 +89,13 @@ message Chat {
   // Always contains myself
   repeated int64 member_ids = 6;
   int32 msg_count = 7;
+}
+
+enum SourceType {
+  SOURCE_TYPE_TEXT_IMPORT = 0;
+  SOURCE_TYPE_TELEGRAM = 1;
+  SOURCE_TYPE_WHATSAPP_DB = 2;
+  SOURCE_TYPE_TINDER_DB = 3;
 }
 
 enum ChatType {

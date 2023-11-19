@@ -176,9 +176,14 @@ impl Chat {
     }
 }
 
-impl ChatType {
-    pub fn resolve(tpe: i32) -> Result<ChatType> {
-        ChatType::try_from(tpe).with_context(|| format!("Chat type {tpe} has no associated enum"))
+pub trait EnumResolve: Sized {
+    fn resolve(tpe: i32) -> Result<Self>;
+}
+
+impl<T> EnumResolve for T where T: TryFrom<i32>,
+                                T::Error: std::error::Error + Send + Sync + 'static {
+    fn resolve(tpe: i32) -> Result<Self> {
+        Self::try_from(tpe).with_context(|| format!("{tpe} has no associated enum"))
     }
 }
 

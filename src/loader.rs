@@ -12,7 +12,7 @@ use crate::loader::telegram::TelegramDataLoader;
 use crate::loader::tinder_android::TinderAndroidDataLoader;
 use crate::loader::whatsapp_android::WhatsAppAndroidDataLoader;
 use crate::loader::whatsapp_text::WhatsAppTextDataLoader;
-use crate::protobuf::history::{Dataset, PbUuid};
+use crate::protobuf::history::{Dataset, PbUuid, SourceType};
 
 mod telegram;
 mod tinder_android;
@@ -27,8 +27,7 @@ trait DataLoader {
         self.name()
     }
 
-    /// Used as a dataset source type
-    fn src_type(&self) -> &'static str;
+    fn src_type(&self) -> SourceType;
 
     // TODO: Add allowed files filter
 
@@ -46,7 +45,6 @@ trait DataLoader {
             let ds = Dataset {
                 uuid: Some(PbUuid { value: Uuid::new_v4().to_string() }),
                 alias: format!("{}, loaded @ {now_str}", self.src_alias()),
-                source_type: self.src_type().to_owned(),
             };
             self.load_inner(path, ds, myself_chooser)
         }, |_, t| log::info!("File {} loaded in {t} ms", root_path_str))
@@ -155,7 +153,7 @@ pub mod android {
 
                 fn src_alias(&self) -> &'static str { self.name() }
 
-                fn src_type(&self) -> &'static str { stringify!($tpe) }
+                fn src_type(&self) -> SourceType { SourceType::$tpe }
 
                 fn looks_about_right_inner(&self, path: &Path) -> EmptyRes {
                     let filename = path_file_name(path)?;

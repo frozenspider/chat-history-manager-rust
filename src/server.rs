@@ -1,11 +1,7 @@
-use std::cell::RefCell;
-use std::collections::HashMap;
 use std::fmt::Debug;
 use std::net::SocketAddr;
-use std::ops::DerefMut;
 use std::path::Path;
 use std::sync::Arc;
-use std::sync::{Mutex, MutexGuard};
 
 use itertools::Itertools;
 use tokio::runtime::Handle;
@@ -14,10 +10,7 @@ use unicode_segmentation::UnicodeSegmentation;
 
 use crate::*;
 use crate::loader::Loader;
-use crate::dao::ChatHistoryDao;
-use crate::dao::sqlite_dao::SqliteDao;
 use crate::protobuf::history::*;
-use crate::protobuf::history::chat_history_dao_service_server::*;
 use crate::protobuf::history::history_loader_service_server::*;
 use crate::protobuf::history::choose_myself_service_client::ChooseMyselfServiceClient;
 
@@ -32,12 +25,8 @@ type StdRes<T, E> = std::result::Result<T, E>;
 type StatusResult<T> = StdRes<T, Status>;
 type TonicResult<T> = StatusResult<Response<T>>;
 
-type DaoKey = String;
-type DaoMap = HashMap<DaoKey, Box<RefCell<SqliteDao>>>;
-
 pub struct ChatHistoryManagerServer<MC: MyselfChooser> {
     loader: Arc<Loader<MC>>,
-    loaded_daos: Mutex<DaoMap>,
 }
 
 impl<MC: MyselfChooser> ChatHistoryManagerServer<MC> {
@@ -50,26 +39,6 @@ impl<MC: MyselfChooser> ChatHistoryManagerServer<MC> {
             .map(Response::new);
         log::info!("{}", truncate_to!(format!("<<< Response: {:?}", response_result), 150));
         response_result
-    }
-
-    fn lock_dao_map(&self) -> StatusResult<MutexGuard<DaoMap>> {
-        self.loaded_daos.lock()
-            .map_err(|e| Status::new(Code::Internal,
-                                     format!("Cannot obtain a DAO mutex lock: {}", e)))
-    }
-
-    fn process_request_with_dao<Q, P, L>(&self, req: &Request<Q>, key: &DaoKey, mut logic: L) -> TonicResult<P>
-        where Q: Debug,
-              P: Debug,
-              L: FnMut(&Q, &mut SqliteDao) -> StatusResult<P> {
-        let dao_map_lock = self.lock_dao_map()?;
-        let dao = dao_map_lock.get(key)
-            .ok_or_else(|| Status::new(Code::FailedPrecondition,
-                                       format!("Database {key} is not loaded!")))?;
-        let mut dao = dao.borrow_mut();
-        let dao = dao.deref_mut();
-
-        self.process_request(req, |req| logic(req, dao))
     }
 }
 
@@ -93,33 +62,6 @@ impl<MC: MyselfChooser + 'static> HistoryLoaderService for ChatHistoryManagerSer
                         cwms: in_mem_dao.cwms,
                     }
                 )
-        })
-    }
-}
-
-macro_rules! with_dao_by_key {
-    ($self:ident, $req:ident, $dao:ident, $code:block) => {
-        $self.process_request_with_dao(&$req, &$req.get_ref().key, |#[allow(unused)] $req, $dao| { $code })
-    };
-}
-
-#[tonic::async_trait]
-impl<MC: MyselfChooser + 'static> ChatHistoryDaoService for ChatHistoryManagerServer<MC> {
-    async fn get_loaded_files(&self, req: Request<GetLoadedFilesRequest>) -> TonicResult<GetLoadedFilesResponse> {
-        self.process_request(&req, |_| {
-            let dao_map_lock = self.lock_dao_map()?;
-            let files = dao_map_lock.iter()
-                .map(|(k, dao)| LoadedFile { key: k.clone(), name: dao.borrow().name().to_owned() })
-                .collect_vec();
-            Ok(GetLoadedFilesResponse { files })
-        })
-    }
-
-    async fn name(&self, req: Request<NameRequest>) -> TonicResult<NameResponse> {
-        with_dao_by_key!(self, req, dao, {
-            Ok(NameResponse {
-                name: dao.name().to_owned()
-            })
         })
     }
 }
@@ -182,7 +124,6 @@ pub async fn start_server<H: HttpClient>(port: u16, http_client: &'static H) -> 
     let loader = Arc::new(Loader::new(http_client, myself_chooser));
 
     let chm_server = ChatHistoryManagerServer {
-        loaded_daos: Mutex::new(HashMap::new()),
         loader,
     };
 

@@ -42,7 +42,7 @@ pub struct TelegramDataLoader;
 impl DataLoader for TelegramDataLoader {
     fn name(&self) -> &'static str { "Telegram" }
 
-    fn src_type(&self) -> &'static str { "telegram" }
+    fn src_type(&self) ->SourceType { SourceType::Telegram }
 
     fn looks_about_right_inner(&self, src_path: &Path) -> EmptyRes {
         let path = get_real_path(src_path);
