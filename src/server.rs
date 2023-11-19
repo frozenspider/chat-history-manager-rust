@@ -127,18 +127,19 @@ pub async fn start_server<H: HttpClient>(port: u16, http_client: &'static H) -> 
         loader,
     };
 
+    log::info!("Server listening on {}", addr);
+
     let reflection_service = tonic_reflection::server::Builder::configure()
         .register_encoded_file_descriptor_set(FILE_DESCRIPTOR_SET)
         .build()
         .unwrap();
-
-    log::info!("JsonServer server listening on {}", addr);
 
     Server::builder()
         .add_service(HistoryLoaderServiceServer::new(chm_server))
         .add_service(reflection_service)
         .serve(addr)
         .await?;
+
     Ok(())
 }
 

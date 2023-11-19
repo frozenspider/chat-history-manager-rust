@@ -16,31 +16,44 @@ fn main() {
         .filter(None, LevelFilter::Info)
         .init();
 
-    let server_port: u16 = 50051;
-
     let mut args = args();
     args.next(); // Consume first argument, which is a command itself.
-    match args.next().map(|s| s.to_lowercase()).as_deref() {
+    let command = args.next();
+    if let Err(e) = execute_command(command, args.collect()) {
+        eprintln!("Error occurred!\n{}", error_to_string(&e));
+        let backtrace = e.backtrace();
+        // Backtrace is defined as just "&impl Debug + Display", so to make sure we actually have a backtrace
+        // we have to use a rather dirty workaround - if backtrace is not available, its string representation
+        // will be just one line like "disabled backtrace" or "unsupported backtrace".
+        // See anyhow::backtrace::capture::<impl Display for Backtrace>
+        let backtrace = backtrace.to_string();
+        if backtrace.contains('\n') {
+            eprintln!();
+            eprintln!("Stack trace:\n{}", e.backtrace().to_string());
+        }
+        process::exit(1);
+    }
+}
+
+fn execute_command(command: Option<String>, args: Vec<String>) -> EmptyRes {
+    let server_port: u16 = 50051;
+
+    match command.map(|c| c.to_lowercase()).as_deref() {
         None => {
-            start_server(server_port).unwrap();
+            start_server(server_port)?;
         }
         Some("parse") => {
-            let path = args.next().unwrap();
-            let parsed = match parse_file(&path) {
-                Ok(res) => res,
-                Err(why) => {
-                    eprintln!("Parsing failed!\n{:?}", why);
-                    process::exit(1);
-                }
-            };
+            let path = args.get(0).context("Parse path wasn't given")?;
+            let parsed = parse_file(&path).context("Parsing failed!")?;
             let size: usize = parsed.deep_size_of();
             log::info!("Size of parsed in-memory DB: {} MB ({} B)", size / 1024 / 1024, size);
         }
         Some("request_myself") => {
-            debug_request_myself(server_port + 1).unwrap();
+            debug_request_myself(server_port + 1)?;
         }
         Some(etc) => {
             panic!("Unrecognized command: {etc}")
         }
     }
+    Ok(())
 }
