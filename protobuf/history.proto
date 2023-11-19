@@ -455,6 +455,7 @@ service ChatHistoryDaoService {
   rpc MessageOption(MessageOptionRequest) returns (MessageOptionResponse) {}
   // Whether given data path is the one loaded in this DAO.
   rpc IsLoaded(IsLoadedRequest) returns (IsLoadedResponse) {}
+  rpc Close(CloseRequest) returns (CloseResponse) {}
 }
 
 message GetLoadedFilesRequest {}
@@ -580,4 +581,11 @@ message IsLoadedRequest {
 }
 message IsLoadedResponse {
   bool is_loaded = 1;
+}
+
+message CloseRequest {
+  string key = 1;
+}
+message CloseResponse {
+  bool success = 1;
 }

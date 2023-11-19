@@ -260,6 +260,14 @@ impl<MC: MyselfChooser + 'static> ChatHistoryDaoService for Arc<ChatHistoryManag
             })
         })
     }
+
+    async fn close(&self, req: Request<CloseRequest>) -> TonicResult<CloseResponse> {
+        self.process_request(&req, |req| {
+            let mut dao_map_lock = self.lock_dao_map()?;
+            let dao = dao_map_lock.remove(&req.key);
+            Ok(CloseResponse { success: dao.is_some() })
+        })
+    }
 }
 
 async fn choose_myself_async(port: u16, users: Vec<User>) -> Result<usize> {
