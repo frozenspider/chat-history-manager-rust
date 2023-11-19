@@ -17,6 +17,7 @@ resources/test/*/databases/*
 # Development
 #/_build
 #/_data
+TODO.md
 
 # Application
 #/log

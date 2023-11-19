@@ -18,6 +18,8 @@ anyhow = { version = "1.0.75", features = ["backtrace"] }
 ical = "0.8.0"
 const_format = "0.2.32"
 reqwest = { version = "0.11.22", features = ["blocking"] }
+unicode-segmentation = "1.10.1"
+deepsize = "0.2.0"
 
 # Database
 rusqlite = { version = "0.29.0", features = ["bundled"] }
@@ -30,8 +32,6 @@ tonic = "0.10.2"
 tonic-reflection = "0.10.2"
 tokio = { version = "1.33.0", features = ["macros", "rt-multi-thread"] }
 prost = "0.12.1"
-unicode-segmentation = "1.10.1"
-deepsize = "0.2.0"
 
 # Logging
 log = "0.4.20"

@@ -4,7 +4,7 @@ use std::{env, fs, path::PathBuf};
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let curr_dir = env::current_dir().unwrap_or_else(|e| panic!("current directory is inaccessible: {}", e));
 
-    let proto_files = vec!["./protobuf/history.proto", "./protobuf/dao.proto"];
+    let proto_files = vec!["./protobuf/history.proto"];
     let fd_out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
     let pb_out_dir = curr_dir.join("src/protobuf");
 
