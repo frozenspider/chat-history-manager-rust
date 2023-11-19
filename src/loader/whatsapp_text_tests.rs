@@ -48,15 +48,18 @@ fn loading_2023_10() -> EmptyRes {
     {
         let cwm = &dao.cwms[0];
         let chat = cwm.chat.unwrap_ref();
-        assert_eq!(chat.tpe, ChatType::Personal as i32);
-
-        assert_eq!(chat.member_ids.len(), 2);
-        assert!(chat.member_ids.contains(&myself.id));
-        assert!(chat.member_ids.contains(&member.id));
+        assert_eq!(*chat, Chat {
+            ds_uuid: Some(ds_uuid.clone()),
+            id: member.id,
+            name_option: Some("+123 45 6789".to_owned()),
+            source_type: SourceType::TextImport as i32,
+            tpe: ChatType::Personal as i32,
+            img_path_option: None,
+            member_ids: vec![myself.id, member.id],
+            msg_count: 10,
+        });
 
         let msgs = dao.first_messages(&chat, 99999)?;
-        assert_eq!(msgs.len(), 10);
-        assert_eq!(chat.msg_count, 10);
 
         msgs.iter().for_each(|m| {
             assert!(matches!(m.typed(), Typed::Regular(_)));

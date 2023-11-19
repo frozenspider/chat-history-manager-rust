@@ -59,14 +59,19 @@ fn loading_2023_11() -> EmptyRes {
     {
         let cwm = &dao.cwms[0];
         let chat = cwm.chat.unwrap_ref();
-
-        assert_eq!(chat.member_ids.len(), 2);
-        assert!(chat.member_ids.contains(&myself.id));
-        assert!(chat.member_ids.contains(&member.id));
+        assert_eq!(*chat, Chat {
+            ds_uuid: Some(ds_uuid.clone()),
+            id: member.id,
+            name_option: Some("Abcde".to_owned()),
+            source_type: SourceType::TinderDb as i32,
+            tpe: ChatType::Personal as i32,
+            img_path_option: None,
+            member_ids: vec![myself.id, member.id],
+            msg_count: 2,
+        });
 
         let msgs = dao.first_messages(&chat, 99999)?;
-        assert_eq!(msgs.len(), 2);
-        assert_eq!(chat.msg_count, 2);
+        assert_eq!(msgs.len() as i32, chat.msg_count);
 
         assert_eq!(msgs[0], Message {
             internal_id: 0,

@@ -110,14 +110,19 @@ fn loading_2023_10() -> EmptyRes {
     {
         let cwm = dao.cwms.iter().find(|cwm| cwm.chat.unwrap_ref().tpe == ChatType::PrivateGroup as i32).unwrap();
         let chat = cwm.chat.unwrap_ref();
-
-        assert_eq!(chat.member_ids.len(), 2);
-        assert!(chat.member_ids.contains(&myself.id));
-        assert!(chat.member_ids.contains(&member.id));
+        assert_eq!(*chat, Chat {
+            ds_uuid: Some(ds_uuid.clone()),
+            id: 15668065017168951_i64,
+            name_option: Some("My Group".to_owned()),
+            source_type: SourceType::WhatsappDb as i32,
+            tpe: ChatType::PrivateGroup as i32,
+            img_path_option: None,
+            member_ids: vec![myself.id, member.id],
+            msg_count: 2,
+        });
 
         let msgs = dao.first_messages(&chat, 99999)?;
-        assert_eq!(msgs.len(), 2);
-        assert_eq!(chat.msg_count, 2);
+        assert_eq!(msgs.len() as i32, chat.msg_count);
 
         assert_eq!(msgs[0], Message {
             internal_id: 0,
@@ -159,14 +164,19 @@ fn loading_2023_10() -> EmptyRes {
     {
         let cwm = dao.cwms.iter().find(|cwm| cwm.chat.unwrap_ref().tpe == ChatType::Personal as i32).unwrap();
         let chat = cwm.chat.unwrap_ref();
-
-        assert_eq!(chat.member_ids.len(), 2);
-        assert!(chat.member_ids.contains(&myself.id));
-        assert!(chat.member_ids.contains(&member.id));
+        assert_eq!(*chat, Chat {
+            ds_uuid: Some(ds_uuid.clone()),
+            id: member.id,
+            name_option: Some("+11111".to_owned()),
+            source_type: SourceType::WhatsappDb as i32,
+            tpe: ChatType::Personal as i32,
+            img_path_option: None,
+            member_ids: vec![myself.id, member.id],
+            msg_count: 2,
+        });
 
         let msgs = dao.first_messages(&chat, 99999)?;
-        assert_eq!(msgs.len(), 2);
-        assert_eq!(chat.msg_count, 2);
+        assert_eq!(msgs.len() as i32, chat.msg_count);
 
         assert_eq!(msgs[0], Message {
             internal_id: 0,

@@ -85,14 +85,20 @@ fn loading_2020_01() -> EmptyRes {
             .find(|&c| c.chat.unwrap_ref().id == 4321012345)
             .unwrap();
         let chat = cwm.chat.unwrap_ref();
-        assert_eq!(chat.tpe, ChatType::Personal as i32);
-
-        assert_eq!(chat.member_ids.len(), 2);
-        assert!(chat.member_ids.contains(&myself.id));
-        assert!(chat.member_ids.contains(&member.id));
+        assert_eq!(*chat, Chat {
+            ds_uuid: Some(ds_uuid.clone()),
+            id: 4321012345,
+            name_option: None,
+            source_type: SourceType::Telegram as i32,
+            tpe: ChatType::Personal as i32,
+            img_path_option: None,
+            member_ids: vec![myself.id, *member.id],
+            msg_count: 5,
+        });
 
         let msgs = dao.first_messages(&chat, 99999)?;
-        assert_eq!(msgs.len(), 5);
+        assert_eq!(msgs.len() as i32, chat.msg_count);
+
         assert_eq!(chat.msg_count, 5);
         msgs.iter().for_each(|m| {
             assert!(matches!(m.typed(), Typed::Regular(_)));
@@ -159,18 +165,20 @@ fn loading_2021_05() -> EmptyRes {
             .find(|&c| c.chat.unwrap_ref().id == 123123123 + GROUP_CHAT_ID_SHIFT)
             .unwrap();
         let chat = cwm.chat.unwrap_ref();
-        assert_eq!(chat.name_option, Some("My Group".to_owned()));
-        assert_eq!(chat.tpe, ChatType::PrivateGroup as i32);
-
-        assert_eq!(chat.member_ids.len(), 4);
-        assert_eq!(chat.member_ids[0], myself.id);
-        assert_eq!(chat.member_ids[1], service_member.id);
-        assert_eq!(chat.member_ids[2], member1.id);
-        assert_eq!(chat.member_ids[3], member2.id);
+        assert_eq!(*chat, Chat {
+            ds_uuid: Some(ds_uuid.clone()),
+            id: 123123123 + GROUP_CHAT_ID_SHIFT,
+            name_option: Some("My Group".to_owned()),
+            source_type: SourceType::Telegram as i32,
+            tpe: ChatType::PrivateGroup as i32,
+            img_path_option: None,
+            member_ids: vec![myself.id, service_member.id, member1.id, member2.id],
+            msg_count: 3,
+        });
 
         let msgs = dao.first_messages(&chat, 99999)?;
-        assert_eq!(msgs.len(), 3);
-        assert_eq!(chat.msg_count, 3);
+        assert_eq!(msgs.len() as i32, chat.msg_count);
+
         let typed = msgs.iter().map(|m| m.typed()).collect_vec();
 
         // I wish we could use assert_matches!() already...
@@ -218,19 +226,20 @@ fn loading_2021_06_supergroup() -> EmptyRes {
             .find(|&c| c.chat.unwrap_ref().id == 1234567890 + GROUP_CHAT_ID_SHIFT)
             .unwrap();
         let chat = cwm.chat.unwrap_ref();
-        assert_eq!(chat.name_option, Some("My Supergroup".to_owned()));
-        assert_eq!(chat.tpe, ChatType::PrivateGroup as i32);
-
         // All users are taken from chat itself
-        assert_eq!(chat.member_ids.len(), 4);
-        assert_eq!(chat.member_ids[0], myself.id);
-        assert_eq!(chat.member_ids[1], u222222222.id);
-        assert_eq!(chat.member_ids[2], u333333333.id);
-        assert_eq!(chat.member_ids[3], u444444444.id);
+        assert_eq!(*chat, Chat {
+            ds_uuid: Some(ds_uuid.clone()),
+            id: 1234567890 + GROUP_CHAT_ID_SHIFT,
+            name_option: Some("My Supergroup".to_owned()),
+            source_type: SourceType::Telegram as i32,
+            tpe: ChatType::PrivateGroup as i32,
+            img_path_option: None,
+            member_ids: vec![myself.id, u222222222.id, u333333333.id, u444444444.id],
+            msg_count: 4,
+        });
 
         let msgs = dao.first_messages(&chat, 99999)?;
-        assert_eq!(msgs.len(), 4);
-        assert_eq!(chat.msg_count, 4);
+        assert_eq!(msgs.len() as i32, chat.msg_count);
 
         assert_eq!(msgs[0], Message {
             internal_id: 0,
@@ -345,17 +354,19 @@ fn loading_2021_07() -> EmptyRes {
             .find(|&c| c.chat.unwrap_ref().id == 123123123 + GROUP_CHAT_ID_SHIFT)
             .unwrap();
         let chat = cwm.chat.unwrap_ref();
-        assert_eq!(chat.name_option, Some("My Group".to_owned()));
-        assert_eq!(chat.tpe, ChatType::PrivateGroup as i32);
-
-        assert_eq!(chat.member_ids.len(), 2);
-        assert_eq!(chat.member_ids[0], myself.id);
-        assert_eq!(chat.member_ids[1], member.id);
+        assert_eq!(*chat, Chat {
+            ds_uuid: Some(ds_uuid.clone()),
+            id: 123123123 + GROUP_CHAT_ID_SHIFT,
+            name_option: Some("My Group".to_owned()),
+            source_type: SourceType::Telegram as i32,
+            tpe: ChatType::PrivateGroup as i32,
+            img_path_option: None,
+            member_ids: vec![myself.id, member.id],
+            msg_count: 2,
+        });
 
         let msgs = dao.first_messages(&chat, 99999)?;
-        assert_eq!(msgs.len(), 2);
-        assert_eq!(chat.msg_count, 2);
-        // let typed = msgs.iter().map(|m| m.typed()).collect_vec();
+        assert_eq!(msgs.len() as i32, chat.msg_count);
 
         assert_eq!(msgs[0], Message {
             internal_id: 0,
@@ -430,17 +441,19 @@ fn loading_2023_01() -> EmptyRes {
             .find(|&c| c.chat.unwrap_ref().id == 123123123 + GROUP_CHAT_ID_SHIFT)
             .unwrap();
         let chat = cwm.chat.unwrap_ref();
-        assert_eq!(chat.name_option, Some("My Group".to_owned()));
-        assert_eq!(chat.tpe, ChatType::PrivateGroup as i32);
-
-        assert_eq!(chat.member_ids.len(), 3);
-        assert_eq!(chat.member_ids[0], myself.id);
-        assert_eq!(chat.member_ids[1], member.id);
-        assert_eq!(chat.member_ids[2], channel_user.id);
+        assert_eq!(*chat, Chat {
+            ds_uuid: Some(ds_uuid.clone()),
+            id: 123123123 + GROUP_CHAT_ID_SHIFT,
+            name_option: Some("My Group".to_owned()),
+            source_type: SourceType::Telegram as i32,
+            tpe: ChatType::PrivateGroup as i32,
+            img_path_option: None,
+            member_ids: vec![myself.id, member.id, channel_user.id],
+            msg_count: 6,
+        });
 
         let msgs = dao.first_messages(&chat, 99999)?;
-        assert_eq!(msgs.len(), 6);
-        assert_eq!(chat.msg_count, 6);
+        assert_eq!(msgs.len() as i32, chat.msg_count);
 
         // Order of these two is swapped by Telegram
         assert_eq!(msgs[0], Message {
@@ -582,16 +595,19 @@ fn loading_2023_08() -> EmptyRes {
             .find(|&c| c.chat.unwrap_ref().id == 123123123 + GROUP_CHAT_ID_SHIFT)
             .unwrap();
         let chat = cwm.chat.unwrap_ref();
-        assert_eq!(chat.name_option, Some("My Group".to_owned()));
-        assert_eq!(chat.tpe, ChatType::PrivateGroup as i32);
-
-        assert_eq!(chat.member_ids.len(), 2);
-        assert_eq!(chat.member_ids[0], myself.id);
-        assert_eq!(chat.member_ids[1], unnamed_user.id);
+        assert_eq!(*chat, Chat {
+            ds_uuid: Some(ds_uuid.clone()),
+            id: 123123123 + GROUP_CHAT_ID_SHIFT,
+            name_option: Some("My Group".to_owned()),
+            source_type: SourceType::Telegram as i32,
+            tpe: ChatType::PrivateGroup as i32,
+            img_path_option: None,
+            member_ids: vec![myself.id, unnamed_user.id],
+            msg_count: 2,
+        });
 
         let msgs: &Vec<Message> = &cwm.messages;
-        assert_eq!(msgs.len(), 2);
-        assert_eq!(chat.msg_count, 2);
+        assert_eq!(msgs.len() as i32, chat.msg_count);
 
         // Order of these two is swapped by Telegram
         assert_eq!(msgs[0], Message {
@@ -665,16 +681,19 @@ fn loading_2023_10_audio_video() -> EmptyRes {
             .find(|&c| c.chat.unwrap_ref().id == 123123123 + GROUP_CHAT_ID_SHIFT)
             .unwrap();
         let chat = cwm.chat.unwrap_ref();
-        assert_eq!(chat.name_option, Some("My Group".to_owned()));
-        assert_eq!(chat.tpe, ChatType::PrivateGroup as i32);
-
-        assert_eq!(chat.member_ids.len(), 2);
-        assert_eq!(chat.member_ids[0], myself.id);
-        assert_eq!(chat.member_ids[1], unnamed_user.id);
+        assert_eq!(*chat, Chat {
+            ds_uuid: Some(ds_uuid.clone()),
+            id: 123123123 + GROUP_CHAT_ID_SHIFT,
+            name_option: Some("My Group".to_owned()),
+            source_type: SourceType::Telegram as i32,
+            tpe: ChatType::PrivateGroup as i32,
+            img_path_option: None,
+            member_ids: vec![myself.id, unnamed_user.id],
+            msg_count: 4,
+        });
 
         let msgs: &Vec<Message> = &cwm.messages;
-        assert_eq!(msgs.len(), 4);
-        assert_eq!(chat.msg_count, 4);
+        assert_eq!(msgs.len() as i32, chat.msg_count);
 
         assert_eq!(msgs[0], Message {
             internal_id: 0,
@@ -746,7 +765,7 @@ fn loading_2023_10_audio_video() -> EmptyRes {
                         mime_type: "video/mp4".to_owned(),
                         duration_sec_option: Some(111),
                         thumbnail_path_option: Some("video_file.mp4_thumb.jpg".to_owned()),
-                        is_one_time: false
+                        is_one_time: false,
                     }))
                 }),
             })),
@@ -773,7 +792,7 @@ fn loading_2023_10_audio_video() -> EmptyRes {
                         mime_type: "video/mp4".to_owned(),
                         duration_sec_option: Some(111),
                         thumbnail_path_option: Some("video_file.mp4_thumb.jpg".to_owned()),
-                        is_one_time: false
+                        is_one_time: false,
                     }))
                 }),
             })),

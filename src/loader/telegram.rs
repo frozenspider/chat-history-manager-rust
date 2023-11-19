@@ -42,7 +42,7 @@ pub struct TelegramDataLoader;
 impl DataLoader for TelegramDataLoader {
     fn name(&self) -> &'static str { "Telegram" }
 
-    fn src_type(&self) ->SourceType { SourceType::Telegram }
+    fn src_type(&self) -> SourceType { SourceType::Telegram }
 
     fn looks_about_right_inner(&self, src_path: &Path) -> EmptyRes {
         let path = get_real_path(src_path);
@@ -281,7 +281,10 @@ fn parse_chat(json_path: &str,
               ds_uuid: &PbUuid,
               myself_id_option: Option<&UserId>,
               users: &mut Users) -> Result<Option<ChatWithMessages>> {
-    let mut chat: Chat = Default::default();
+    let mut chat: Chat = Chat {
+        source_type: SourceType::Telegram as i32,
+        ..Default::default()
+    };
     let mut messages: Vec<Message> = vec![];
 
     let mut member_ids: HashSet<UserId, Hasher> =
