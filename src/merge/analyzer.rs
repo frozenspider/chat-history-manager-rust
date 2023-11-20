@@ -40,9 +40,9 @@ impl<'a> DatasetDiffAnalyzer<'a> {
         measure(|| {
             self.analyze_inner(
                 AnalysContext {
-                    mm_stream: messages_stream(self.m_dao, &master_cwd.chat, MasterMessage, |m| m)?,
+                    mm_stream: messages_stream(self.m_dao, &master_cwd.chat, MasterMessage, |m| m.0.internal_id())?,
                     m_cwd: master_cwd,
-                    sm_stream: messages_stream(self.s_dao, &slave_cwd.chat, SlaveMessage, |m| m)?,
+                    sm_stream: messages_stream(self.s_dao, &slave_cwd.chat, SlaveMessage, |m| m.0.internal_id())?,
                     s_cwd: slave_cwd,
                 }
             )
@@ -334,13 +334,13 @@ fn messages_stream<'a, T: WithTypedId>(
     dao: &'a dyn ChatHistoryDao,
     chat: &'a Chat,
     wrap: fn(Message) -> T,
-    unwrap_ref: fn(&T) -> &Message,
+    unwrap_id: fn(&T) -> MessageInternalId,
 ) -> Result<BatchedMessageIterator<'a, T>> {
     let mut res = BatchedMessageIterator {
         dao,
         chat,
         wrap,
-        unwrap_ref,
+        unwrap_id,
         saved_batch: dao.first_messages(chat, BATCH_SIZE)?.into_iter(),
         next_option: None,
         last_id_option: None,
@@ -353,7 +353,7 @@ struct BatchedMessageIterator<'a, T: WithTypedId> {
     dao: &'a dyn ChatHistoryDao,
     chat: &'a Chat,
     wrap: fn(Message) -> T,
-    unwrap_ref: fn(&T) -> &Message,
+    unwrap_id: fn(&T) -> MessageInternalId,
     saved_batch: std::vec::IntoIter<Message>,
     next_option: Option<T>,
     last_id_option: Option<T::Item>,
@@ -378,7 +378,7 @@ impl<'a, T: WithTypedId> Iterator for BatchedMessageIterator<'a, T> {
                 }
                 None => {
                     // Iterator exhausted, time to preload next batch.
-                    self.saved_batch = self.dao.messages_after(self.chat, (self.unwrap_ref)(current), BATCH_SIZE + 1)
+                    self.saved_batch = self.dao.messages_after(self.chat, (self.unwrap_id)(current), BATCH_SIZE + 1)
                         .expect("Iterator errored out!").into_iter();
                     self.next_option = self.saved_batch.next().map(self.wrap);
                 }

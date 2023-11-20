@@ -409,13 +409,12 @@ impl ChatHistoryDao for SqliteDao {
         Ok(msgs)
     }
 
-    fn messages_before_impl(&self, chat: &Chat, msg: &Message, limit: usize) -> Result<Vec<Message>> {
+    fn messages_before_impl(&self, chat: &Chat, msg_id: MessageInternalId, limit: usize) -> Result<Vec<Message>> {
         use schema::message::*;
         let mut msgs = self.fetch_messages(|conn| {
             Ok(table
                 .filter(columns::chat_id.eq(chat.id))
-                .filter(columns::time_sent.lt(msg.timestamp)
-                    .or(columns::time_sent.eq(msg.timestamp).and(columns::internal_id.lt(msg.internal_id))))
+                .filter(columns::internal_id.lt(*msg_id))
                 .order_by((columns::time_sent.desc(), columns::internal_id.desc()))
                 .left_join(schema::message_content::table)
                 .limit(limit as i64)
@@ -426,13 +425,12 @@ impl ChatHistoryDao for SqliteDao {
         Ok(msgs)
     }
 
-    fn messages_after_impl(&self, chat: &Chat, msg: &Message, limit: usize) -> Result<Vec<Message>> {
+    fn messages_after_impl(&self, chat: &Chat, msg_id: MessageInternalId, limit: usize) -> Result<Vec<Message>> {
         use schema::message::*;
         self.fetch_messages(|conn| {
             Ok(table
                 .filter(columns::chat_id.eq(chat.id))
-                .filter(columns::time_sent.gt(msg.timestamp)
-                    .or(columns::time_sent.eq(msg.timestamp).and(columns::internal_id.gt(msg.internal_id))))
+                .filter(columns::internal_id.gt(*msg_id))
                 .order_by((columns::time_sent.asc(), columns::internal_id.asc()))
                 .left_join(schema::message_content::table)
                 .limit(limit as i64)
@@ -441,15 +439,13 @@ impl ChatHistoryDao for SqliteDao {
         })
     }
 
-    fn messages_between(&self, chat: &Chat, msg1: &Message, msg2: &Message) -> Result<Vec<Message>> {
+    fn messages_slice(&self, chat: &Chat, msg1_id: MessageInternalId, msg2_id: MessageInternalId) -> Result<Vec<Message>> {
         use schema::message::*;
         self.fetch_messages(|conn| {
             Ok(table
                 .filter(columns::chat_id.eq(chat.id))
-                .filter(columns::time_sent.gt(msg1.timestamp)
-                    .or(columns::time_sent.eq(msg1.timestamp).and(columns::internal_id.gt(msg1.internal_id))))
-                .filter(columns::time_sent.lt(msg2.timestamp)
-                    .or(columns::time_sent.eq(msg2.timestamp).and(columns::internal_id.lt(msg2.internal_id))))
+                .filter(columns::internal_id.ge(*msg1_id))
+                .filter(columns::internal_id.le(*msg2_id))
                 .order_by((columns::time_sent.asc(), columns::internal_id.asc()))
                 .left_join(schema::message_content::table)
                 .select((RawMessage::as_select(), Option::<RawMessageContent>::as_select()))
@@ -457,17 +453,15 @@ impl ChatHistoryDao for SqliteDao {
         })
     }
 
-    fn count_messages_between(&self, chat: &Chat, msg1: &Message, msg2: &Message) -> Result<usize> {
+    fn messages_slice_len(&self, chat: &Chat, msg1_id: MessageInternalId, msg2_id: MessageInternalId) -> Result<usize> {
         let mut conn = self.conn.borrow_mut();
         let conn = conn.deref_mut();
 
         use schema::message::*;
         let count: i64 = table
             .filter(columns::chat_id.eq(chat.id))
-            .filter(columns::time_sent.gt(msg1.timestamp)
-                .or(columns::time_sent.eq(msg1.timestamp).and(columns::internal_id.gt(msg1.internal_id))))
-            .filter(columns::time_sent.lt(msg2.timestamp)
-                .or(columns::time_sent.eq(msg2.timestamp).and(columns::internal_id.lt(msg2.internal_id))))
+            .filter(columns::internal_id.ge(*msg1_id))
+            .filter(columns::internal_id.le(*msg2_id))
             .order_by((columns::time_sent.asc(), columns::internal_id.asc()))
             .count()
             .get_result(conn)?;

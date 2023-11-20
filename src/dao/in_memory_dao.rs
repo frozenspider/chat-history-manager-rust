@@ -120,9 +120,9 @@ impl ChatHistoryDao for InMemoryDao {
             .unwrap_or_default())
     }
 
-    fn messages_before_impl(&self, chat: &Chat, msg: &Message, limit: usize) -> Result<Vec<Message>> {
+    fn messages_before_impl(&self, chat: &Chat, msg_id: MessageInternalId, limit: usize) -> Result<Vec<Message>> {
         let msgs = self.messages_option(chat.id).unwrap();
-        let idx = msgs.iter().rposition(|m| m.internal_id == msg.internal_id);
+        let idx = msgs.iter().rposition(|m| m.internal_id == *msg_id);
         match idx {
             None => err!("Message not found!"),
             Some(idx) => {
@@ -131,9 +131,9 @@ impl ChatHistoryDao for InMemoryDao {
         }
     }
 
-    fn messages_after_impl(&self, chat: &Chat, msg: &Message, limit: usize) -> Result<Vec<Message>> {
+    fn messages_after_impl(&self, chat: &Chat, msg_id: MessageInternalId, limit: usize) -> Result<Vec<Message>> {
         let msgs = self.messages_option(chat.id).unwrap();
-        let idx = msgs.iter().position(|m| m.internal_id == msg.internal_id);
+        let idx = msgs.iter().position(|m| m.internal_id == *msg_id);
         match idx {
             None => err!("Message not found!"),
             Some(idx) => {
@@ -143,29 +143,21 @@ impl ChatHistoryDao for InMemoryDao {
         }
     }
 
-    fn messages_between(&self, chat: &Chat, msg1: &Message, msg2: &Message) -> Result<Vec<Message>> {
+    fn messages_slice(&self, chat: &Chat, msg1_id: MessageInternalId, msg2_id: MessageInternalId) -> Result<Vec<Message>> {
         let msgs = self.messages_option(chat.id).unwrap();
-        let idx1 = msgs.iter().position(|m| m.internal_id == msg1.internal_id);
-        let idx2 = msgs.iter().rposition(|m| m.internal_id == msg2.internal_id);
+        let idx1 = msgs.iter().position(|m| m.internal_id == *msg1_id);
+        let idx2 = msgs.iter().rposition(|m| m.internal_id == *msg2_id);
         match (idx1, idx2) {
             (None, _) => err!("Message 1 not found!"),
             (_, None) => err!("Message 2 not found!"),
-            (Some(idx1), Some(idx2)) if idx1 >= idx2 => Ok(vec![]),
-            (Some(idx1), Some(idx2)) => Ok(msgs[(idx1 + 1)..idx2].to_vec())
+            (Some(idx1), Some(idx2)) if idx1 > idx2 => Ok(vec![]),
+            (Some(idx1), Some(idx2)) => Ok(msgs[idx1..=idx2].to_vec())
         }
     }
 
-    fn count_messages_between(&self, chat: &Chat, msg1: &Message, msg2: &Message) -> Result<usize> {
+    fn messages_slice_len(&self, chat: &Chat, msg1_id: MessageInternalId, msg2_id: MessageInternalId) -> Result<usize> {
         // Inefficient!
-        let between = self.messages_between(chat, msg1, msg2)?;
-        if between.is_empty() {
-            Ok(0)
-        } else {
-            let mut size = between.len() as i32;
-            if between.first().unwrap().internal_id == msg1.internal_id { size -= 1; }
-            if between.last().unwrap().internal_id == msg2.internal_id { size -= 1; }
-            Ok(cmp::max(size, 0) as usize)
-        }
+        self.messages_slice(chat, msg1_id, msg2_id).map(|msgs| msgs.len())
     }
 
     fn messages_around_date(&self, chat: &Chat, date_ts: Timestamp, limit: usize)

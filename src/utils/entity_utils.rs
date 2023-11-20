@@ -5,6 +5,7 @@ use derive_deref::Deref;
 use itertools::Itertools;
 use lazy_static::lazy_static;
 use regex::Regex;
+use uuid::Uuid;
 
 use crate::protobuf::history::*;
 
@@ -22,7 +23,11 @@ pub const NO_INTERNAL_ID: MessageInternalId = MessageInternalId(-1);
 // Helper entities
 //
 
-#[derive(Deref, Debug)]
+impl PbUuid {
+    pub fn random() -> Self { PbUuid { value: Uuid::new_v4().to_string() } }
+}
+
+#[derive(Deref, Debug, Clone, PartialEq, Eq)]
 pub struct DatasetRoot(pub PathBuf);
 
 impl DatasetRoot {
@@ -262,6 +267,7 @@ impl Message {
         possibilities.into_iter().flatten().collect()
     }
 
+    /// Does not check files existence.
     pub fn files(&self, ds_root: &DatasetRoot) -> Vec<PathBuf> {
         self.files_relative().iter().map(|p| ds_root.to_absolute(p)).collect()
     }

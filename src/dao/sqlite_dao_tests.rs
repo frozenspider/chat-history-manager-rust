@@ -136,54 +136,63 @@ fn fetching() -> EmptyRes {
         // messages_before
 
         let (src_msgs, dst_msgs) =
-            fetch(&|dao, cwd, all| dao.messages_before(&cwd.chat, all.last().unwrap(), NUM_MSGS_TO_TAKE))?;
+            fetch(&|dao, cwd, all| dao.messages_before(
+                &cwd.chat, all.last().unwrap().internal_id(), NUM_MSGS_TO_TAKE))?;
         assert_eq!(&dst_msgs, all_dst_msgs.smart_slice(-(NUM_MSGS_TO_TAKE as i32 + 1)..-1));
         assert!(practically_eq(&src_msgs, &dst_msgs)?);
 
         let (src_msgs, dst_msgs) =
-            fetch(&|dao, cwd, all| dao.messages_before(&cwd.chat, all.smart_slice(..-1).last().unwrap(), NUM_MSGS_TO_TAKE))?;
+            fetch(&|dao, cwd, all| dao.messages_before(
+                &cwd.chat, all.smart_slice(..-1).last().unwrap().internal_id(), NUM_MSGS_TO_TAKE))?;
         assert_eq!(&dst_msgs, all_dst_msgs.smart_slice(-(NUM_MSGS_TO_TAKE as i32 + 2)..-2));
         assert!(practically_eq(&src_msgs, &dst_msgs)?);
 
         // messages_after
 
         let (src_msgs, dst_msgs) =
-            fetch(&|dao, cwd, all| dao.messages_after(&cwd.chat, &all[0], NUM_MSGS_TO_TAKE))?;
+            fetch(&|dao, cwd, all| dao.messages_after(
+                &cwd.chat, all[0].internal_id(), NUM_MSGS_TO_TAKE))?;
         assert_eq!(&dst_msgs, all_dst_msgs.smart_slice(1..(NUM_MSGS_TO_TAKE as i32 + 1)));
         assert!(practically_eq(&src_msgs, &dst_msgs)?);
 
         let (src_msgs, dst_msgs) =
-            fetch(&|dao, cwd, all| dao.messages_after(&cwd.chat, &all[1], NUM_MSGS_TO_TAKE))?;
+            fetch(&|dao, cwd, all| dao.messages_after(
+                &cwd.chat, all[1].internal_id(), NUM_MSGS_TO_TAKE))?;
         assert_eq!(&dst_msgs, all_dst_msgs.smart_slice(2..(NUM_MSGS_TO_TAKE as i32 + 2)));
         assert!(practically_eq(&src_msgs, &dst_msgs)?);
 
         // messages_between
 
         let (src_msgs, dst_msgs) =
-            fetch(&|dao, cwd, all| dao.messages_between(&cwd.chat, &all[0], all.last().unwrap()))?;
-        assert_eq!(&dst_msgs, all_dst_msgs.smart_slice(1..-1));
+            fetch(&|dao, cwd, all| dao.messages_slice(
+                &cwd.chat, all[0].internal_id(), all.last().unwrap().internal_id()))?;
+        assert_eq!(&dst_msgs, &all_dst_msgs);
         assert!(practically_eq(&src_msgs, &dst_msgs)?);
 
         let (src_msgs, dst_msgs) =
-            fetch(&|dao, cwd, all| dao.messages_between(&cwd.chat, &all[1], all.smart_slice(..-1).last().unwrap()))?;
-        assert_eq!(&dst_msgs, all_dst_msgs.smart_slice(2..-2));
+            fetch(&|dao, cwd, all| dao.messages_slice(
+                &cwd.chat, all[1].internal_id(), all.smart_slice(..-1).last().unwrap().internal_id()))?;
+        assert_eq!(&dst_msgs, all_dst_msgs.smart_slice(1..-1));
         assert!(practically_eq(&src_msgs, &dst_msgs)?);
 
         // count_messages_between
 
         let (src_msgs_count, dst_msgs_count) =
-            count(&|dao, cwd, all| dao.count_messages_between(&cwd.chat, &all[0], all.last().unwrap()))?;
-        assert_eq!(dst_msgs_count, max(all_dst_msgs.len() as i32 - 2, 0) as usize);
+            count(&|dao, cwd, all| dao.messages_slice_len(
+                &cwd.chat, all[0].internal_id(), all.last().unwrap().internal_id()))?;
+        assert_eq!(dst_msgs_count, max(all_dst_msgs.len() as i32, 0) as usize);
         assert_eq!(src_msgs_count, dst_msgs_count);
 
         let (src_msgs_count, dst_msgs_count) =
-            count(&|dao, cwd, all| dao.count_messages_between(&cwd.chat, &all[1], all.last().unwrap()))?;
-        assert_eq!(dst_msgs_count, max(all_dst_msgs.len() as i32 - 3, 0) as usize);
+            count(&|dao, cwd, all| dao.messages_slice_len(
+                &cwd.chat, all[1].internal_id(), all.last().unwrap().internal_id()))?;
+        assert_eq!(dst_msgs_count, max(all_dst_msgs.len() as i32 - 1, 0) as usize);
         assert_eq!(src_msgs_count, dst_msgs_count);
 
         let (src_msgs_count, dst_msgs_count) =
-            count(&|dao, cwd, all| dao.count_messages_between(&cwd.chat, &all[0], all.smart_slice(..-1).last().unwrap()))?;
-        assert_eq!(dst_msgs_count, max(all_dst_msgs.len() as i32 - 3, 0) as usize);
+            count(&|dao, cwd, all| dao.messages_slice_len(
+                &cwd.chat, all[0].internal_id(), all.smart_slice(..-1).last().unwrap().internal_id()))?;
+        assert_eq!(dst_msgs_count, max(all_dst_msgs.len() as i32 - 1, 0) as usize);
         assert_eq!(src_msgs_count, dst_msgs_count);
     }
 
@@ -210,23 +219,23 @@ fn fetching_corner_cases() -> EmptyRes {
             let msgs = dao.first_messages(&chat, usize::MAX)?;
             let m = |i| msgs.iter().find(|m| m.source_id_option == Some(i)).unwrap();
 
-            assert_eq!(&dao.messages_before(&chat, m(3), 10)?, &[], "{clue}");
-            assert_eq!(&dao.messages_before(&chat, m(4), 10)?, &[m(3).clone()], "{clue}");
+            assert_eq!(&dao.messages_before(&chat, m(3).internal_id(), 10)?, &[], "{clue}");
+            assert_eq!(&dao.messages_before(&chat, m(4).internal_id(), 10)?, &[m(3).clone()], "{clue}");
 
-            assert_eq!(&dao.messages_after(&chat, m(7), 10)?, &[], "{clue}");
-            assert_eq!(&dao.messages_after(&chat, m(6), 10)?, &[m(7).clone()], "{clue}");
+            assert_eq!(&dao.messages_after(&chat, m(7).internal_id(), 10)?, &[], "{clue}");
+            assert_eq!(&dao.messages_after(&chat, m(6).internal_id(), 10)?, &[m(7).clone()], "{clue}");
 
-            assert_eq!(&dao.messages_between(&chat, m(3), m(3))?, &[], "{clue}");
-            assert_eq!(&dao.messages_between(&chat, m(3), m(4))?, &[], "{clue}");
-            assert_eq!(&dao.messages_between(&chat, m(3), m(5))?, &[m(4).clone()], "{clue}");
+            assert_eq!(&dao.messages_slice(&chat, m(3).internal_id(), m(3).internal_id())?, &[m(3).clone()], "{clue}");
+            assert_eq!(&dao.messages_slice(&chat, m(3).internal_id(), m(4).internal_id())?, &[m(3).clone(), m(4).clone()], "{clue}");
+            assert_eq!(&dao.messages_slice(&chat, m(3).internal_id(), m(5).internal_id())?, &[m(3).clone(), m(4).clone(), m(5).clone()], "{clue}");
 
-            assert_eq!(dao.count_messages_between(&chat, m(3), m(3))?, 0, "{clue}");
-            assert_eq!(dao.count_messages_between(&chat, m(3), m(4))?, 0, "{clue}");
-            assert_eq!(dao.count_messages_between(&chat, m(3), m(5))?, 1, "{clue}");
+            assert_eq!(dao.messages_slice_len(&chat, m(3).internal_id(), m(3).internal_id())?, 1, "{clue}");
+            assert_eq!(dao.messages_slice_len(&chat, m(3).internal_id(), m(4).internal_id())?, 2, "{clue}");
+            assert_eq!(dao.messages_slice_len(&chat, m(3).internal_id(), m(5).internal_id())?, 3, "{clue}");
 
-            assert_eq!(dao.count_messages_between(&chat, m(7), m(7))?, 0, "{clue}");
-            assert_eq!(dao.count_messages_between(&chat, m(6), m(7))?, 0, "{clue}");
-            assert_eq!(dao.count_messages_between(&chat, m(5), m(7))?, 1, "{clue}");
+            assert_eq!(dao.messages_slice_len(&chat, m(7).internal_id(), m(7).internal_id())?, 1, "{clue}");
+            assert_eq!(dao.messages_slice_len(&chat, m(6).internal_id(), m(7).internal_id())?, 2, "{clue}");
+            assert_eq!(dao.messages_slice_len(&chat, m(5).internal_id(), m(7).internal_id())?, 3, "{clue}");
         }
     }
     Ok(())

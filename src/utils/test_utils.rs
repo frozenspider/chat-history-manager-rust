@@ -200,7 +200,7 @@ pub fn create_dao(
             }, "All messages should have valid user IDs!");
 
     let ds = Dataset {
-        uuid: Some(PbUuid { value: Uuid::new_v4().to_string() }),
+        uuid: Some(PbUuid::random()),
         alias: format!("Dataset {name_suffix}"),
     };
 

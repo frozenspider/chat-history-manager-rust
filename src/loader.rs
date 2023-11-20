@@ -5,7 +5,6 @@ use std::path::Path;
 use chrono::Local;
 use const_format::concatcp;
 use itertools::{Either, Itertools};
-use uuid::Uuid;
 
 use crate::*;
 use crate::loader::telegram::TelegramDataLoader;
@@ -43,7 +42,7 @@ trait DataLoader {
         measure(|| {
             let now_str = Local::now().format("%Y-%m-%d");
             let ds = Dataset {
-                uuid: Some(PbUuid { value: Uuid::new_v4().to_string() }),
+                uuid: Some(PbUuid::random()),
                 alias: format!("{}, loaded @ {now_str}", self.src_alias()),
             };
             self.load_inner(path, ds, myself_chooser)

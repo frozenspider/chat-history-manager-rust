@@ -121,8 +121,8 @@ message Message {
   option (scalapb.message).no_box = true;  // do not wrap in Option
 
   /**
-   * Unique ID assigned to this message by a DAO storage engine (even local one), always valid and >= 0.
-   * No ordering guarantees are provided in general case, but some DAOs might do that.
+   * ID assigned to this message by a DAO storage engine (even local one), always valid and >= 0.
+   * Within a chat, guaranteed to be unique and properly ordered.
    * Might change on dataset/chat mutation operations.
    * Should NEVER be compared across different DAOs!
    */
@@ -448,10 +448,10 @@ service ChatHistoryDaoService {
   rpc MessagesBefore(MessagesBeforeRequest) returns (MessagesResponse) {}
   // Return N messages after the given one (exclusive). Message must be present.
   rpc MessagesAfter(MessagesAfterRequest) returns (MessagesResponse) {}
-  // Return N messages between the given ones (exclusive). Messages must be present.
-  rpc MessagesBetween(MessagesBetweenRequest) returns (MessagesResponse) {}
-  // Count messages between the given ones (exclusive). Messages must be present.
-  rpc CountMessagesBetween(MessagesBetweenRequest) returns (CountMessagesResponse) {}
+  // Return N messages between the given ones (inclusive). Messages must be present.
+  rpc MessagesSlice(MessagesSliceRequest) returns (MessagesResponse) {}
+  // Count messages between the given ones (inclusive). Messages must be present.
+  rpc MessagesSliceLen(MessagesSliceRequest) returns (CountMessagesResponse) {}
   rpc MessageOption(MessageOptionRequest) returns (MessageOptionResponse) {}
   // Whether given data path is the one loaded in this DAO.
   rpc IsLoaded(IsLoadedRequest) returns (IsLoadedResponse) {}
@@ -552,11 +552,11 @@ message MessagesAfterRequest {
   Message message = 3 [(scalapb.field).no_box = true];
   int64 limit = 4;
 }
-message MessagesBetweenRequest {
+message MessagesSliceRequest {
   string key = 1;
   Chat chat = 2 [(scalapb.field).no_box = true];
-  Message message1 = 3 [(scalapb.field).no_box = true];
-  Message message2 = 4 [(scalapb.field).no_box = true];
+  int64 message_internal_id_1 = 3;
+  int64 message_internal_id_2 = 4;
 }
 
 message MessagesResponse {

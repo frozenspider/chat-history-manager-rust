@@ -214,7 +214,7 @@ impl<MC: MyselfChooser + 'static> ChatHistoryDaoService for Arc<ChatHistoryManag
     async fn messages_before(&self, req: Request<MessagesBeforeRequest>) -> TonicResult<MessagesResponse> {
         with_dao_by_key!(self, req, dao, {
             Ok(MessagesResponse {
-                messages: dao.messages_before(chat_from_req!(req), msg_from_req!(req.message), req.limit as usize)?
+                messages: dao.messages_before(chat_from_req!(req), msg_from_req!(req.message).internal_id(), req.limit as usize)?
             })
         })
     }
@@ -222,25 +222,27 @@ impl<MC: MyselfChooser + 'static> ChatHistoryDaoService for Arc<ChatHistoryManag
     async fn messages_after(&self, req: Request<MessagesAfterRequest>) -> TonicResult<MessagesResponse> {
         with_dao_by_key!(self, req, dao, {
             Ok(MessagesResponse {
-                messages: dao.messages_after(chat_from_req!(req), msg_from_req!(req.message), req.limit as usize)?
+                messages: dao.messages_after(chat_from_req!(req), msg_from_req!(req.message).internal_id(), req.limit as usize)?
             })
         })
     }
 
-    async fn messages_between(&self, req: Request<MessagesBetweenRequest>) -> TonicResult<MessagesResponse> {
+    async fn messages_slice(&self, req: Request<MessagesSliceRequest>) -> TonicResult<MessagesResponse> {
         with_dao_by_key!(self, req, dao, {
             Ok(MessagesResponse {
-                messages: dao.messages_between(
-                    chat_from_req!(req), msg_from_req!(req.message1), msg_from_req!(req.message2))?
+                messages: dao.messages_slice(chat_from_req!(req),
+                                             MessageInternalId(req.message_internal_id_1),
+                                             MessageInternalId(req.message_internal_id_2))?
             })
         })
     }
 
-    async fn count_messages_between(&self, req: Request<MessagesBetweenRequest>) -> TonicResult<CountMessagesResponse> {
+    async fn messages_slice_len(&self, req: Request<MessagesSliceRequest>) -> TonicResult<CountMessagesResponse> {
         with_dao_by_key!(self, req, dao, {
             Ok(CountMessagesResponse {
-                messages_count: dao.count_messages_between(
-                    chat_from_req!(req), msg_from_req!(req.message1), msg_from_req!(req.message2))? as i32
+                messages_count: dao.messages_slice_len(chat_from_req!(req),
+                                                       MessageInternalId(req.message_internal_id_1),
+                                                       MessageInternalId(req.message_internal_id_2))? as i32
             })
         })
     }
