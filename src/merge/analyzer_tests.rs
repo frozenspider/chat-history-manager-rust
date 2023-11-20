@@ -7,6 +7,8 @@ use itertools::Itertools;
 use lazy_static::lazy_static;
 use pretty_assertions::{assert_eq, assert_ne};
 
+use super::MergeAnalysisSection::*;
+
 use crate::*;
 use crate::dao::ChatHistoryDao;
 use crate::protobuf::history::*;
@@ -14,21 +16,22 @@ use crate::protobuf::history::message::Typed;
 
 use super::*;
 
-const MAX_MSG_ID: MessageSourceId = MessageSourceId((BATCH_SIZE as i64) * 3 + 1);
+const MAX_MSG_ID: MessageSourceId = src_id((BATCH_SIZE as i64) * 3 + 1);
+const MAX_USER_ID: usize = 3;
 
 #[test]
 fn same_single_message() -> EmptyRes {
     let msgs = vec![create_regular_message(0, 1)];
-    let helper = MergerHelper::new_as_is(msgs.clone(), msgs);
-    let analysis = analyzer(&helper).analyze(&helper.m.cwd, &helper.s.cwd, "")?;
+    let helper = MergerHelper::new_as_is(MAX_USER_ID, msgs.clone(), msgs);
+    let analysis = analyzer(&helper).analyze(helper.m.cwd(), helper.s.cwd(), "")?;
     assert_eq!(
         analysis, vec![
-            MergeAnalysisSection::Match {
+            Match(MergeAnalysisSectionMatch {
                 first_master_msg_id: helper.m.msgs[&src_id(0)].typed_id(),
                 last_master_msg_id: helper.m.msgs[&src_id(0)].typed_id(),
                 first_slave_msg_id: helper.s.msgs[&src_id(0)].typed_id(),
                 last_slave_msg_id: helper.s.msgs[&src_id(0)].typed_id(),
-            }
+            })
         ]
     );
     Ok(())
@@ -38,16 +41,16 @@ fn same_single_message() -> EmptyRes {
 fn same_multiple_messages() -> EmptyRes {
     let max_id = MAX_MSG_ID;
     let msgs = create_messages(max_id);
-    let helper = MergerHelper::new_as_is(msgs.clone(), msgs);
-    let analysis = analyzer(&helper).analyze(&helper.m.cwd, &helper.s.cwd, "")?;
+    let helper = MergerHelper::new_as_is(MAX_USER_ID, msgs.clone(), msgs);
+    let analysis = analyzer(&helper).analyze(helper.m.cwd(), helper.s.cwd(), "")?;
     assert_eq!(
         analysis, vec![
-            MergeAnalysisSection::Match {
+            Match(MergeAnalysisSectionMatch {
                 first_master_msg_id: helper.m.msgs[&src_id(0)].typed_id(),
                 last_master_msg_id: helper.m.msgs[&max_id].typed_id(),
                 first_slave_msg_id: helper.s.msgs[&src_id(0)].typed_id(),
                 last_slave_msg_id: helper.s.msgs[&max_id].typed_id(),
-            }
+            })
         ]
     );
     Ok(())
@@ -57,14 +60,14 @@ fn same_multiple_messages() -> EmptyRes {
 fn no_slave_messages() -> EmptyRes {
     let max_id = MAX_MSG_ID;
     let msgs = create_messages(max_id);
-    let helper = MergerHelper::new_as_is(msgs, vec![]);
-    let analysis = analyzer(&helper).analyze(&helper.m.cwd, &helper.s.cwd, "")?;
+    let helper = MergerHelper::new_as_is(MAX_USER_ID, msgs, vec![]);
+    let analysis = analyzer(&helper).analyze(helper.m.cwd(), helper.s.cwd(), "")?;
     assert_eq!(
         analysis, vec![
-            MergeAnalysisSection::Retention {
+            Retention(MergeAnalysisSectionRetention {
                 first_master_msg_id: helper.m.msgs[&src_id(0)].typed_id(),
                 last_master_msg_id: helper.m.msgs[&max_id].typed_id(),
-            }
+            })
         ]
     );
     Ok(())
@@ -75,24 +78,24 @@ fn no_new_slave_messages_and_matching_sequence_in_the_middle() -> EmptyRes {
     let max_id = MAX_MSG_ID;
     let msgs1 = create_messages(max_id);
     let msgs2 = msgs1.iter().filter(|m| (5..=10).contains(&*m.source_id())).cloned().collect_vec();
-    let helper = MergerHelper::new_as_is(msgs1, msgs2);
-    let analysis = analyzer(&helper).analyze(&helper.m.cwd, &helper.s.cwd, "")?;
+    let helper = MergerHelper::new_as_is(MAX_USER_ID, msgs1, msgs2);
+    let analysis = analyzer(&helper).analyze(helper.m.cwd(), helper.s.cwd(), "")?;
     assert_eq!(
         analysis, vec![
-            MergeAnalysisSection::Retention {
+            Retention(MergeAnalysisSectionRetention {
                 first_master_msg_id: helper.m.msgs[&src_id(0)].typed_id(),
                 last_master_msg_id: helper.m.msgs[&src_id(4)].typed_id(),
-            },
-            MergeAnalysisSection::Match {
+            }),
+            Match(MergeAnalysisSectionMatch {
                 first_master_msg_id: helper.m.msgs[&src_id(5)].typed_id(),
                 last_master_msg_id: helper.m.msgs[&src_id(10)].typed_id(),
                 first_slave_msg_id: helper.s.msgs[&src_id(5)].typed_id(),
                 last_slave_msg_id: helper.s.msgs[&src_id(10)].typed_id(),
-            },
-            MergeAnalysisSection::Retention {
+            }),
+            Retention(MergeAnalysisSectionRetention {
                 first_master_msg_id: helper.m.msgs[&src_id(11)].typed_id(),
                 last_master_msg_id: helper.m.msgs[&max_id].typed_id(),
-            },
+            }),
         ]
     );
     Ok(())
@@ -102,26 +105,26 @@ fn no_new_slave_messages_and_matching_sequence_in_the_middle() -> EmptyRes {
 fn added_one_message_in_the_middle() -> EmptyRes {
     let msgs012 = create_messages(src_id(2));
     let msgs02 = msgs012.iter().filter(|m| *m.source_id() != 1).cloned().collect_vec();
-    let helper = MergerHelper::new_as_is(msgs02, msgs012);
-    let analysis = analyzer(&helper).analyze(&helper.m.cwd, &helper.s.cwd, "")?;
+    let helper = MergerHelper::new_as_is(MAX_USER_ID, msgs02, msgs012);
+    let analysis = analyzer(&helper).analyze(helper.m.cwd(), helper.s.cwd(), "")?;
     assert_eq!(
         analysis, vec![
-            MergeAnalysisSection::Match {
+            Match(MergeAnalysisSectionMatch {
                 first_master_msg_id: helper.m.msgs[&src_id(0)].typed_id(),
                 last_master_msg_id: helper.m.msgs[&src_id(0)].typed_id(),
                 first_slave_msg_id: helper.s.msgs[&src_id(0)].typed_id(),
                 last_slave_msg_id: helper.s.msgs[&src_id(0)].typed_id(),
-            },
-            MergeAnalysisSection::Addition {
+            }),
+            Addition(MergeAnalysisSectionAddition {
                 first_slave_msg_id: helper.s.msgs[&src_id(1)].typed_id(),
                 last_slave_msg_id: helper.s.msgs[&src_id(1)].typed_id(),
-            },
-            MergeAnalysisSection::Match {
+            }),
+            Match(MergeAnalysisSectionMatch {
                 first_master_msg_id: helper.m.msgs[&src_id(2)].typed_id(),
                 last_master_msg_id: helper.m.msgs[&src_id(2)].typed_id(),
                 first_slave_msg_id: helper.s.msgs[&src_id(2)].typed_id(),
                 last_slave_msg_id: helper.s.msgs[&src_id(2)].typed_id(),
-            },
+            }),
         ]
     );
     Ok(())
@@ -131,28 +134,28 @@ fn added_one_message_in_the_middle() -> EmptyRes {
 fn changed_one_message_in_the_middle() -> EmptyRes {
     let msgs_a = create_messages(src_id(2));
     let msgs_b = msgs_a.changed(|id| *id == 1);
-    let helper = MergerHelper::new_as_is(msgs_a, msgs_b);
-    let analysis = analyzer(&helper).analyze(&helper.m.cwd, &helper.s.cwd, "")?;
+    let helper = MergerHelper::new_as_is(MAX_USER_ID, msgs_a, msgs_b);
+    let analysis = analyzer(&helper).analyze(helper.m.cwd(), helper.s.cwd(), "")?;
     assert_eq!(
         analysis, vec![
-            MergeAnalysisSection::Match {
+            Match(MergeAnalysisSectionMatch {
                 first_master_msg_id: helper.m.msgs[&src_id(0)].typed_id(),
                 last_master_msg_id: helper.m.msgs[&src_id(0)].typed_id(),
                 first_slave_msg_id: helper.s.msgs[&src_id(0)].typed_id(),
                 last_slave_msg_id: helper.s.msgs[&src_id(0)].typed_id(),
-            },
-            MergeAnalysisSection::Conflict {
+            }),
+            Conflict(MergeAnalysisSectionConflict {
                 first_master_msg_id: helper.m.msgs[&src_id(1)].typed_id(),
                 last_master_msg_id: helper.m.msgs[&src_id(1)].typed_id(),
                 first_slave_msg_id: helper.s.msgs[&src_id(1)].typed_id(),
                 last_slave_msg_id: helper.s.msgs[&src_id(1)].typed_id(),
-            },
-            MergeAnalysisSection::Match {
+            }),
+            Match(MergeAnalysisSectionMatch {
                 first_master_msg_id: helper.m.msgs[&src_id(2)].typed_id(),
                 last_master_msg_id: helper.m.msgs[&src_id(2)].typed_id(),
                 first_slave_msg_id: helper.s.msgs[&src_id(2)].typed_id(),
                 last_slave_msg_id: helper.s.msgs[&src_id(2)].typed_id(),
-            },
+            }),
         ]
     );
     Ok(())
@@ -169,20 +172,20 @@ fn added_multiple_message_in_the_beginning() -> EmptyRes {
     let max_id = MAX_MSG_ID;
     let msgs_b = create_messages(max_id);
     let msgs_a = msgs_b.last().into_iter().cloned().collect_vec();
-    let helper = MergerHelper::new_as_is(msgs_a, msgs_b);
-    let analysis = analyzer(&helper).analyze(&helper.m.cwd, &helper.s.cwd, "")?;
+    let helper = MergerHelper::new_as_is(MAX_USER_ID, msgs_a, msgs_b);
+    let analysis = analyzer(&helper).analyze(helper.m.cwd(), helper.s.cwd(), "")?;
     assert_eq!(
         analysis, vec![
-            MergeAnalysisSection::Addition {
+            Addition(MergeAnalysisSectionAddition {
                 first_slave_msg_id: helper.s.msgs[&src_id(0)].typed_id(),
                 last_slave_msg_id: helper.s.msgs[&src_id(*max_id - 1)].typed_id(),
-            },
-            MergeAnalysisSection::Match {
+            }),
+            Match(MergeAnalysisSectionMatch {
                 first_master_msg_id: helper.m.msgs[&max_id].typed_id(),
                 last_master_msg_id: helper.m.msgs[&max_id].typed_id(),
                 first_slave_msg_id: helper.s.msgs[&max_id].typed_id(),
                 last_slave_msg_id: helper.s.msgs[&max_id].typed_id(),
-            },
+            }),
         ]
     );
     Ok(())
@@ -199,22 +202,22 @@ fn changed_multiple_messages_in_the_beginning() -> EmptyRes {
     let max_id = MAX_MSG_ID;
     let msgs_a = create_messages(max_id);
     let msgs_b = msgs_a.changed(|id| id != max_id);
-    let helper = MergerHelper::new_as_is(msgs_a, msgs_b);
-    let analysis = analyzer(&helper).analyze(&helper.m.cwd, &helper.s.cwd, "")?;
+    let helper = MergerHelper::new_as_is(MAX_USER_ID, msgs_a, msgs_b);
+    let analysis = analyzer(&helper).analyze(helper.m.cwd(), helper.s.cwd(), "")?;
     assert_eq!(
         analysis, vec![
-            MergeAnalysisSection::Conflict {
+            Conflict(MergeAnalysisSectionConflict {
                 first_master_msg_id: helper.m.msgs[&src_id(0)].typed_id(),
                 last_master_msg_id: helper.m.msgs[&src_id(*max_id - 1)].typed_id(),
                 first_slave_msg_id: helper.s.msgs[&src_id(0)].typed_id(),
                 last_slave_msg_id: helper.s.msgs[&src_id(*max_id - 1)].typed_id(),
-            },
-            MergeAnalysisSection::Match {
+            }),
+            Match(MergeAnalysisSectionMatch {
                 first_master_msg_id: helper.m.msgs[&max_id].typed_id(),
                 last_master_msg_id: helper.m.msgs[&max_id].typed_id(),
                 first_slave_msg_id: helper.s.msgs[&max_id].typed_id(),
                 last_slave_msg_id: helper.s.msgs[&max_id].typed_id(),
-            },
+            }),
         ]
     );
     Ok(())
@@ -230,27 +233,27 @@ fn changed_multiple_messages_in_the_beginning() -> EmptyRes {
 fn added_multiple_messages_in_the_middle() -> EmptyRes {
     let max_id = MAX_MSG_ID;
     let msgs_b = create_messages(max_id);
-    let msgs_a = msgs_b.cloned([0, *max_id as usize]);
-    let helper = MergerHelper::new_as_is(msgs_a, msgs_b);
-    let analysis = analyzer(&helper).analyze(&helper.m.cwd, &helper.s.cwd, "")?;
+    let msgs_a = msgs_b.cloned([src_id(0), max_id]);
+    let helper = MergerHelper::new_as_is(MAX_USER_ID, msgs_a, msgs_b);
+    let analysis = analyzer(&helper).analyze(helper.m.cwd(), helper.s.cwd(), "")?;
     assert_eq!(
         analysis, vec![
-            MergeAnalysisSection::Match {
+            Match(MergeAnalysisSectionMatch {
                 first_master_msg_id: helper.m.msgs[&src_id(0)].typed_id(),
                 last_master_msg_id: helper.m.msgs[&src_id(0)].typed_id(),
                 first_slave_msg_id: helper.s.msgs[&src_id(0)].typed_id(),
                 last_slave_msg_id: helper.s.msgs[&src_id(0)].typed_id(),
-            },
-            MergeAnalysisSection::Addition {
+            }),
+            Addition(MergeAnalysisSectionAddition {
                 first_slave_msg_id: helper.s.msgs[&src_id(1)].typed_id(),
                 last_slave_msg_id: helper.s.msgs[&src_id(*max_id - 1)].typed_id(),
-            },
-            MergeAnalysisSection::Match {
+            }),
+            Match(MergeAnalysisSectionMatch {
                 first_master_msg_id: helper.m.msgs[&max_id].typed_id(),
                 last_master_msg_id: helper.m.msgs[&max_id].typed_id(),
                 first_slave_msg_id: helper.s.msgs[&max_id].typed_id(),
                 last_slave_msg_id: helper.s.msgs[&max_id].typed_id(),
-            },
+            }),
         ]
     );
     Ok(())
@@ -267,28 +270,28 @@ fn changed_multiple_messages_in_the_middle() -> EmptyRes {
     let max_id = MAX_MSG_ID;
     let msgs_a = create_messages(max_id);
     let msgs_b = msgs_a.changed(|id| *id != 0 && id != max_id);
-    let helper = MergerHelper::new_as_is(msgs_a, msgs_b);
-    let analysis = analyzer(&helper).analyze(&helper.m.cwd, &helper.s.cwd, "")?;
+    let helper = MergerHelper::new_as_is(MAX_USER_ID, msgs_a, msgs_b);
+    let analysis = analyzer(&helper).analyze(helper.m.cwd(), helper.s.cwd(), "")?;
     assert_eq!(
         analysis, vec![
-            MergeAnalysisSection::Match {
+            Match(MergeAnalysisSectionMatch {
                 first_master_msg_id: helper.m.msgs[&src_id(0)].typed_id(),
                 last_master_msg_id: helper.m.msgs[&src_id(0)].typed_id(),
                 first_slave_msg_id: helper.s.msgs[&src_id(0)].typed_id(),
                 last_slave_msg_id: helper.s.msgs[&src_id(0)].typed_id(),
-            },
-            MergeAnalysisSection::Conflict {
+            }),
+            Conflict(MergeAnalysisSectionConflict {
                 first_master_msg_id: helper.m.msgs[&src_id(1)].typed_id(),
                 last_master_msg_id: helper.m.msgs[&src_id(*max_id - 1)].typed_id(),
                 first_slave_msg_id: helper.s.msgs[&src_id(1)].typed_id(),
                 last_slave_msg_id: helper.s.msgs[&src_id(*max_id - 1)].typed_id(),
-            },
-            MergeAnalysisSection::Match {
+            }),
+            Match(MergeAnalysisSectionMatch {
                 first_master_msg_id: helper.m.msgs[&max_id].typed_id(),
                 last_master_msg_id: helper.m.msgs[&max_id].typed_id(),
                 first_slave_msg_id: helper.s.msgs[&max_id].typed_id(),
                 last_slave_msg_id: helper.s.msgs[&max_id].typed_id(),
-            },
+            }),
         ]
     );
     Ok(())
@@ -304,21 +307,21 @@ fn changed_multiple_messages_in_the_middle() -> EmptyRes {
 fn added_multiple_messages_in_the_end() -> EmptyRes {
     let max_id = MAX_MSG_ID;
     let msgs_b = create_messages(max_id);
-    let msgs_a = msgs_b.cloned([0]);
-    let helper = MergerHelper::new_as_is(msgs_a, msgs_b);
-    let analysis = analyzer(&helper).analyze(&helper.m.cwd, &helper.s.cwd, "")?;
+    let msgs_a = msgs_b.cloned([src_id(0)]);
+    let helper = MergerHelper::new_as_is(MAX_USER_ID, msgs_a, msgs_b);
+    let analysis = analyzer(&helper).analyze(helper.m.cwd(), helper.s.cwd(), "")?;
     assert_eq!(
         analysis, vec![
-            MergeAnalysisSection::Match {
+            Match(MergeAnalysisSectionMatch {
                 first_master_msg_id: helper.m.msgs[&src_id(0)].typed_id(),
                 last_master_msg_id: helper.m.msgs[&src_id(0)].typed_id(),
                 first_slave_msg_id: helper.s.msgs[&src_id(0)].typed_id(),
                 last_slave_msg_id: helper.s.msgs[&src_id(0)].typed_id(),
-            },
-            MergeAnalysisSection::Addition {
+            }),
+            Addition(MergeAnalysisSectionAddition {
                 first_slave_msg_id: helper.s.msgs[&src_id(1)].typed_id(),
                 last_slave_msg_id: helper.s.msgs[&max_id].typed_id(),
-            },
+            }),
         ]
     );
     Ok(())
@@ -335,22 +338,22 @@ fn changed_multiple_messages_in_the_end() -> EmptyRes {
     let max_id = MAX_MSG_ID;
     let msgs_a = create_messages(max_id);
     let msgs_b = msgs_a.changed(|id| *id != 0);
-    let helper = MergerHelper::new_as_is(msgs_a, msgs_b);
-    let analysis = analyzer(&helper).analyze(&helper.m.cwd, &helper.s.cwd, "")?;
+    let helper = MergerHelper::new_as_is(MAX_USER_ID, msgs_a, msgs_b);
+    let analysis = analyzer(&helper).analyze(helper.m.cwd(), helper.s.cwd(), "")?;
     assert_eq!(
         analysis, vec![
-            MergeAnalysisSection::Match {
+            Match(MergeAnalysisSectionMatch {
                 first_master_msg_id: helper.m.msgs[&src_id(0)].typed_id(),
                 last_master_msg_id: helper.m.msgs[&src_id(0)].typed_id(),
                 first_slave_msg_id: helper.s.msgs[&src_id(0)].typed_id(),
                 last_slave_msg_id: helper.s.msgs[&src_id(0)].typed_id(),
-            },
-            MergeAnalysisSection::Conflict {
+            }),
+            Conflict(MergeAnalysisSectionConflict {
                 first_master_msg_id: helper.m.msgs[&src_id(1)].typed_id(),
                 last_master_msg_id: helper.m.msgs[&max_id].typed_id(),
                 first_slave_msg_id: helper.s.msgs[&src_id(1)].typed_id(),
                 last_slave_msg_id: helper.s.msgs[&max_id].typed_id(),
-            },
+            }),
         ]
     );
     Ok(())
@@ -367,14 +370,14 @@ fn added_all_messages() -> EmptyRes {
     let max_id = MAX_MSG_ID;
     let msgs_a = vec![];
     let msgs_b = create_messages(max_id);
-    let helper = MergerHelper::new_as_is(msgs_a, msgs_b);
-    let analysis = analyzer(&helper).analyze(&helper.m.cwd, &helper.s.cwd, "")?;
+    let helper = MergerHelper::new_as_is(MAX_USER_ID, msgs_a, msgs_b);
+    let analysis = analyzer(&helper).analyze(helper.m.cwd(), helper.s.cwd(), "")?;
     assert_eq!(
         analysis, vec![
-            MergeAnalysisSection::Addition {
+            Addition(MergeAnalysisSectionAddition {
                 first_slave_msg_id: helper.s.msgs[&src_id(0)].typed_id(),
                 last_slave_msg_id: helper.s.msgs[&max_id].typed_id(),
-            },
+            }),
         ]
     );
     Ok(())
@@ -391,16 +394,16 @@ fn changed_all_messages() -> EmptyRes {
     let max_id = MAX_MSG_ID;
     let msgs_a = create_messages(max_id);
     let msgs_b = msgs_a.changed(|_| true);
-    let helper = MergerHelper::new_as_is(msgs_a, msgs_b);
-    let analysis = analyzer(&helper).analyze(&helper.m.cwd, &helper.s.cwd, "")?;
+    let helper = MergerHelper::new_as_is(MAX_USER_ID, msgs_a, msgs_b);
+    let analysis = analyzer(&helper).analyze(helper.m.cwd(), helper.s.cwd(), "")?;
     assert_eq!(
         analysis, vec![
-            MergeAnalysisSection::Conflict {
+            Conflict(MergeAnalysisSectionConflict {
                 first_master_msg_id: helper.m.msgs[&src_id(0)].typed_id(),
                 last_master_msg_id: helper.m.msgs[&max_id].typed_id(),
                 first_slave_msg_id: helper.s.msgs[&src_id(0)].typed_id(),
                 last_slave_msg_id: helper.s.msgs[&max_id].typed_id(),
-            },
+            }),
         ]
     );
     Ok(())
@@ -416,35 +419,35 @@ fn changed_all_messages() -> EmptyRes {
 #[test]
 fn missing_messages_in_slave() -> EmptyRes {
     let msgs_a = create_messages(src_id(4));
-    let msgs_b = msgs_a.cloned([1, 3]);
-    let helper = MergerHelper::new_as_is(msgs_a, msgs_b);
-    let analysis = analyzer(&helper).analyze(&helper.m.cwd, &helper.s.cwd, "")?;
+    let msgs_b = msgs_a.cloned([1, 3].map(src_id));
+    let helper = MergerHelper::new_as_is(MAX_USER_ID, msgs_a, msgs_b);
+    let analysis = analyzer(&helper).analyze(helper.m.cwd(), helper.s.cwd(), "")?;
     assert_eq!(
         analysis, vec![
-            MergeAnalysisSection::Retention {
+            Retention(MergeAnalysisSectionRetention {
                 first_master_msg_id: helper.m.msgs[&src_id(0)].typed_id(),
                 last_master_msg_id: helper.m.msgs[&src_id(0)].typed_id(),
-            },
-            MergeAnalysisSection::Match {
+            }),
+            Match(MergeAnalysisSectionMatch {
                 first_master_msg_id: helper.m.msgs[&src_id(1)].typed_id(),
                 last_master_msg_id: helper.m.msgs[&src_id(1)].typed_id(),
                 first_slave_msg_id: helper.s.msgs[&src_id(1)].typed_id(),
                 last_slave_msg_id: helper.s.msgs[&src_id(1)].typed_id(),
-            },
-            MergeAnalysisSection::Retention {
+            }),
+            Retention(MergeAnalysisSectionRetention {
                 first_master_msg_id: helper.m.msgs[&src_id(2)].typed_id(),
                 last_master_msg_id: helper.m.msgs[&src_id(2)].typed_id(),
-            },
-            MergeAnalysisSection::Match {
+            }),
+            Match(MergeAnalysisSectionMatch {
                 first_master_msg_id: helper.m.msgs[&src_id(3)].typed_id(),
                 last_master_msg_id: helper.m.msgs[&src_id(3)].typed_id(),
                 first_slave_msg_id: helper.s.msgs[&src_id(3)].typed_id(),
                 last_slave_msg_id: helper.s.msgs[&src_id(3)].typed_id(),
-            },
-            MergeAnalysisSection::Retention {
+            }),
+            Retention(MergeAnalysisSectionRetention {
                 first_master_msg_id: helper.m.msgs[&src_id(4)].typed_id(),
                 last_master_msg_id: helper.m.msgs[&src_id(4)].typed_id(),
-            },
+            }),
         ]
     );
     Ok(())
@@ -459,42 +462,45 @@ fn missing_messages_in_slave() -> EmptyRes {
 #[test]
 fn everything() -> EmptyRes {
     let msgs = create_messages(src_id(11));
-    let msgs_a = msgs.cloned([0, 1, 4, 5, 6, 7, 8, 9]);
-    let msgs_b = msgs.cloned([2, 3, 4, 5, 6, 7, 8, 9, 10, 11]).changed(|id| [4, 5, 8, 9].contains(&*id));
-    let helper = MergerHelper::new_as_is(msgs_a, msgs_b);
-    let analysis = analyzer(&helper).analyze(&helper.m.cwd, &helper.s.cwd, "")?;
+    let msgs_a = msgs
+        .cloned([0, 1, 4, 5, 6, 7, 8, 9].map(src_id));
+    let msgs_b = msgs
+        .cloned([2, 3, 4, 5, 6, 7, 8, 9, 10, 11].map(src_id))
+        .changed(|id| [4, 5, 8, 9].contains(&*id));
+    let helper = MergerHelper::new_as_is(MAX_USER_ID, msgs_a, msgs_b);
+    let analysis = analyzer(&helper).analyze(helper.m.cwd(), helper.s.cwd(), "")?;
     assert_eq!(
         analysis, vec![
-            MergeAnalysisSection::Retention {
+            Retention(MergeAnalysisSectionRetention {
                 first_master_msg_id: helper.m.msgs[&src_id(0)].typed_id(),
                 last_master_msg_id: helper.m.msgs[&src_id(1)].typed_id(),
-            },
-            MergeAnalysisSection::Addition {
+            }),
+            Addition(MergeAnalysisSectionAddition {
                 first_slave_msg_id: helper.s.msgs[&src_id(2)].typed_id(),
                 last_slave_msg_id: helper.s.msgs[&src_id(3)].typed_id(),
-            },
-            MergeAnalysisSection::Conflict {
+            }),
+            Conflict(MergeAnalysisSectionConflict {
                 first_master_msg_id: helper.m.msgs[&src_id(4)].typed_id(),
                 last_master_msg_id: helper.m.msgs[&src_id(5)].typed_id(),
                 first_slave_msg_id: helper.s.msgs[&src_id(4)].typed_id(),
                 last_slave_msg_id: helper.s.msgs[&src_id(5)].typed_id(),
-            },
-            MergeAnalysisSection::Match {
+            }),
+            Match(MergeAnalysisSectionMatch {
                 first_master_msg_id: helper.m.msgs[&src_id(6)].typed_id(),
                 last_master_msg_id: helper.m.msgs[&src_id(7)].typed_id(),
                 first_slave_msg_id: helper.s.msgs[&src_id(6)].typed_id(),
                 last_slave_msg_id: helper.s.msgs[&src_id(7)].typed_id(),
-            },
-            MergeAnalysisSection::Conflict {
+            }),
+            Conflict(MergeAnalysisSectionConflict {
                 first_master_msg_id: helper.m.msgs[&src_id(8)].typed_id(),
                 last_master_msg_id: helper.m.msgs[&src_id(9)].typed_id(),
                 first_slave_msg_id: helper.s.msgs[&src_id(8)].typed_id(),
                 last_slave_msg_id: helper.s.msgs[&src_id(9)].typed_id(),
-            },
-            MergeAnalysisSection::Addition {
+            }),
+            Addition(MergeAnalysisSectionAddition {
                 first_slave_msg_id: helper.s.msgs[&src_id(10)].typed_id(),
                 last_slave_msg_id: helper.s.msgs[&src_id(11)].typed_id(),
-            },
+            }),
         ]
     );
     Ok(())
@@ -509,42 +515,45 @@ fn everything() -> EmptyRes {
 #[test]
 fn everything_inverted() -> EmptyRes {
     let msgs = create_messages(src_id(11));
-    let msgs_a = msgs.cloned([2, 3, 4, 5, 6, 7, 8, 9, 10, 11]).changed(|id| [4, 5, 8, 9].contains(&*id));
-    let msgs_b = msgs.cloned([0, 1, 4, 5, 6, 7, 8, 9]);
-    let helper = MergerHelper::new_as_is(msgs_a, msgs_b);
-    let analysis = analyzer(&helper).analyze(&helper.m.cwd, &helper.s.cwd, "")?;
+    let msgs_a = msgs
+        .cloned([2, 3, 4, 5, 6, 7, 8, 9, 10, 11].map(src_id))
+        .changed(|id| [4, 5, 8, 9].contains(&*id));
+    let msgs_b = msgs
+        .cloned([0, 1, 4, 5, 6, 7, 8, 9].map(src_id));
+    let helper = MergerHelper::new_as_is(MAX_USER_ID, msgs_a, msgs_b);
+    let analysis = analyzer(&helper).analyze(helper.m.cwd(), helper.s.cwd(), "")?;
     assert_eq!(
         analysis, vec![
-            MergeAnalysisSection::Addition {
+            Addition(MergeAnalysisSectionAddition {
                 first_slave_msg_id: helper.s.msgs[&src_id(0)].typed_id(),
                 last_slave_msg_id: helper.s.msgs[&src_id(1)].typed_id(),
-            },
-            MergeAnalysisSection::Retention {
+            }),
+            Retention(MergeAnalysisSectionRetention {
                 first_master_msg_id: helper.m.msgs[&src_id(2)].typed_id(),
                 last_master_msg_id: helper.m.msgs[&src_id(3)].typed_id(),
-            },
-            MergeAnalysisSection::Conflict {
+            }),
+            Conflict(MergeAnalysisSectionConflict {
                 first_master_msg_id: helper.m.msgs[&src_id(4)].typed_id(),
                 last_master_msg_id: helper.m.msgs[&src_id(5)].typed_id(),
                 first_slave_msg_id: helper.s.msgs[&src_id(4)].typed_id(),
                 last_slave_msg_id: helper.s.msgs[&src_id(5)].typed_id(),
-            },
-            MergeAnalysisSection::Match {
+            }),
+            Match(MergeAnalysisSectionMatch {
                 first_master_msg_id: helper.m.msgs[&src_id(6)].typed_id(),
                 last_master_msg_id: helper.m.msgs[&src_id(7)].typed_id(),
                 first_slave_msg_id: helper.s.msgs[&src_id(6)].typed_id(),
                 last_slave_msg_id: helper.s.msgs[&src_id(7)].typed_id(),
-            },
-            MergeAnalysisSection::Conflict {
+            }),
+            Conflict(MergeAnalysisSectionConflict {
                 first_master_msg_id: helper.m.msgs[&src_id(8)].typed_id(),
                 last_master_msg_id: helper.m.msgs[&src_id(9)].typed_id(),
                 first_slave_msg_id: helper.s.msgs[&src_id(8)].typed_id(),
                 last_slave_msg_id: helper.s.msgs[&src_id(9)].typed_id(),
-            },
-            MergeAnalysisSection::Retention {
+            }),
+            Retention(MergeAnalysisSectionRetention {
                 first_master_msg_id: helper.m.msgs[&src_id(10)].typed_id(),
                 last_master_msg_id: helper.m.msgs[&src_id(11)].typed_id(),
-            },
+            }),
         ]
     );
     Ok(())
@@ -553,7 +562,7 @@ fn everything_inverted() -> EmptyRes {
 /// "not found" should NOT conflict with "not downloaded" and vice versa
 #[test]
 fn present_absent_not_downloaded() -> EmptyRes {
-    let user_id = MergerHelper::random_user_id();
+    let user_id = MergerHelper::random_user_id(MAX_USER_ID);
 
     let not_found = ContentPhoto {
         path_option: Some("non/existent/path.jpg".to_owned()),
@@ -650,72 +659,73 @@ fn present_absent_not_downloaded() -> EmptyRes {
         make_msg_photo(16, /* regular */ false, &placeholder1),
     ];
 
-    let helper = MergerHelper::new(msgs_a, msgs_b, &|_is_master, ds_root, msg| {
-        let transform = |photo: &mut ContentPhoto| {
-            let filename_option: Option<(&str, &[u8])> =
-                if photo == &not_found || photo == &not_downloaded {
-                    None
-                } else if photo == &placeholder1 {
-                    Some((photo.path_option.unwrap_ref(), placeholder1_content.as_bytes()))
-                } else if photo == &placeholder2 {
-                    Some((photo.path_option.unwrap_ref(), placeholder2_content.as_bytes()))
-                } else {
-                    unreachable!("{:?}", photo)
-                };
-            if let Some((filename, content)) = filename_option {
-                let file_path = ds_root.0.join(filename);
-                if !file_path.exists() {
-                    create_named_file(&file_path, content);
+    let helper = MergerHelper::new(
+        MAX_USER_ID, msgs_a, msgs_b, &|_is_master, ds_root, msg| {
+            let transform = |photo: &mut ContentPhoto| {
+                let filename_option: Option<(&str, &[u8])> =
+                    if photo == &not_found || photo == &not_downloaded {
+                        None
+                    } else if photo == &placeholder1 {
+                        Some((photo.path_option.unwrap_ref(), placeholder1_content.as_bytes()))
+                    } else if photo == &placeholder2 {
+                        Some((photo.path_option.unwrap_ref(), placeholder2_content.as_bytes()))
+                    } else {
+                        unreachable!("{:?}", photo)
+                    };
+                if let Some((filename, content)) = filename_option {
+                    let file_path = ds_root.0.join(filename);
+                    if !file_path.exists() {
+                        create_named_file(&file_path, content);
+                    }
+                    photo.path_option = Some(ds_root.to_relative(&file_path).unwrap())
                 }
-                photo.path_option = Some(ds_root.to_relative(&file_path).unwrap())
-            }
-        };
-        use message::Typed::*;
-        use content::SealedValueOptional::*;
-        use message_service::SealedValueOptional::*;
-        match msg.typed_mut() {
-            Regular(MessageRegular { content_option: Some(Content { sealed_value_optional: Some(Photo(ref mut photo)) }), .. }) => {
-                transform(photo)
-            }
-            Service(MessageService { sealed_value_optional: Some(GroupEditPhoto(ref mut edit_photo)) }) => {
-                transform(edit_photo.photo.as_mut().unwrap())
-            }
-            _ => unreachable!()
-        };
-    });
-    let analysis = analyzer(&helper).analyze(&helper.m.cwd, &helper.s.cwd, "")?;
+            };
+            use message::Typed::*;
+            use content::SealedValueOptional::*;
+            use message_service::SealedValueOptional::*;
+            match msg.typed_mut() {
+                Regular(MessageRegular { content_option: Some(Content { sealed_value_optional: Some(Photo(ref mut photo)) }), .. }) => {
+                    transform(photo)
+                }
+                Service(MessageService { sealed_value_optional: Some(GroupEditPhoto(ref mut edit_photo)) }) => {
+                    transform(edit_photo.photo.as_mut().unwrap())
+                }
+                _ => unreachable!()
+            };
+        });
+    let analysis = analyzer(&helper).analyze(helper.m.cwd(), helper.s.cwd(), "")?;
     assert_eq!(
         analysis, vec![
-            MergeAnalysisSection::Match {
+            Match(MergeAnalysisSectionMatch {
                 first_master_msg_id: helper.m.msgs[&src_id(101)].typed_id(),
                 last_master_msg_id: helper.m.msgs[&src_id(107)].typed_id(),
                 first_slave_msg_id: helper.s.msgs[&src_id(101)].typed_id(),
                 last_slave_msg_id: helper.s.msgs[&src_id(107)].typed_id(),
-            },
-            MergeAnalysisSection::Conflict {
+            }),
+            Conflict(MergeAnalysisSectionConflict {
                 first_master_msg_id: helper.m.msgs[&src_id(108)].typed_id(),
                 last_master_msg_id: helper.m.msgs[&src_id(108)].typed_id(),
                 first_slave_msg_id: helper.s.msgs[&src_id(108)].typed_id(),
                 last_slave_msg_id: helper.s.msgs[&src_id(108)].typed_id(),
-            },
-            MergeAnalysisSection::Match {
+            }),
+            Match(MergeAnalysisSectionMatch {
                 first_master_msg_id: helper.m.msgs[&src_id(109)].typed_id(),
                 last_master_msg_id: helper.m.msgs[&src_id(113)].typed_id(),
                 first_slave_msg_id: helper.s.msgs[&src_id(109)].typed_id(),
                 last_slave_msg_id: helper.s.msgs[&src_id(113)].typed_id(),
-            },
-            MergeAnalysisSection::Conflict {
+            }),
+            Conflict(MergeAnalysisSectionConflict {
                 first_master_msg_id: helper.m.msgs[&src_id(114)].typed_id(),
                 last_master_msg_id: helper.m.msgs[&src_id(114)].typed_id(),
                 first_slave_msg_id: helper.s.msgs[&src_id(114)].typed_id(),
                 last_slave_msg_id: helper.s.msgs[&src_id(114)].typed_id(),
-            },
-            MergeAnalysisSection::Match {
+            }),
+            Match(MergeAnalysisSectionMatch {
                 first_master_msg_id: helper.m.msgs[&src_id(115)].typed_id(),
                 last_master_msg_id: helper.m.msgs[&src_id(116)].typed_id(),
                 first_slave_msg_id: helper.s.msgs[&src_id(115)].typed_id(),
                 last_slave_msg_id: helper.s.msgs[&src_id(116)].typed_id(),
-            },
+            }),
         ]
     );
     Ok(())
@@ -726,7 +736,9 @@ fn present_absent_not_downloaded() -> EmptyRes {
 //
 
 fn create_messages(max_id: MessageSourceId) -> Vec<Message> {
-    (0..=(*max_id as usize)).map(|i| create_regular_message(i, MergerHelper::random_user_id())).collect_vec()
+    (0..=(*max_id as usize))
+        .map(|i| create_regular_message(i, MergerHelper::random_user_id(MAX_USER_ID)))
+        .collect_vec()
 }
 
 fn analyzer(helper: &MergerHelper) -> DatasetDiffAnalyzer {
@@ -738,28 +750,3 @@ fn analyzer(helper: &MergerHelper) -> DatasetDiffAnalyzer {
     )
 }
 
-fn src_id(id: i64) -> MessageSourceId { MessageSourceId(id) }
-
-trait MsgVec {
-    fn cloned<const N: usize>(&self, indexes: [usize; N]) -> Self;
-    fn changed(&self, condition: impl Fn(MessageSourceId) -> bool) -> Self;
-}
-
-impl MsgVec for Vec<Message> {
-    fn cloned<const N: usize>(&self, indexes: [usize; N]) -> Self {
-        indexes.iter().map(|&i| self[i].clone()).collect_vec()
-    }
-
-    fn changed(&self, condition: impl Fn(MessageSourceId) -> bool) -> Self {
-        self.iter().cloned().map(|m| match m {
-            Message {
-                typed: Some(ref typed @ message::Typed::Regular(_)), ..
-            } if condition(m.source_id()) => {
-                let text = vec![RichText::make_plain(format!("Different message {}", *m.source_id()))];
-                let searchable_string = make_searchable_string(&text, typed);
-                Message { text, searchable_string, ..m }
-            }
-            m => m
-        }).collect_vec()
-    }
-}

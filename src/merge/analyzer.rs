@@ -230,53 +230,68 @@ enum InProgressState {
 
 impl InProgressState {
     fn make_section(&self, mm_id: Option<MasterInternalId>, sm_id: Option<SlaveInternalId>) -> MergeAnalysisSection {
+        use MergeAnalysisSection::*;
         match *self {
-            InProgressState::Match { first_master_msg_id, first_slave_msg_id } => MergeAnalysisSection::Match {
+            InProgressState::Match { first_master_msg_id, first_slave_msg_id } => Match(MergeAnalysisSectionMatch {
                 first_master_msg_id,
                 last_master_msg_id: mm_id.unwrap(),
                 first_slave_msg_id,
                 last_slave_msg_id: sm_id.unwrap(),
-            },
-            InProgressState::Retention { first_master_msg_id } => MergeAnalysisSection::Retention {
+            }),
+            InProgressState::Retention { first_master_msg_id } => Retention(MergeAnalysisSectionRetention {
                 first_master_msg_id,
                 last_master_msg_id: mm_id.unwrap(),
-            },
-            InProgressState::Addition { first_slave_msg_id } => MergeAnalysisSection::Addition {
+            }),
+            InProgressState::Addition { first_slave_msg_id } => Addition(MergeAnalysisSectionAddition {
                 first_slave_msg_id,
                 last_slave_msg_id: sm_id.unwrap(),
-            },
-            InProgressState::Conflict { first_master_msg_id, first_slave_msg_id } => MergeAnalysisSection::Conflict {
+            }),
+            InProgressState::Conflict { first_master_msg_id, first_slave_msg_id } => Conflict(MergeAnalysisSectionConflict {
                 first_master_msg_id,
                 last_master_msg_id: mm_id.unwrap(),
                 first_slave_msg_id,
                 last_slave_msg_id: sm_id.unwrap(),
-            },
+            }),
         }
     }
 }
 
+// Since we can't use enums variants as types as of yet (https://github.com/rust-lang/rfcs/issues/754),
+// we're using nested structures as types instead.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum MergeAnalysisSection {
-    Match {
-        first_master_msg_id: MasterInternalId,
-        last_master_msg_id: MasterInternalId,
-        first_slave_msg_id: SlaveInternalId,
-        last_slave_msg_id: SlaveInternalId,
-    },
-    Retention {
-        first_master_msg_id: MasterInternalId,
-        last_master_msg_id: MasterInternalId,
-    },
-    Addition {
-        first_slave_msg_id: SlaveInternalId,
-        last_slave_msg_id: SlaveInternalId,
-    },
-    Conflict {
-        first_master_msg_id: MasterInternalId,
-        last_master_msg_id: MasterInternalId,
-        first_slave_msg_id: SlaveInternalId,
-        last_slave_msg_id: SlaveInternalId,
-    },
+    Match(MergeAnalysisSectionMatch),
+    Retention(MergeAnalysisSectionRetention),
+    Addition(MergeAnalysisSectionAddition),
+    Conflict(MergeAnalysisSectionConflict),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MergeAnalysisSectionMatch {
+    pub first_master_msg_id: MasterInternalId,
+    pub last_master_msg_id: MasterInternalId,
+    pub first_slave_msg_id: SlaveInternalId,
+    pub last_slave_msg_id: SlaveInternalId,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MergeAnalysisSectionRetention {
+    pub first_master_msg_id: MasterInternalId,
+    pub last_master_msg_id: MasterInternalId,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MergeAnalysisSectionAddition {
+    pub first_slave_msg_id: SlaveInternalId,
+    pub last_slave_msg_id: SlaveInternalId,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MergeAnalysisSectionConflict {
+    pub first_master_msg_id: MasterInternalId,
+    pub last_master_msg_id: MasterInternalId,
+    pub first_slave_msg_id: SlaveInternalId,
+    pub last_slave_msg_id: SlaveInternalId,
 }
 
 struct AnalysContext<'a> {

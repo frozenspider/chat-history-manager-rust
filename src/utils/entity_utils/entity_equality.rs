@@ -51,15 +51,26 @@ impl<'a, T: 'a> PracticalEq for Tup<'a, Option<T>> where for<'b> Tup<'a, T>: Pra
     }
 }
 
-//
-//  Message
-//
-
 macro_rules! cloned_equals_without {
     ($v1:expr, $v2:expr, $T:ident, $($key:ident : $val:expr),+) => {
         $T { $( $key: $val, )* ..(*$v1).clone() } == $T { $( $key: $val, )* ..(*$v2).clone() }
     };
 }
+
+//
+// Chat
+//
+
+impl<'a> PracticalEq for Tup<'a, Chat> {
+    fn practically_equals(&self, other: &Self) -> Result<bool> {
+        Ok(cloned_equals_without!(self.v, other.v, Chat, img_path_option: None) &&
+            self.apply(|v| &v.img_path_option).practically_equals(&other.apply(|v| &v.img_path_option))?)
+    }
+}
+
+//
+//  Message
+//
 
 impl<'a> PracticalEq for Tup<'a, Message> {
     fn practically_equals(&self, other: &Self) -> Result<bool> {

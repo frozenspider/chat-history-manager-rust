@@ -8,7 +8,7 @@ use std::fs;
 use std::ops::{Deref, DerefMut};
 use std::path::{Path, PathBuf};
 
-use diesel::insert_into;
+use diesel::{insert_into, update};
 use diesel::migration::MigrationSource;
 use diesel::prelude::*;
 use diesel::sqlite::Sqlite;
@@ -37,8 +37,9 @@ pub struct SqliteDao {
 }
 
 impl SqliteDao {
+    pub const FILENAME: &'static str = "data.sqlite";
+
     const MIGRATIONS: EmbeddedMigrations = embed_migrations!("./resources/main/migrations");
-    const FILENAME: &'static str = "data.sqlite";
 
     pub fn create(db_file: &Path) -> Result<Self> {
         require!(!db_file.exists(), "File {} already exists!", path_to_str(&db_file)?);
@@ -185,46 +186,11 @@ impl SqliteDao {
                         let mut offset: usize = 0;
                         loop {
                             let src_msgs = src.scroll_messages(&src_cwd.chat, offset, BATCH_SIZE)?;
-                            let full_raw_msgs: Vec<FullRawMessage> = src_msgs.iter()
-                                .map(|m| utils::message::serialize_and_copy_files(
-                                    m, src_cwd.chat.id, &raw_ds.uuid, &src_ds_root, &dst_ds_root))
-                                .try_collect()?;
-
-                            // copy_file
 
                             // Copy messages
                             self.conn.borrow_mut().transaction(|txn| {
-                                // Don't see a way around cloning here.
-                                let raw_messages = full_raw_msgs.iter().map(|full| full.m.clone()).collect_vec();
-
-                                // Even though SQLite supports RETURNING clause and Diesel claims to support it too,
-                                // it's not possible to INSERT RETURNING multiple values due to
-                                // https://stackoverflow.com/a/77488801/466646
-                                // To work around that, we have to do a separate SELECT.
-                                insert_into(message::table).values(&raw_messages).execute(txn)?;
-                                let mut internal_ids: Vec<i64> = schema::message::table
-                                    .order_by(schema::message::columns::internal_id.desc())
-                                    .limit(raw_messages.len() as i64)
-                                    .select(schema::message::columns::internal_id)
-                                    .load(txn)?;
-                                internal_ids.reverse();
-
-                                let mut raw_mcs = vec![];
-                                let mut raw_rtes = vec![];
-                                for (mut raw, internal_id) in full_raw_msgs.into_iter().zip(internal_ids) {
-                                    if let Some(mut mc) = raw.mc {
-                                        mc.message_internal_id = internal_id;
-                                        raw_mcs.push(mc);
-                                    }
-
-                                    raw.rtes.iter_mut().for_each(|rte| rte.message_internal_id = Some(internal_id));
-                                    raw_rtes.extend(raw.rtes.into_iter());
-                                }
-
-                                insert_into(message_content::table).values(raw_mcs).execute(txn)?;
-                                insert_into(message_text_element::table).values(raw_rtes).execute(txn)?;
-
-                                Ok::<_, anyhow::Error>(())
+                                self.copy_messages(txn, &src_msgs, src_cwd.chat.id,
+                                                   &raw_ds.uuid, &src_ds_root, &dst_ds_root)
                             })?;
 
                             if src_msgs.len() < BATCH_SIZE { break; }
@@ -285,7 +251,8 @@ impl SqliteDao {
 
             for (i, (src_cwd, dst_cwd)) in src_chats.iter().zip(dst_chats.iter()).enumerate() {
                 measure(|| {
-                    require!(src_cwd.chat == dst_cwd.chat,
+                    require!(PracticalEqTuple::new(&src_cwd.chat, src_ds_root, src_cwd).practically_equals(
+                            &PracticalEqTuple::new(&dst_cwd.chat, dst_ds_root, dst_cwd))?,
                              "Chat #{i} differs:\nWas    {:?}\nBecame {:?}", src_cwd.chat, dst_cwd.chat);
 
                     let src_messages = src.last_messages(&src_cwd.chat, src_cwd.chat.msg_count as usize)?;
@@ -315,6 +282,55 @@ impl SqliteDao {
     {
         utils::message::fetch(self.conn.borrow_mut().deref_mut(), get_raw_messages_with_content)
     }
+
+    fn invalidate_cache(&self) -> EmptyRes {
+        let mut cache = self.cache.as_ref().borrow_mut();
+        cache.initialized = false;
+        Ok(())
+    }
+
+    fn copy_messages(&self,
+                     conn: &mut SqliteConnection,
+                     src_msgs: &[Message],
+                     chat_id: i64,
+                     raw_uuid: &Vec<u8>,
+                     src_ds_root: &DatasetRoot,
+                     dst_ds_root: &DatasetRoot) -> EmptyRes {
+        let full_raw_msgs: Vec<FullRawMessage> = src_msgs.iter()
+            .map(|m| utils::message::serialize_and_copy_files(m, chat_id, &raw_uuid, &src_ds_root, &dst_ds_root))
+            .try_collect()?;
+
+        // Don't see a way around cloning here.
+        let raw_messages = full_raw_msgs.iter().map(|full| full.m.clone()).collect_vec();
+
+        // Even though SQLite supports RETURNING clause and Diesel claims to support it too,
+        // it's not possible to INSERT RETURNING multiple values due to
+        // https://stackoverflow.com/a/77488801/466646
+        // To work around that, we have to do a separate SELECT.
+        insert_into(schema::message::table).values(&raw_messages).execute(conn)?;
+        let mut internal_ids: Vec<i64> = schema::message::table
+            .order_by(schema::message::columns::internal_id.desc())
+            .limit(raw_messages.len() as i64)
+            .select(schema::message::columns::internal_id)
+            .load(conn)?;
+        internal_ids.reverse();
+
+        let mut raw_mcs = vec![];
+        let mut raw_rtes = vec![];
+        for (mut raw, internal_id) in full_raw_msgs.into_iter().zip(internal_ids) {
+            if let Some(mut mc) = raw.mc {
+                mc.message_internal_id = internal_id;
+                raw_mcs.push(mc);
+            }
+
+            raw.rtes.iter_mut().for_each(|rte| rte.message_internal_id = Some(internal_id));
+            raw_rtes.extend(raw.rtes.into_iter());
+        }
+
+        insert_into(schema::message_content::table).values(raw_mcs).execute(conn)?;
+        insert_into(schema::message_text_element::table).values(raw_rtes).execute(conn)?;
+        Ok(())
+    }
 }
 
 impl ChatHistoryDao for SqliteDao {
@@ -341,7 +357,7 @@ impl ChatHistoryDao for SqliteDao {
     fn users_inner(&self, ds_uuid: &PbUuid) -> Result<(Vec<User>, UserId)> {
         let cache = self.cache()?;
         let cache = cache.borrow();
-        let cache = &cache.users[ds_uuid];
+        let cache = cache.users.get(ds_uuid).context("Dataset has no users!")?;
         let users = cache.user_by_id.values().cloned().collect_vec();
         Ok((users, UserId(cache.myself.id)))
     }
@@ -503,6 +519,98 @@ impl ChatHistoryDao for SqliteDao {
     }
 }
 
+impl MutableChatHistoryDao for SqliteDao {
+    fn insert_dataset(&mut self, ds: Dataset) -> Result<Dataset> {
+        self.invalidate_cache()?;
+        let mut conn = self.conn.borrow_mut();
+        let conn = conn.deref_mut();
+
+        let raw_ds = utils::dataset::serialize(&ds);
+
+        insert_into(schema::dataset::dsl::dataset)
+            .values(raw_ds)
+            .execute(conn)?;
+
+        Ok(ds)
+    }
+
+    fn insert_user(&mut self, user: User, is_myself: bool) -> Result<User> {
+        self.invalidate_cache()?;
+        let mut conn = self.conn.borrow_mut();
+        let conn = conn.deref_mut();
+
+        let uuid = Uuid::parse_str(&user.ds_uuid.as_ref().unwrap().value).expect("Invalid UUID!");
+        let raw_user = utils::user::serialize(&user, is_myself, &Vec::from(uuid.as_ref()));
+
+        insert_into(schema::user::dsl::user)
+            .values(raw_user)
+            .execute(conn)?;
+
+        Ok(user)
+    }
+
+    fn insert_chat(&mut self, mut chat: Chat, src_ds_root: &DatasetRoot) -> Result<Chat> {
+        let mut conn = self.conn.borrow_mut();
+        let conn = conn.deref_mut();
+
+        if let Some(ref img) = chat.img_path_option {
+            let dst_ds_root = self.dataset_root(chat.ds_uuid());
+            chat.img_path_option = copy_file(&img, &None, &subpaths::ROOT,
+                                             chat.id, &src_ds_root, &dst_ds_root)?;
+        }
+
+        let uuid = Uuid::parse_str(&chat.ds_uuid.as_ref().unwrap().value).expect("Invalid UUID!");
+        let uuid_bytes = Vec::from(uuid.as_ref());
+        let raw_chat = utils::chat::serialize(&chat, &uuid_bytes)?;
+
+        insert_into(schema::chat::dsl::chat)
+            .values(raw_chat)
+            .execute(conn)?;
+
+        let chat_members = chat.member_ids.iter().map(|&user_id| RawChatMember {
+            ds_uuid: uuid_bytes.clone(),
+            chat_id: chat.id,
+            user_id,
+        }).collect_vec();
+
+
+        insert_into(schema::chat_member::dsl::chat_member)
+            .values(chat_members)
+            .execute(conn)?;
+
+        Ok(chat)
+    }
+
+    fn update_chat(&mut self, chat: Chat) -> Result<Chat> {
+        let mut conn = self.conn.borrow_mut();
+        let conn = conn.deref_mut();
+
+        let uuid = Uuid::parse_str(&chat.ds_uuid.as_ref().unwrap().value).expect("Invalid UUID!");
+        let uuid_bytes = Vec::from(uuid.as_ref());
+        let raw_chat = utils::chat::serialize(&chat, &uuid_bytes)?;
+
+        update(schema::chat::dsl::chat)
+            .set(raw_chat)
+            .execute(conn)?;
+
+        Ok(chat)
+    }
+
+    fn insert_messages(&mut self, msgs: Vec<Message>, chat: &Chat, src_ds_root: &DatasetRoot) -> EmptyRes {
+        let mut conn = self.conn.borrow_mut();
+        let conn = conn.deref_mut();
+
+        let dst_ds_root = self.dataset_root(chat.ds_uuid());
+        let uuid = Uuid::parse_str(&chat.ds_uuid.as_ref().unwrap().value).expect("Invalid UUID!");
+        let uuid_bytes = Vec::from(uuid.as_ref());
+
+        self.copy_messages(conn, &msgs, chat.id,
+                           &uuid_bytes, &src_ds_root, &dst_ds_root)?;
+
+        Ok(())
+    }
+}
+
 //
 // Helpers
 //
@@ -534,6 +642,9 @@ impl std::hash::Hash for PbUuid {
 }
 
 impl Eq for PbUuid {}
+
+const BACKUPS_DIR: &str = "_backups";
+const MAX_BACKUPS: i32 = 3;
 
 fn chat_root_rel_path(chat_id: i64) -> String {
     format!("chat_{chat_id}")
@@ -591,7 +702,7 @@ fn copy_file(src_rel_path: &str,
             None =>
                 src_file.file_name().unwrap().to_str().unwrap().to_owned()
         };
-        require!(!name.is_empty(), "Filename empty: ${src_absolute_path}");
+        require!(!name.is_empty(), "Filename empty: {src_absolute_path}");
 
         let dst_rel_path = format!("{}/{}/{}", chat_root_rel_path(chat_id), subpath.path_fragment, name);
         let dst_file = dst_ds_root.to_absolute(&dst_rel_path);
@@ -608,7 +719,7 @@ fn copy_file(src_rel_path: &str,
 
         Ok(Some(dst_rel_path))
     } else {
-        log::info!("Referenced file does not exist: ${src_rel_path}");
+        log::info!("Referenced file does not exist: {src_rel_path}");
         Ok(None)
     }
 }

@@ -38,6 +38,17 @@ lazy_static! {
     pub static ref HTTP_CLIENT: MockHttpClient = MockHttpClient::new();
 }
 
+#[macro_export]
+macro_rules! coerce_enum {
+    ($expr:expr, $pat:pat => $extracted_value:expr) => {{
+        if let $pat = $expr {
+            $extracted_value
+        } else {
+            panic!("Could not coerce {} to enum variant {}", stringify!($expr), stringify!($pat));
+        }
+    }};
+}
+
 pub fn resource(relative_path: &str) -> PathBuf {
     Path::new(RESOURCES_DIR.as_str()).join(relative_path)
 }
@@ -91,7 +102,7 @@ pub fn dataset_files(dao: &impl ChatHistoryDao, ds_uuid: &PbUuid) -> Vec<PathBuf
     files
 }
 
-
+/// Checks that files were copied from source to destination.
 pub fn assert_files(src_files: &[PathBuf], dst_files: &[PathBuf]) {
     assert_eq!(src_files.len(), dst_files.len());
     for (src, dst) in src_files.iter().zip(dst_files.iter()) {
@@ -103,17 +114,24 @@ pub fn assert_files(src_files: &[PathBuf], dst_files: &[PathBuf]) {
         assert!(content_eq, "Content of {} didn't match its source {}", dst.to_str().unwrap(), src.to_str().unwrap());
     }
 }
+
 //
 // Entity creation helpers
 //
 
+pub type MsgsMap<MsgType> = BTreeMap<MessageSourceId, MsgType>;
+
 pub struct DaoEntities<MsgType> {
     pub dao_holder: InMemoryDaoHolder,
     pub ds: Dataset,
-    pub root: DatasetRoot,
+    pub ds_root: DatasetRoot,
     pub users: Vec<User>,
-    pub cwd: ChatWithDetails,
-    pub msgs: BTreeMap<MessageSourceId, MsgType>,
+    pub cwd_option: Option<ChatWithDetails>,
+    pub msgs: MsgsMap<MsgType>,
+}
+
+impl<MsgType> DaoEntities<MsgType> {
+    pub fn cwd(&self) -> &ChatWithDetails { self.cwd_option.as_ref().unwrap() }
 }
 
 pub struct MergerHelper {
@@ -122,54 +140,51 @@ pub struct MergerHelper {
 }
 
 impl MergerHelper {
-    const MAX_USER_ID: usize = 3;
-
-    pub fn random_user_id() -> usize {
+    pub fn random_user_id(max: usize) -> usize {
         let mut rng = rand::thread_rng();
-        rng.gen_range(1..=Self::MAX_USER_ID)
+        rng.gen_range(1..=max)
     }
 
-    pub fn new_as_is(msgs1: Vec<Message>,
+    pub fn new_as_is(num_users: usize,
+                     msgs1: Vec<Message>,
                      msgs2: Vec<Message>) -> Self {
-        Self::new(msgs1, msgs2, &|_, _, _| {})
+        Self::new(num_users, msgs1, msgs2, &|_, _, _| {})
     }
 
-    pub fn new(msgs1: Vec<Message>,
+    pub fn new(num_users: usize,
+               msgs1: Vec<Message>,
                msgs2: Vec<Message>,
                amend_message: &impl Fn(bool, &DatasetRoot, &mut Message)) -> Self {
-        let m =
-            create_dao_and_entities(true, "One", msgs1, Self::MAX_USER_ID, amend_message, MasterMessage);
-        let s =
-            create_dao_and_entities(false, "Two", msgs2, Self::MAX_USER_ID, amend_message, SlaveMessage);
+        let m_dao = create_simple_dao(true, "One", msgs1, num_users, amend_message);
+        let s_dao = create_simple_dao(false, "Two", msgs2, num_users, amend_message);
+        Self::new_from_daos(m_dao, s_dao)
+    }
+
+    pub fn new_from_daos(m_dao: InMemoryDaoHolder, s_dao: InMemoryDaoHolder) -> Self {
+        let m = get_simple_dao_entities(m_dao, MasterMessage);
+        let s = get_simple_dao_entities(s_dao, SlaveMessage);
         MergerHelper { m, s }
     }
 }
 
-fn create_dao_and_entities<MsgType>(
-    is_master: bool,
-    name_suffix: &str,
-    src_msgs: Vec<Message>,
-    num_users: usize,
-    amend_message: &impl Fn(bool, &DatasetRoot, &mut Message),
+pub fn get_simple_dao_entities<MsgType>(
+    dao_holder: InMemoryDaoHolder,
     wrap_message: fn(Message) -> MsgType,
 ) -> DaoEntities<MsgType> {
-    let dao_holder = create_simple_dao(is_master, name_suffix, src_msgs, num_users, amend_message);
-    let (ds, root, users, cwd, msgs) =
-        get_simple_dao_entities(dao_holder.dao.as_ref());
-    let duplicates = msgs.iter().map(|m| m.source_id()).counts().into_iter().filter(|pair| pair.1 > 1).collect_vec();
-    assert!(duplicates.is_empty(), "Duplicate messages found! {:?}", duplicates);
-    let msgs = msgs.into_iter().map(|m| (m.source_id(), wrap_message(m))).collect();
-    DaoEntities { dao_holder, ds, root, users, cwd, msgs }
-}
-
-fn get_simple_dao_entities(dao: &impl ChatHistoryDao)
-                           -> (Dataset, DatasetRoot, Vec<User>, ChatWithDetails, Vec<Message>) {
+    let dao = dao_holder.dao.as_ref();
     let ds = dao.datasets().unwrap().remove(0);
     let ds_root = dao.dataset_root(ds.uuid());
     let users = dao.users(&ds.uuid()).unwrap();
-    let cwd = dao.chats(&ds.uuid()).unwrap().remove(0);
-    let msgs = dao.first_messages(&cwd.chat, usize::MAX).unwrap();
-    (ds, ds_root, users, cwd, msgs)
+    let chat = dao.chats(&ds.uuid()).unwrap();
+    let cwd_option = if chat.is_empty() { None } else { Some(dao.chats(&ds.uuid()).unwrap().remove(0)) };
+    let msgs = match cwd_option {
+        Some(ref cwd) => dao.first_messages(&cwd.chat, usize::MAX).unwrap(),
+        None => vec![],
+    };
+    let duplicates = msgs.iter().map(|m| m.source_id()).counts().into_iter().filter(|pair| pair.1 > 1).collect_vec();
+    assert!(duplicates.is_empty(), "Duplicate messages found! {:?}", duplicates);
+    let msgs = msgs.into_iter().map(|m| (m.source_id(), wrap_message(m))).collect();
+    DaoEntities { dao_holder, ds, ds_root, users, cwd_option, msgs }
 }
 
 pub fn create_simple_dao(
@@ -179,8 +194,8 @@ pub fn create_simple_dao(
     num_users: usize,
     amend_message: &impl Fn(bool, &DatasetRoot, &mut Message),
 ) -> InMemoryDaoHolder {
-    let member_ids = (1..=num_users).map(|i| i as i64).collect();
     let users = (1..=num_users).map(|i| create_user(&ZERO_PB_UUID, i as i64)).collect_vec();
+    let member_ids = users.iter().map(|u| u.id).collect_vec();
     let chat = create_group_chat(&ZERO_PB_UUID, 1, "One", member_ids, messages.len());
     let cwms = vec![ChatWithMessages { chat: Some(chat), messages }];
     create_dao(name_suffix, users, cwms, |ds_root, m| amend_message(is_master, ds_root, m))
@@ -188,7 +203,7 @@ pub fn create_simple_dao(
 
 pub fn create_dao(
     name_suffix: &str,
-    users: Vec<User> /* Last one would be self. */,
+    users: Vec<User> /* First one would be self. */,
     cwms: Vec<ChatWithMessages>,
     amend_messages: impl Fn(&DatasetRoot, &mut Message),
 ) -> InMemoryDaoHolder {
@@ -212,17 +227,23 @@ pub fn create_dao(
 
     let mut cwms = cwms;
     for cwm in cwms.iter_mut() {
-        cwm.chat.iter_mut().for_each(|c| c.ds_uuid = ds.uuid.clone());
-        cwm.messages.iter_mut().for_each(|m| amend_messages(&ds_root, m));
+        for c in cwm.chat.iter_mut() {
+            c.ds_uuid = ds.uuid.clone();
+            let img = create_random_file(&ds_root.0);
+            c.img_path_option = Some(ds_root.to_relative(&img).unwrap())
+        }
+        for m in cwm.messages.iter_mut() {
+            amend_messages(&ds_root, m);
+        }
     }
-    let myself = users.last().unwrap().clone();
+    let myself = users.first().unwrap().clone();
     InMemoryDaoHolder {
-        dao: Box::new(InMemoryDao::new("Test Dao".to_owned(), ds, ds_root.0, myself, users, cwms)),
+        dao: Box::new(InMemoryDao::new(format!("Test Dao {name_suffix}"), ds, ds_root.0, myself, users, cwms)),
         tmp_dir: tmp_dir,
     }
 }
 
-fn create_user(ds_uuid: &PbUuid, id: i64) -> User {
+pub fn create_user(ds_uuid: &PbUuid, id: i64) -> User {
     User {
         ds_uuid: Some(ds_uuid.clone()),
         id,
@@ -233,7 +254,7 @@ fn create_user(ds_uuid: &PbUuid, id: i64) -> User {
     }
 }
 
-fn create_group_chat(ds_uuid: &PbUuid, id: i64, name_suffix: &str, member_ids: Vec<i64>, msg_count: usize) -> Chat {
+pub fn create_group_chat(ds_uuid: &PbUuid, id: i64, name_suffix: &str, member_ids: Vec<i64>, msg_count: usize) -> Chat {
     assert!(member_ids.len() >= 2);
     Chat {
         ds_uuid: Some(ds_uuid.clone()),
@@ -332,9 +353,34 @@ pub struct InMemoryDaoHolder {
     pub tmp_dir: TmpDir,
 }
 
+pub const fn src_id(id: i64) -> MessageSourceId { MessageSourceId(id) }
+
 impl Message {
-    pub fn source_id(&self) -> MessageSourceId { MessageSourceId(self.source_id_option.unwrap()) }
+    pub fn source_id(&self) -> MessageSourceId { src_id(self.source_id_option.unwrap()) }
 }
+
+pub trait MsgVec {
+    fn cloned<const N: usize>(&self, src_ids: [MessageSourceId; N]) -> Self;
+    fn changed(&self, condition: impl Fn(MessageSourceId) -> bool) -> Self;
+}
+
+impl MsgVec for Vec<Message> {
+    fn cloned<const N: usize>(&self, src_ids: [MessageSourceId; N]) -> Self {
+        self.iter().filter(|u| src_ids.contains(&u.source_id())).cloned().collect_vec()
+    }
+
+    fn changed(&self, condition: impl Fn(MessageSourceId) -> bool) -> Self {
+        self.iter().cloned().map(|m| match m {
+            Message { typed: Some(ref typed @ message::Typed::Regular(_)), .. } if condition(m.source_id()) => {
+                let text = vec![RichText::make_plain(format!("Different message {}", *m.source_id()))];
+                let searchable_string = make_searchable_string(&text, typed);
+                Message { text, searchable_string, ..m }
+            }
+            m => m
+        }).collect_vec()
+    }
+}
+
 
 impl<'a, T> PracticalEq for PracticalEqTuple<'a, Vec<T>> where for<'b> PracticalEqTuple<'a, T>: PracticalEq {
     fn practically_equals(&self, other: &Self) -> Result<bool> {

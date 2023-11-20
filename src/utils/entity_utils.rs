@@ -61,6 +61,9 @@ impl UserId {
     pub fn is_valid(&self) -> bool { self.0 > 0 }
 }
 
+#[derive(Deref, Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct ChatId(pub i64);
+
 #[derive(Deref, Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct MessageSourceId(pub i64);
 
@@ -138,7 +141,7 @@ impl Dataset {
     pub fn uuid(&self) -> &PbUuid { self.uuid.as_ref().unwrap() }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ChatWithDetails {
     pub chat: Chat,
     pub last_msg_option: Option<Message>,
@@ -150,6 +153,8 @@ impl ChatWithDetails {
     pub fn ds_uuid(&self) -> &PbUuid {
         self.chat.ds_uuid.as_ref().unwrap()
     }
+
+    pub fn id(&self) -> ChatId { ChatId(self.chat.id) }
 
     /** Used to resolve plaintext members */
     pub fn resolve_member_index(&self, member_name: &str) -> Option<usize> {
@@ -172,8 +177,10 @@ impl Chat {
         self.ds_uuid.as_ref().unwrap()
     }
 
+    pub fn id(&self) -> ChatId { ChatId(self.id) }
+
     pub fn qualified_name(&self) -> String {
-        format!("'{}' (#${})", name_or_unnamed(&self.name_option), self.id)
+        format!("'{}' (#{})", name_or_unnamed(&self.name_option), self.id)
     }
 
     pub fn member_ids(&self) -> impl Iterator<Item=UserId> + '_ {
@@ -390,10 +397,18 @@ impl ContentLocation {
 //
 
 #[derive(Deref, Copy, Clone, Debug, PartialEq, Eq)]
-pub struct MasterInternalId(i64);
+pub struct MasterInternalId(pub i64);
+
+impl MasterInternalId {
+    pub fn generalize(&self) -> MessageInternalId { MessageInternalId(self.0) }
+}
 
 #[derive(Deref, Copy, Clone, Debug, PartialEq, Eq)]
-pub struct SlaveInternalId(i64);
+pub struct SlaveInternalId(pub i64);
+
+impl SlaveInternalId {
+    pub fn generalize(&self) -> MessageInternalId { MessageInternalId(self.0) }
+}
 
 pub trait WithTypedId {
     type Item: Clone;

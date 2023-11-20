@@ -98,3 +98,20 @@ pub trait ChatHistoryDao: Send {
         self.storage_path() == storage_path
     }
 }
+
+pub trait MutableChatHistoryDao: ChatHistoryDao {
+    fn insert_dataset(&mut self, ds: Dataset) -> Result<Dataset>;
+
+    fn insert_user(&mut self, user: User, is_myself: bool) -> Result<User>;
+
+    /// Copies image (if any) from dataset root.
+    fn insert_chat(&mut self, chat: Chat, src_ds_root: &DatasetRoot) -> Result<Chat>;
+
+    /// Note that chat members and image won't be changed!
+    fn update_chat(&mut self, chat: Chat) -> Result<Chat>;
+
+    /// Insert a new message for the given chat.
+    /// Internal ID will be ignored.
+    /// Content will be resolved based on the given dataset root and copied accordingly.
+    fn insert_messages(&mut self, msgs: Vec<Message>, chat: &Chat, src_ds_root: &DatasetRoot) -> EmptyRes;
+}
