@@ -1,4 +1,4 @@
-use std::cell::RefCell;
+use std::cell::{RefCell, UnsafeCell};
 use std::collections::BTreeMap;
 use std::fs;
 use std::io::Write;
@@ -9,7 +9,8 @@ use chrono::*;
 use itertools::Itertools;
 use lazy_static::lazy_static;
 use pretty_assertions::assert_eq;
-use rand::Rng;
+use rand::{Rng, SeedableRng};
+use rand::rngs::SmallRng;
 use uuid::Uuid;
 
 use crate::*;
@@ -38,6 +39,10 @@ lazy_static! {
     pub static ref HTTP_CLIENT: MockHttpClient = MockHttpClient::new();
 }
 
+thread_local! {
+    static RNG: UnsafeCell<SmallRng> = UnsafeCell::new(SmallRng::from_entropy());
+}
+
 #[macro_export]
 macro_rules! coerce_enum {
     ($expr:expr, $pat:pat => $extracted_value:expr) => {{
@@ -47,6 +52,11 @@ macro_rules! coerce_enum {
             panic!("Could not coerce {} to enum variant {}", stringify!($expr), stringify!($pat));
         }
     }};
+}
+
+pub fn rng() -> &'static mut SmallRng {
+    let ptr = RNG.with(|rng: &UnsafeCell<SmallRng>| rng.get());
+    unsafe { &mut *ptr }
 }
 
 pub fn resource(relative_path: &str) -> PathBuf {
@@ -60,7 +70,7 @@ pub fn dt(s: &str, offset: Option<&FixedOffset>) -> DateTime<FixedOffset> {
 }
 
 pub fn random_alphanumeric(length: usize) -> String {
-    rand::thread_rng()
+    rng()
         .sample_iter(&rand::distributions::Alphanumeric)
         .take(length)
         .map(char::from)
@@ -81,7 +91,6 @@ pub fn create_random_file(parent: &Path) -> PathBuf {
     create_random_named_file(&path);
     path
 }
-
 
 /// Returns paths to all files referenced by entities of this dataset. Some might not exist.
 /// Files order matches the chats and messages order returned by DAO.
@@ -141,8 +150,7 @@ pub struct MergerHelper {
 
 impl MergerHelper {
     pub fn random_user_id(max: usize) -> usize {
-        let mut rng = rand::thread_rng();
-        rng.gen_range(1..=max)
+        rng().gen_range(1..=max)
     }
 
     pub fn new_as_is(num_users: usize,
@@ -269,7 +277,7 @@ pub fn create_group_chat(ds_uuid: &PbUuid, id: i64, name_suffix: &str, member_id
 }
 
 pub fn create_regular_message(idx: usize, user_id: usize) -> Message {
-    let mut rng = rand::thread_rng();
+    let rng = rng();
     // Any previous message
     let reply_to_message_id_option =
         if idx > 0 { Some(rng.gen_range(0..idx) as i64) } else { None };

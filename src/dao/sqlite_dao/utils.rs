@@ -204,7 +204,7 @@ pub mod chat {
             .map(|id|
                 cache.user_by_id.get(&id)
                     .cloned()
-                    .ok_or_else(|| anyhow!("Cannot find user with ID {}", *id))
+                    .with_context(|| format!("Cannot find user with ID {}", *id))
             )
             .try_collect::<_, Vec<_>, _>()?
             .into_iter()
@@ -590,8 +590,8 @@ pub mod message {
         use content::SealedValueOptional::*;
         macro_rules! get_or_bail {
                 ($obj:ident.$field:ident) => {
-                    $obj.$field.ok_or_else(|| anyhow!("{} field was missing for a {} content!",
-                                                      stringify!($field), raw.element_type))? };
+                    $obj.$field.with_context(|| format!("{} field was missing for a {} content!",
+                                                        stringify!($field), raw.element_type))? };
             }
         Ok(match raw.element_type.as_str() {
             "sticker" => Sticker(ContentSticker {
@@ -664,7 +664,7 @@ pub mod message {
     fn deserialize_photo(raw: RawMessageContent) -> Result<ContentPhoto> {
         macro_rules! get_or_bail {
                 ($obj:ident.$field:ident) => {
-                    $obj.$field.ok_or_else(|| anyhow!("{} field was missing for a photo!", stringify!($field)))? };
+                    $obj.$field.with_context(|| format!("{} field was missing for a photo!", stringify!($field)))? };
             }
         Ok(ContentPhoto {
             path_option: raw.path,
@@ -678,13 +678,13 @@ pub mod message {
                            -> Result<message_service::SealedValueOptional> {
         use message_service::SealedValueOptional::*;
         macro_rules! raw_or_bail {
-                () => { raw.ok_or_else(|| anyhow!("Message content was not present for a {} service message!",
-                                                  subtype))? };
+                () => { raw.with_context(|| format!("Message content was not present for a {} service message!",
+                                                    subtype))? };
             }
         macro_rules! get_or_bail {
                 ($obj:ident.$field:ident) => {
-                    $obj.$field.ok_or_else(|| anyhow!("{} field was missing for a {} service message!",
-                                                      stringify!($field), subtype))? };
+                    $obj.$field.with_context(|| format!("{} field was missing for a {} service message!",
+                                                        stringify!($field), subtype))? };
             }
         Ok(match subtype {
             "phone_call" => {
@@ -763,8 +763,8 @@ pub mod message {
 
     fn deserialize_rte(raw: RawRichTextElement) -> Result<RichTextElement> {
         macro_rules! text_or_bail {
-                () => { raw.text.ok_or_else(|| anyhow!("Text not found for a rich text element #{} ({})!",
-                                                       raw.id.unwrap(), raw.element_type))? };
+                () => { raw.text.with_context(|| format!("Text not found for a rich text element #{} ({})!",
+                                                         raw.id.unwrap(), raw.element_type))? };
             }
         Ok(match raw.element_type.as_str() {
             "plain" => RichText::make_plain(text_or_bail!()),
@@ -773,7 +773,7 @@ pub mod message {
             "underline" => RichText::make_underline(text_or_bail!()),
             "strikethrough" => RichText::make_strikethrough(text_or_bail!()),
             "link" => RichText::make_link(raw.text,
-                                          raw.href.ok_or_else(|| anyhow!("Link has no href!"))?,
+                                          raw.href.with_context(|| format!("Link has no href!"))?,
                                           raw.hidden.map(deserialize_bool).unwrap_or_default()),
             "prefmt_inline" => RichText::make_prefmt_inline(text_or_bail!()),
             "prefmt_block" => RichText::make_prefmt_block(text_or_bail!(), raw.language),

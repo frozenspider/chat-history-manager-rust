@@ -228,7 +228,7 @@ impl SqliteDao {
                              dst_ds_root: &DatasetRoot) -> EmptyRes {
         measure(|| {
             let ds = self.datasets()?.into_iter().find(|ds| ds.uuid() == ds_uuid)
-                .ok_or(anyhow!("Dataset {} not found after insert!", ds_uuid.value))?;
+                .with_context(|| format!("Dataset {} not found after insert!", ds_uuid.value))?;
             require!(*src_ds == ds, "Inserted dataset is not the same as original!");
 
             measure(|| {

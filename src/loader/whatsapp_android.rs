@@ -467,7 +467,7 @@ fn parse_chats(conn: &Connection, ds_uuid: &PbUuid, users: &mut Users) -> Result
             let from_id = *from_id;
 
             let msg_tpe = row.get::<_, i32>(columns::message::TYPE)?;
-            let msg_tpe = MessageType::try_from(msg_tpe).map_err(|_| anyhow!("Unknown message type ID: {msg_tpe}"))?;
+            let msg_tpe = MessageType::try_from(msg_tpe).with_context(|| format!("Unknown message type ID: {msg_tpe}"))?;
 
             let (typed, text_column) = {
                 let result_option = match msg_tpe {
@@ -580,7 +580,7 @@ fn parse_system_message<'a>(
         MessageType::System => {
             let action_type = row.get::<_, i32>("action_type")?;
             let action_type = SystemActionType::try_from(action_type)
-                .map_err(|_| anyhow!("Unknown system message type ID: {action_type}"))?;
+                .with_context(|| format!("Unknown system message type ID: {action_type}"))?;
 
             let mut get_group_user = |users: &'a mut Users, column: &str| -> Result<&'a User> {
                 let user_id = UserId(hash_to_id(&row.get::<_, String>(column)?));

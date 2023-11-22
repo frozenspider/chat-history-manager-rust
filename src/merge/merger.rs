@@ -139,7 +139,7 @@ fn merge_inner(
                 bail!("More than one other member for personal chat {}!", cwd.chat.qualified_name())
             }
             let final_user = final_users.iter().find(|u| u.id == interlocutors[0].id).with_context(||
-                anyhow!("User {} not found among final users! Personal chat should've been skipped",
+                format!("User {} not found among final users! Personal chat should've been skipped",
                         interlocutors[0].id))?;
             cwd.chat.name_option = final_user.pretty_name_option();
         }

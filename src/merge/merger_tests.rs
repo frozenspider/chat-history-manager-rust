@@ -8,8 +8,6 @@ use crate::protobuf::history::*;
 
 use super::*;
 
-const MAX_MSG_ID: MessageSourceId = src_id((BATCH_SIZE as i64) * 3 + 1);
-
 #[test]
 fn merge_users() -> EmptyRes {
     let users = (1..=6).map(|id| create_user(&ZERO_PB_UUID, id)).collect_vec();
@@ -544,8 +542,9 @@ fn merge_chats_merge_all_modes() -> EmptyRes {
 /// `Replace(1, n/2-1), DontReplace(n/2, ns)`
 #[test]
 fn merge_chats_merge_a_lot_of_messages() -> EmptyRes {
-    // FIXME: profile!
-    let msgs_a = (1..=*MAX_MSG_ID).map(|idx| create_regular_message(idx as usize, 1)).collect_vec();
+    const MAX_MSG_ID: i64 = (BATCH_SIZE as i64) * 3 + 1;
+
+    let msgs_a = (1..=MAX_MSG_ID).map(|idx| create_regular_message(idx as usize, 1)).collect_vec();
     let msgs_b = msgs_a.changed(|_| true);
     let helper = MergerHelper::new(
         2, msgs_a, msgs_b,
@@ -554,7 +553,7 @@ fn merge_chats_merge_a_lot_of_messages() -> EmptyRes {
         },
     );
 
-    let half = *MAX_MSG_ID / 2;
+    let half = MAX_MSG_ID / 2;
 
     let chat_merges = vec![
         ChatMergeDecision::Merge {
@@ -584,14 +583,14 @@ fn merge_chats_merge_a_lot_of_messages() -> EmptyRes {
 
     let new_chat = &new_chats[0].chat;
     let new_messages = new_dao.first_messages(new_chat, usize::MAX)?;
-    assert_eq!(new_messages.len(), *MAX_MSG_ID as usize);
-    assert_eq!(new_chat.msg_count, *MAX_MSG_ID as i32);
+    assert_eq!(new_messages.len(), MAX_MSG_ID as usize);
+    assert_eq!(new_chat.msg_count, MAX_MSG_ID as i32);
 
     let expected = vec![
         (1..half)
             .map(|i| PracticalEqTuple::new(&helper.s.msgs[&src_id(i)].0, &helper.s.ds_root, helper.s.cwd()))
             .collect_vec(),
-        (half..=*MAX_MSG_ID)
+        (half..=MAX_MSG_ID)
             .map(|i| PracticalEqTuple::new(&helper.m.msgs[&src_id(i)].0, &helper.m.ds_root, helper.m.cwd()))
             .collect_vec(),
     ].into_iter().concat();
