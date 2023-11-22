@@ -153,7 +153,7 @@ pub struct RawUser {
     pub is_myself: i32,
 }
 
-#[derive(Debug, PartialEq, QueryableByName, Insertable)]
+#[derive(Debug, PartialEq, QueryableByName, Insertable, AsChangeset)]
 #[diesel(table_name = schema::chat)]
 #[diesel(check_for_backend(diesel::sqlite::Sqlite))]
 pub struct RawChat {

@@ -13,8 +13,8 @@ fn basics() -> EmptyRes {
 
     let users = dao.users(&ds_uuid)?;
     assert_eq!(users.len(), 2);
-    assert_eq!(users[0].id, 2);
-    assert_eq!(users[1].id, 1);
+    assert_eq!(users[0].id, 1);
+    assert_eq!(users[1].id, 2);
     assert_eq!(dao.chats(&ds_uuid)?.len(), 1);
 
     let cwd = dao.chats(&ds_uuid)?.remove(0);

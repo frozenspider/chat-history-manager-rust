@@ -49,7 +49,7 @@ macro_rules! as_str_option_res {
 #[macro_export]
 macro_rules! as_str_res {
     ($v:expr, $path:expr) => {
-        as_str_option_res!($v, $path)?.ok_or_else(|| anyhow!("'{}' is an empty string", $path))
+        as_str_option_res!($v, $path)?.with_context(|| format!("'{}' is an empty string", $path))
     };
     ($v:expr, $path:expr, $path2:expr) => {as_str_res!($v, format!("{}.{}", $path, $path2))};
 }
@@ -102,7 +102,7 @@ macro_rules! as_object {
 #[macro_export]
 macro_rules! get_field {
     ($v:expr, $path:expr, $txt:expr) => {
-        $v.get($txt).ok_or(anyhow!("{}.{} field not found", $path, $txt))
+        $v.get($txt).with_context(|| format!("{}.{} field not found", $path, $txt))
     };
 }
 #[macro_export]

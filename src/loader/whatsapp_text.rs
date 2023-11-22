@@ -165,7 +165,7 @@ fn parse_messages(content: &str, myself: &User, other: &User) -> Result<Vec<Mess
             _ => {
                 // Time to process collected info
                 let timestamp = if timestamp != Timestamp::MIN { *timestamp } else { bail!("Message timestamp unknown!") };
-                let from_id = *user_id.ok_or_else(|| anyhow!("Message author unknown!"))?;
+                let from_id = *user_id.with_context(|| format!("Message author unknown!"))?;
 
                 last_internal_id = MessageInternalId(*last_internal_id + 1);
 

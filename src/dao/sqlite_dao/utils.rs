@@ -105,7 +105,7 @@ pub mod user {
         }, deserialize_bool(raw.is_myself)))
     }
 
-    pub fn serialize(user: &User, myself: bool, raw_uuid: &Vec<u8>) -> RawUser {
+    pub fn serialize(user: &User, is_myself: bool, raw_uuid: &Vec<u8>) -> RawUser {
         RawUser {
             ds_uuid: raw_uuid.clone(),
             id: user.id,
@@ -113,7 +113,7 @@ pub mod user {
             last_name: user.last_name_option.clone(),
             username: user.username_option.clone(),
             phone_numbers: user.phone_number_option.clone(),
-            is_myself: serialize_bool(myself),
+            is_myself: serialize_bool(is_myself),
         }
     }
 }
@@ -199,14 +199,17 @@ pub mod chat {
         Ok(cwd)
     }
 
-    fn resolve_users(cache: &super::UserCacheForDataset, user_ids: impl Iterator<Item=UserId>) -> Result<Vec<User>> {
-        user_ids
+    fn resolve_users(cache: &UserCacheForDataset, user_ids: impl Iterator<Item=UserId>) -> Result<Vec<User>> {
+        Ok(user_ids
             .map(|id|
                 cache.user_by_id.get(&id)
                     .cloned()
-                    .ok_or_else(|| anyhow!("Cannot find user with ID {}", *id))
+                    .with_context(|| format!("Cannot find user with ID {}", *id))
             )
-            .try_collect()
+            .try_collect::<_, Vec<_>, _>()?
+            .into_iter()
+            .sorted_by_key(|u| if u.id == cache.myself.id { i64::MIN } else { u.id })
+            .collect_vec())
     }
 }
 
@@ -252,7 +255,7 @@ pub mod message {
     /// Discards message internal ID.
     pub fn serialize_and_copy_files(m: &Message,
                                     chat_id: i64,
-                                    raw_uuid: &Vec<u8>,
+                                    raw_uuid: &[u8],
                                     src_ds_root: &DatasetRoot,
                                     dst_ds_root: &DatasetRoot) -> Result<FullRawMessage> {
         let (tpe, subtype, mc, time_edited, is_deleted, forward_from_name, reply_to_message_id) =
@@ -278,7 +281,7 @@ pub mod message {
         Ok(FullRawMessage {
             m: RawMessage {
                 internal_id: None, // Discarded
-                ds_uuid: raw_uuid.clone(),
+                ds_uuid: Vec::from(raw_uuid),
                 chat_id,
                 source_id: m.source_id_option.clone(),
                 tpe: tpe.to_owned(),
@@ -310,7 +313,7 @@ pub mod message {
         Ok(match mc {
             Sticker(v) => {
                 let path = copy_path!(v.path_option, &None, &subpaths::STICKERS);
-                let thumbnail_path = copy_path!(v.thumbnail_path_option, &v.path_option, &subpaths::STICKERS);
+                let thumbnail_path = copy_path!(v.thumbnail_path_option, &path, &subpaths::STICKERS);
                 RawMessageContent {
                     element_type: "sticker".to_owned(),
                     path,
@@ -334,7 +337,7 @@ pub mod message {
             }
             Audio(v) => {
                 let path = copy_path!(v.path_option, &None, &subpaths::AUDIOS);
-                let thumbnail_path = copy_path!(v.thumbnail_path_option, &v.path_option, &subpaths::AUDIOS);
+                let thumbnail_path = copy_path!(v.thumbnail_path_option, &path, &subpaths::AUDIOS);
                 RawMessageContent {
                     element_type: "audio".to_owned(),
                     path,
@@ -348,7 +351,7 @@ pub mod message {
             }
             VideoMsg(v) => {
                 let path = copy_path!(v.path_option, &None, &subpaths::VIDEO_MESSAGES);
-                let thumbnail_path = copy_path!(v.thumbnail_path_option, &v.path_option, &subpaths::VIDEO_MESSAGES);
+                let thumbnail_path = copy_path!(v.thumbnail_path_option, &path, &subpaths::VIDEO_MESSAGES);
                 RawMessageContent {
                     element_type: "video_message".to_owned(),
                     path,
@@ -363,7 +366,7 @@ pub mod message {
             }
             Video(v) => {
                 let path = copy_path!(v.path_option, &None, &subpaths::VIDEOS);
-                let thumbnail_path = copy_path!(v.thumbnail_path_option, &v.path_option, &subpaths::VIDEOS);
+                let thumbnail_path = copy_path!(v.thumbnail_path_option, &path, &subpaths::VIDEOS);
                 RawMessageContent {
                     element_type: "video".to_owned(),
                     path,
@@ -380,7 +383,7 @@ pub mod message {
             }
             File(v) => {
                 let path = copy_path!(v.path_option, &None, &subpaths::FILES);
-                let thumbnail_path = copy_path!(v.thumbnail_path_option, &v.path_option, &subpaths::FILES);
+                let thumbnail_path = copy_path!(v.thumbnail_path_option, &path, &subpaths::FILES);
                 RawMessageContent {
                     element_type: "file".to_owned(),
                     path,
@@ -587,8 +590,8 @@ pub mod message {
         use content::SealedValueOptional::*;
         macro_rules! get_or_bail {
                 ($obj:ident.$field:ident) => {
-                    $obj.$field.ok_or_else(|| anyhow!("{} field was missing for a {} content!",
-                                                      stringify!($field), raw.element_type))? };
+                    $obj.$field.with_context(|| format!("{} field was missing for a {} content!",
+                                                        stringify!($field), raw.element_type))? };
             }
         Ok(match raw.element_type.as_str() {
             "sticker" => Sticker(ContentSticker {
@@ -661,7 +664,7 @@ pub mod message {
     fn deserialize_photo(raw: RawMessageContent) -> Result<ContentPhoto> {
         macro_rules! get_or_bail {
                 ($obj:ident.$field:ident) => {
-                    $obj.$field.ok_or_else(|| anyhow!("{} field was missing for a photo!", stringify!($field)))? };
+                    $obj.$field.with_context(|| format!("{} field was missing for a photo!", stringify!($field)))? };
             }
         Ok(ContentPhoto {
             path_option: raw.path,
@@ -675,13 +678,13 @@ pub mod message {
                            -> Result<message_service::SealedValueOptional> {
         use message_service::SealedValueOptional::*;
         macro_rules! raw_or_bail {
-                () => { raw.ok_or_else(|| anyhow!("Message content was not present for a {} service message!",
-                                                  subtype))? };
+                () => { raw.with_context(|| format!("Message content was not present for a {} service message!",
+                                                    subtype))? };
             }
         macro_rules! get_or_bail {
                 ($obj:ident.$field:ident) => {
-                    $obj.$field.ok_or_else(|| anyhow!("{} field was missing for a {} service message!",
-                                                      stringify!($field), subtype))? };
+                    $obj.$field.with_context(|| format!("{} field was missing for a {} service message!",
+                                                        stringify!($field), subtype))? };
             }
         Ok(match subtype {
             "phone_call" => {
@@ -760,8 +763,8 @@ pub mod message {
 
     fn deserialize_rte(raw: RawRichTextElement) -> Result<RichTextElement> {
         macro_rules! text_or_bail {
-                () => { raw.text.ok_or_else(|| anyhow!("Text not found for a rich text element #{} ({})!",
-                                                       raw.id.unwrap(), raw.element_type))? };
+                () => { raw.text.with_context(|| format!("Text not found for a rich text element #{} ({})!",
+                                                         raw.id.unwrap(), raw.element_type))? };
             }
         Ok(match raw.element_type.as_str() {
             "plain" => RichText::make_plain(text_or_bail!()),
@@ -770,7 +773,7 @@ pub mod message {
             "underline" => RichText::make_underline(text_or_bail!()),
             "strikethrough" => RichText::make_strikethrough(text_or_bail!()),
             "link" => RichText::make_link(raw.text,
-                                          raw.href.ok_or_else(|| anyhow!("Link has no href!"))?,
+                                          raw.href.with_context(|| format!("Link has no href!"))?,
                                           raw.hidden.map(deserialize_bool).unwrap_or_default()),
             "prefmt_inline" => RichText::make_prefmt_inline(text_or_bail!()),
             "prefmt_block" => RichText::make_prefmt_block(text_or_bail!(), raw.language),

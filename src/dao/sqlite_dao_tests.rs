@@ -217,7 +217,7 @@ fn fetching_corner_cases() -> EmptyRes {
     for (dao, clue) in dao_vec {
         for ChatWithDetails { chat, .. } in dao.chats(&daos.ds_uuid)? {
             let msgs = dao.first_messages(&chat, usize::MAX)?;
-            let m = |i| msgs.iter().find(|m| m.source_id_option == Some(i)).unwrap();
+            let m = |i| msgs.iter().find(|m| m.source_id() == src_id(i)).unwrap();
 
             assert_eq!(&dao.messages_before(&chat, m(3).internal_id(), 10)?, &[], "{clue}");
             assert_eq!(&dao.messages_before(&chat, m(4).internal_id(), 10)?, &[m(3).clone()], "{clue}");
@@ -238,6 +238,67 @@ fn fetching_corner_cases() -> EmptyRes {
             assert_eq!(dao.messages_slice_len(&chat, m(5).internal_id(), m(7).internal_id())?, 3, "{clue}");
         }
     }
+    Ok(())
+}
+
+#[test]
+fn inserts() -> EmptyRes {
+    let dao_holder = create_simple_dao(
+        false,
+        "test",
+        (1..=10).map(|idx| create_regular_message(idx, 1)).collect_vec(),
+        2,
+        &|_, _, _| {});
+    let src_dao = dao_holder.dao.as_ref();
+    let ds_uuid = src_dao.dataset.uuid();
+    let src_ds_root = src_dao.dataset_root(ds_uuid);
+
+    let (mut dst_dao, _dst_dao_tmpdir) = create_sqlite_dao();
+    let dst_ds_root = dst_dao.dataset_root(ds_uuid);
+    assert_eq!(dst_dao.datasets()?, vec![]);
+
+    // Inserting dataset and users
+    dst_dao.insert_dataset(src_dao.dataset.clone())?;
+    for u in src_dao.users.clone() {
+        let is_myself = u.id == src_dao.myself.id;
+        dst_dao.insert_user(u, is_myself)?;
+    }
+    assert_eq!(dst_dao.datasets()?, src_dao.datasets()?);
+    assert_eq!(dst_dao.users(ds_uuid)?, src_dao.users(ds_uuid)?);
+    assert_eq!(dst_dao.myself(ds_uuid)?, src_dao.myself(ds_uuid)?);
+    assert_eq!(dst_dao.chats(ds_uuid)?, vec![]);
+
+    // Inserting chat
+    for c in src_dao.chats(ds_uuid)? {
+        dst_dao.insert_chat(c.chat, &src_ds_root)?;
+    }
+    assert_eq!(dst_dao.chats(ds_uuid)?.len(), src_dao.chats(ds_uuid)?.len());
+    for (dst_cwd, src_cwd) in dst_dao.chats(ds_uuid)?.iter().zip(src_dao.chats(ds_uuid)?.iter()) {
+        assert_eq!(dst_cwd.members[0], dst_dao.myself(ds_uuid)?);
+        assert_eq!(dst_cwd.members, src_cwd.members);
+        assert_eq!(dst_cwd.last_msg_option, None);
+
+        let dst_pet = PracticalEqTuple::new(&dst_cwd.chat, &dst_ds_root, &dst_cwd);
+        let src_pet = PracticalEqTuple::new(&src_cwd.chat, &src_ds_root, &src_cwd);
+        assert!(dst_pet.practically_equals(&src_pet)?);
+
+        // Inserting messages
+        assert_eq!(dst_dao.first_messages(&dst_cwd.chat, usize::MAX)?, vec![]);
+        assert_eq!(dst_dao.last_messages(&dst_cwd.chat, usize::MAX)?, vec![]);
+
+        let src_msgs = src_dao.first_messages(&src_cwd.chat, usize::MAX)?;
+        dst_dao.insert_messages(src_msgs.clone(), &dst_cwd.chat, &src_ds_root)?;
+
+        assert_eq!(dst_dao.first_messages(&dst_cwd.chat, usize::MAX)?.len(), src_msgs.len());
+        assert_eq!(dst_dao.last_messages(&dst_cwd.chat, usize::MAX)?.len(), src_msgs.len());
+
+        for (dst_msg, src_msg) in dst_dao.first_messages(&dst_cwd.chat, usize::MAX)?.iter().zip(src_msgs.iter()) {
+            let dst_pet = PracticalEqTuple::new(dst_msg, &dst_ds_root, &dst_cwd);
+            let src_pet = PracticalEqTuple::new(src_msg, &src_ds_root, &src_cwd);
+            assert!(dst_pet.practically_equals(&src_pet)?);
+        }
+    }
+
     Ok(())
 }
 
@@ -473,7 +534,6 @@ fn create_sqlite_dao() -> (SqliteDao, TmpDir) {
     (dao, tmp_dir)
 }
 
-#[allow(unused)]
 fn read_all_files(p: &Path) -> Vec<PathBuf> {
     let mut res = vec![];
     for entry in p.read_dir().unwrap() {

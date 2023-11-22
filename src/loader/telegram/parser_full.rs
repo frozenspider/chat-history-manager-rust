@@ -16,7 +16,7 @@ pub(super) fn parse(root_obj: &Object,
             parse_bw_as_object(value, "personal_information", |CB { key, value, wrong_key_action }| match key {
                 "about" => consume(),
                 "list" => {
-                    for v in value.as_array().ok_or(anyhow!("Contact list is not an array!"))? {
+                    for v in value.as_array().context("Contact list is not an array!")? {
                         let mut contact = parse_contact("contact", v)?;
                         contact.ds_uuid = Some(ds_uuid.clone());
                         users.insert(contact);
@@ -57,8 +57,8 @@ pub(super) fn parse(root_obj: &Object,
             let json_path = "chats";
 
             let chats_arr = as_object!(value, "chats")
-                .get("list").ok_or(anyhow!("No chats list in dataset!"))?
-                .as_array().ok_or(anyhow!("{json_path} list is not an array!"))?;
+                .get("list").context("No chats list in dataset!")?
+                .as_array().with_context(|| format!("{json_path} list is not an array!"))?;
 
             for v in chats_arr {
                 if let Some(mut cwm) = parse_chat(json_path, as_object!(v, json_path, "chat"),

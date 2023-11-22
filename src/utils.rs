@@ -110,11 +110,11 @@ impl<'a> SmartSlice<'a> for &str {
 //
 
 pub fn path_file_name(path: &Path) -> Result<&str> {
-    path.file_name().and_then(|p: &OsStr| p.to_str()).ok_or_else(|| anyhow!("Failed to convert filename to string"))
+    path.file_name().and_then(|p: &OsStr| p.to_str()).context("Failed to convert filename to string")
 }
 
 pub fn path_to_str(path: &Path) -> Result<&str> {
-    path.to_str().ok_or_else(|| anyhow!("Failed to convert path to a string"))
+    path.to_str().context("Failed to convert path to a string")
 }
 
 //
