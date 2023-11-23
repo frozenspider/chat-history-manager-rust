@@ -109,8 +109,8 @@ impl SqliteDao {
                         Ok::<_, anyhow::Error>(())
                     })?;
 
-                    let src_ds_root = src.dataset_root(ds_uuid);
-                    let dst_ds_root = self.dataset_root(ds_uuid);
+                    let src_ds_root = src.dataset_root(ds_uuid)?;
+                    let dst_ds_root = self.dataset_root(ds_uuid)?;
 
                     for src_cwd in src.chats(ds_uuid)?.iter() {
                         require!(src_cwd.chat.id > 0, "IDs should be positive!");
@@ -161,8 +161,8 @@ impl SqliteDao {
 
             for src_ds in src_datasets.iter() {
                 let ds_uuid = src_ds.uuid();
-                let src_ds_root = src.dataset_root(ds_uuid);
-                let dst_ds_root = self.dataset_root(ds_uuid);
+                let src_ds_root = src.dataset_root(ds_uuid)?;
+                let dst_ds_root = self.dataset_root(ds_uuid)?;
                 require!(*src_ds_root != *dst_ds_root, "Source and destination dataset root paths are the same!");
 
                 self.copy_all_sanity_check(src, ds_uuid, src_ds, &src_ds_root, &dst_ds_root)?;
@@ -327,8 +327,8 @@ impl ChatHistoryDao for SqliteDao {
         self.db_file.parent().unwrap()
     }
 
-    fn dataset_root(&self, ds_uuid: &PbUuid) -> DatasetRoot {
-        DatasetRoot(self.db_file.parent().expect("Database file has no parent!").join(&ds_uuid.value).to_path_buf())
+    fn dataset_root(&self, ds_uuid: &PbUuid) -> Result<DatasetRoot> {
+        Ok(DatasetRoot(self.db_file.parent().expect("Database file has no parent!").join(&ds_uuid.value).to_path_buf()))
     }
 
     fn chats_inner(&self, ds_uuid: &PbUuid) -> Result<Vec<ChatWithDetails>> {
@@ -517,7 +517,7 @@ impl MutableChatHistoryDao for SqliteDao {
         let conn = conn.deref_mut();
 
         if let Some(ref img) = chat.img_path_option {
-            let dst_ds_root = self.dataset_root(chat.ds_uuid());
+            let dst_ds_root = self.dataset_root(chat.ds_uuid())?;
             chat.img_path_option = copy_file(&img, &None, &subpaths::ROOT,
                                              chat.id, &src_ds_root, &dst_ds_root)?;
         }
@@ -563,7 +563,7 @@ impl MutableChatHistoryDao for SqliteDao {
         let mut conn = self.conn.borrow_mut();
         let conn = conn.deref_mut();
 
-        let dst_ds_root = self.dataset_root(chat.ds_uuid());
+        let dst_ds_root = self.dataset_root(chat.ds_uuid())?;
         let uuid = Uuid::parse_str(&chat.ds_uuid.as_ref().unwrap().value).expect("Invalid UUID!");
         let uuid_bytes = Vec::from(uuid.as_ref());
 

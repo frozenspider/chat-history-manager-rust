@@ -86,7 +86,7 @@ fn merge_chats_keep_single_message() -> EmptyRes {
         }],
     );
 
-    let new_ds_root = new_dao.dataset_root(new_ds.uuid());
+    let new_ds_root = new_dao.dataset_root(new_ds.uuid())?;
 
     let new_chats = new_dao.chats(new_ds.uuid())?;
     assert_eq!(new_chats.len(), 1);
@@ -213,7 +213,7 @@ fn merge_files_helper(mode: MergeFileHelperTestMode,
 
     let (new_dao, new_ds, _tmpdir) =
         merge(&helper, dont_replace_both_users(), make_chat_merges(&helper));
-    let new_ds_root = new_dao.dataset_root(new_ds.uuid());
+    let new_ds_root = new_dao.dataset_root(new_ds.uuid())?;
 
     let new_chats = new_dao.chats(new_ds.uuid())?;
     assert_eq!(new_chats.len(), 1);
@@ -281,7 +281,7 @@ fn merge_chats_replace_single_message() -> EmptyRes {
     ];
     let (new_dao, new_ds, _tmpdir) =
         merge(&helper, dont_replace_both_users(), chat_merges);
-    let new_ds_root = new_dao.dataset_root(new_ds.uuid());
+    let new_ds_root = new_dao.dataset_root(new_ds.uuid())?;
 
     let new_chats = new_dao.chats(new_ds.uuid())?;
     assert_eq!(new_chats.len(), 1);
@@ -319,7 +319,7 @@ fn merge_chats_keep_two_messages() -> EmptyRes {
     ];
     let (new_dao, new_ds, _tmpdir) =
         merge(&helper, dont_replace_both_users(), chat_merges);
-    let new_ds_root = new_dao.dataset_root(new_ds.uuid());
+    let new_ds_root = new_dao.dataset_root(new_ds.uuid())?;
 
     let new_chats = new_dao.chats(new_ds.uuid())?;
     assert_eq!(new_chats.len(), 1);
@@ -358,7 +358,7 @@ fn merge_chats_replace_two_messages() -> EmptyRes {
     ];
     let (new_dao, new_ds, _tmpdir) =
         merge(&helper, dont_replace_both_users(), chat_merges);
-    let new_ds_root = new_dao.dataset_root(new_ds.uuid());
+    let new_ds_root = new_dao.dataset_root(new_ds.uuid())?;
 
     let new_chats = new_dao.chats(new_ds.uuid())?;
     assert_eq!(new_chats.len(), 1);
@@ -423,7 +423,7 @@ fn merge_chats_match_replace_keep() -> EmptyRes {
     ];
     let (new_dao, new_ds, _tmpdir) =
         merge(&helper, dont_replace_both_users(), chat_merges);
-    let new_ds_root = new_dao.dataset_root(new_ds.uuid());
+    let new_ds_root = new_dao.dataset_root(new_ds.uuid())?;
 
     let new_chats = new_dao.chats(new_ds.uuid())?;
     assert_eq!(new_chats.len(), 1);
@@ -513,7 +513,7 @@ fn merge_chats_merge_all_modes() -> EmptyRes {
     ];
     let (new_dao, new_ds, _tmpdir) =
         merge(&helper, dont_replace_both_users(), chat_merges);
-    let new_ds_root = new_dao.dataset_root(new_ds.uuid());
+    let new_ds_root = new_dao.dataset_root(new_ds.uuid())?;
 
     let new_chats = new_dao.chats(new_ds.uuid())?;
     assert_eq!(new_chats.len(), 1);
@@ -540,6 +540,9 @@ fn merge_chats_merge_all_modes() -> EmptyRes {
 }
 
 /// `Replace(1, n/2-1), DontReplace(n/2, ns)`
+///
+/// Note: this test is slow due to thousands of files being created, copied and deleted - that's responsible for
+/// over 80% of test running time.
 #[test]
 fn merge_chats_merge_a_lot_of_messages() -> EmptyRes {
     const MAX_MSG_ID: i64 = (BATCH_SIZE as i64) * 3 + 1;
@@ -576,7 +579,7 @@ fn merge_chats_merge_a_lot_of_messages() -> EmptyRes {
     ];
     let (new_dao, new_ds, _tmpdir) =
         merge(&helper, dont_replace_both_users(), chat_merges);
-    let new_ds_root = new_dao.dataset_root(new_ds.uuid());
+    let new_ds_root = new_dao.dataset_root(new_ds.uuid())?;
 
     let new_chats = new_dao.chats(new_ds.uuid())?;
     assert_eq!(new_chats.len(), 1);
@@ -880,7 +883,7 @@ fn merge_chats_content_preserved_on_match_and_keep() -> EmptyRes {
     ];
     let (new_dao, new_ds, _tmpdir) =
         merge(&helper, dont_replace_both_users(), chat_merges);
-    let new_ds_root = new_dao.dataset_root(new_ds.uuid());
+    let new_ds_root = new_dao.dataset_root(new_ds.uuid())?;
 
     let new_chats = new_dao.chats(new_ds.uuid())?;
     assert_eq!(new_chats.len(), 1);
@@ -932,7 +935,7 @@ fn merge_chats_content_appended_on_match() -> EmptyRes {
     ];
     let (new_dao, new_ds, _tmpdir) =
         merge(&helper, dont_replace_both_users(), chat_merges);
-    let new_ds_root = new_dao.dataset_root(new_ds.uuid());
+    let new_ds_root = new_dao.dataset_root(new_ds.uuid())?;
 
     let new_chats = new_dao.chats(new_ds.uuid())?;
     assert_eq!(new_chats.len(), 1);

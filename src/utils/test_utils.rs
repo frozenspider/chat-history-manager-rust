@@ -95,7 +95,7 @@ pub fn create_random_file(parent: &Path) -> PathBuf {
 /// Returns paths to all files referenced by entities of this dataset. Some might not exist.
 /// Files order matches the chats and messages order returned by DAO.
 pub fn dataset_files(dao: &impl ChatHistoryDao, ds_uuid: &PbUuid) -> Vec<PathBuf> {
-    let ds_root = dao.dataset_root(ds_uuid);
+    let ds_root = dao.dataset_root(ds_uuid).unwrap();
     let cwds = dao.chats(ds_uuid).unwrap();
     let mut files: Vec<PathBuf> = cwds.iter()
         .map(|cwd| cwd.chat.img_path_option.as_deref())
@@ -181,7 +181,7 @@ pub fn get_simple_dao_entities<MsgType>(
 ) -> DaoEntities<MsgType> {
     let dao = dao_holder.dao.as_ref();
     let ds = dao.datasets().unwrap().remove(0);
-    let ds_root = dao.dataset_root(ds.uuid());
+    let ds_root = dao.dataset_root(ds.uuid()).unwrap();
     let users = dao.users(&ds.uuid()).unwrap();
     let chat = dao.chats(&ds.uuid()).unwrap();
     let cwd_option = if chat.is_empty() { None } else { Some(dao.chats(&ds.uuid()).unwrap().remove(0)) };

@@ -8,6 +8,7 @@ use crate::protobuf::history::*;
 
 pub mod in_memory_dao;
 pub mod sqlite_dao;
+pub mod grpc_remote_dao;
 
 pub trait WithCache {
     /// For internal use
@@ -53,7 +54,7 @@ pub trait ChatHistoryDao: WithCache + Send {
     }
 
     /** Directory which stores eveything in the dataset. All files are guaranteed to have this as a prefix. */
-    fn dataset_root(&self, ds_uuid: &PbUuid) -> DatasetRoot;
+    fn dataset_root(&self, ds_uuid: &PbUuid) -> Result<DatasetRoot>;
 
     fn myself(&self, ds_uuid: &PbUuid) -> Result<User> {
         Ok(self.get_cache()?.users[ds_uuid].myself.clone())
@@ -91,7 +92,10 @@ pub trait ChatHistoryDao: WithCache + Send {
 
     fn chats_inner(&self, ds_uuid: &PbUuid) -> Result<Vec<ChatWithDetails>>;
 
-    fn chat_option(&self, ds_uuid: &PbUuid, id: i64) -> Result<Option<ChatWithDetails>>;
+    fn chat_option(&self, ds_uuid: &PbUuid, id: i64) -> Result<Option<ChatWithDetails>> {
+        // Not an optimal implementation, but often is good enough
+        Ok(self.chats(ds_uuid)?.into_iter().find(|c| c.chat.id == id))
+    }
 
     /// Return N messages after skipping first M of them. Trivial pagination in a nutshell.
     fn scroll_messages(&self, chat: &Chat, offset: usize, limit: usize) -> Result<Vec<Message>>;

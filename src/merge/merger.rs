@@ -91,8 +91,8 @@ fn merge_inner(
     };
     let new_ds = new_dao.insert_dataset(new_ds)?;
 
-    let master_ds_root = master_dao.dataset_root(master_ds.uuid());
-    let slave_ds_root = slave_dao.dataset_root(slave_ds.uuid());
+    let master_ds_root = master_dao.dataset_root(master_ds.uuid())?;
+    let slave_ds_root = slave_dao.dataset_root(slave_ds.uuid())?;
 
     let chat_inserts = chat_merges.iter().filter_map(|cm| {
         match cm {
