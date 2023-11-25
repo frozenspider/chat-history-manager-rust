@@ -8,9 +8,11 @@ use std::path::Path;
 use std::sync::{Mutex, MutexGuard};
 use std::sync::Arc;
 
+
 use itertools::Itertools;
 use tokio::runtime::Handle;
 use tonic::{Code, Request, Response, Status, transport::Server};
+use tonic::transport::Channel;
 use unicode_segmentation::UnicodeSegmentation;
 
 use crate::*;
@@ -28,21 +30,62 @@ macro_rules! truncate_to {
     ($str:expr, $maxlen:expr) => {$str.graphemes(true).take($maxlen).collect::<String>()};
 }
 
-type StdRes<T, E> = std::result::Result<T, E>;
-type StatusResult<T> = StdRes<T, Status>;
+type StatusResult<T> = StdResult<T, Status>;
 type TonicResult<T> = StatusResult<Response<T>>;
 
-type DaoKey = String;
 // Abosulte path to data source
-type DaoMap = HashMap<DaoKey, RefCell<Box<dyn ChatHistoryDao>>>;
+type DaoKey = String;
+type DaoRefCell = RefCell<Box<dyn ChatHistoryDao>>;
 
+type ChmLock<'a, MC> = MutexGuard<'a, ChatHistoryManagerServer<MC>>;
+
+// Should be used wrapped in Arc<Mutex<Self>>
 pub struct ChatHistoryManagerServer<MC: MyselfChooser> {
-    loader: Arc<Loader<MC>>,
-    loaded_daos: Arc<Mutex<DaoMap>>,
+    loader: Loader<MC>,
+    loaded_daos: HashMap<DaoKey, DaoRefCell>,
 }
 
-impl<MC: MyselfChooser> ChatHistoryManagerServer<MC> {
+trait ChatHistoryManagerServerTrait<MC: MyselfChooser> {
+    fn process_request<Q, P, L>(&self, req: &Request<Q>, logic: L) -> TonicResult<P>
+        where Q: Debug,
+              P: Debug,
+              L: FnMut(&Q, &mut ChmLock<'_, MC>) -> Result<P>;
+
+    fn process_request_with_dao<Q, P, L>(&self, req: &Request<Q>, key: &DaoKey, logic: L) -> TonicResult<P>
+        where Q: Debug,
+              P: Debug,
+              L: FnMut(&Q, &mut dyn ChatHistoryDao) -> Result<P>;
+
+    fn process_request_inner<Q, P, L>(&self, req: &Request<Q>, logic: L) -> TonicResult<P>
+        where Q: Debug,
+              P: Debug,
+              L: FnMut(&Q) -> Result<P>;
+}
+
+impl<MC: MyselfChooser> ChatHistoryManagerServerTrait<MC> for Arc<Mutex<ChatHistoryManagerServer<MC>>> {
     fn process_request<Q, P, L>(&self, req: &Request<Q>, mut logic: L) -> TonicResult<P>
+        where Q: Debug,
+              P: Debug,
+              L: FnMut(&Q, &mut ChmLock<'_, MC>) -> Result<P> {
+        let mut self_lock = lock_or_status(self)?;
+        self.process_request_inner(req, |req| logic(req, &mut self_lock))
+    }
+
+    fn process_request_with_dao<Q, P, L>(&self, req: &Request<Q>, key: &DaoKey, mut logic: L) -> TonicResult<P>
+        where Q: Debug,
+              P: Debug,
+              L: FnMut(&Q, &mut dyn ChatHistoryDao) -> Result<P> {
+        let self_lock = lock_or_status(self)?;
+        let dao = self_lock.loaded_daos.get(key)
+            .ok_or_else(|| Status::new(Code::FailedPrecondition,
+                                       format!("Database {key} is not loaded!")))?;
+        let mut dao = (*dao).borrow_mut();
+        let dao = dao.deref_mut().as_mut();
+
+        self.process_request_inner(req, |req| logic(req, dao))
+    }
+
+    fn process_request_inner<Q, P, L>(&self, req: &Request<Q>, mut logic: L) -> TonicResult<P>
         where Q: Debug,
               P: Debug,
               L: FnMut(&Q) -> Result<P> {
@@ -55,35 +98,14 @@ impl<MC: MyselfChooser> ChatHistoryManagerServer<MC> {
             Status::new(Code::Internal, error_to_string(&err))
         })
     }
-
-    fn lock_dao_map(&self) -> StatusResult<MutexGuard<DaoMap>> {
-        self.loaded_daos.lock()
-            .map_err(|e| Status::new(Code::Internal,
-                                     format!("Cannot obtain a DAO mutex lock: {}", e)))
-    }
-
-    fn process_request_with_dao<Q, P, L>(&self, req: &Request<Q>, key: &DaoKey, mut logic: L) -> TonicResult<P>
-        where Q: Debug,
-              P: Debug,
-              L: FnMut(&Q, &mut dyn ChatHistoryDao) -> Result<P> {
-        let dao_map_lock = self.lock_dao_map()?;
-        let dao = dao_map_lock.get(key)
-            .ok_or_else(|| Status::new(Code::FailedPrecondition,
-                                       format!("Database {key} is not loaded!")))?;
-        let mut dao = (*dao).borrow_mut();
-        let dao = dao.deref_mut().as_mut();
-
-        self.process_request(req, |req| logic(req, dao))
-    }
 }
 
 #[tonic::async_trait]
-impl<MC: MyselfChooser + 'static> HistoryLoaderService for Arc<ChatHistoryManagerServer<MC>> {
+impl<MC: MyselfChooser + 'static> HistoryLoaderService for Arc<Mutex<ChatHistoryManagerServer<MC>>> {
     async fn parse_return_full(&self, req: Request<ParseRequest>) -> TonicResult<ParseReturnFullResponse> {
-        let loader = self.loader.clone();
-        self.process_request(&req, move |req| {
+        self.process_request(&req, move |req, self_lock| {
             let path = Path::new(&req.path);
-            let dao = loader.load(path)?;
+            let dao = self_lock.loader.load(path)?;
             Ok(ParseReturnFullResponse {
                 ds: Some(dao.dataset),
                 root_file: String::from(dao.ds_root.to_str().unwrap()),
@@ -95,26 +117,22 @@ impl<MC: MyselfChooser + 'static> HistoryLoaderService for Arc<ChatHistoryManage
     }
 
     async fn parse_return_handle(&self, req: Request<ParseRequest>) -> TonicResult<ParseReturnHandleResponse> {
-        let loader = self.loader.clone();
-        let dao_map = self.loaded_daos.clone();
-        self.process_request(&req, move |req| {
-            let mut lock = dao_map.lock().unwrap();
-            let map = lock.deref_mut();
+        self.process_request(&req, move |req, self_lock| {
             let path = fs::canonicalize(&req.path)?;
             let path_string = path_to_str(&path)?.to_owned();
 
-            if let Some(dao) = map.get(&path_string) {
+            if let Some(dao) = self_lock.loaded_daos.get(&path_string) {
                 let dao = dao.borrow();
                 return Ok(ParseReturnHandleResponse {
                     file: Some(LoadedFile { key: path_string, name: dao.name().to_owned() })
                 });
             }
 
-            let dao = loader.load(&path)?;
+            let dao = self_lock.loader.load(&path)?;
             let response = ParseReturnHandleResponse {
                 file: Some(LoadedFile { key: path_string.clone(), name: dao.name().to_owned() })
             };
-            map.insert(path_string, RefCell::new(dao));
+            self_lock.loaded_daos.insert(path_string, RefCell::new(dao));
             Ok(response)
         })
     }
@@ -131,11 +149,10 @@ macro_rules! chat_from_req { ($req:ident) => { $req.chat   .as_ref().context("Re
 macro_rules! msg_from_req { ($req:ident.$msg:ident) => { $req.$msg.as_ref().context("Request has no message")? }; }
 
 #[tonic::async_trait]
-impl<MC: MyselfChooser + 'static> ChatHistoryDaoService for Arc<ChatHistoryManagerServer<MC>> {
+impl<MC: MyselfChooser + 'static> ChatHistoryDaoService for Arc<Mutex<ChatHistoryManagerServer<MC>>> {
     async fn get_loaded_files(&self, req: Request<GetLoadedFilesRequest>) -> TonicResult<GetLoadedFilesResponse> {
-        self.process_request(&req, |_| {
-            let dao_map_lock = self.lock_dao_map()?;
-            let files = dao_map_lock.iter()
+        self.process_request(&req, |_, self_lock| {
+            let files = self_lock.loaded_daos.iter()
                 .map(|(k, dao)| LoadedFile { key: k.clone(), name: dao.borrow().name().to_owned() })
                 .collect_vec();
             Ok(GetLoadedFilesResponse { files })
@@ -264,53 +281,63 @@ impl<MC: MyselfChooser + 'static> ChatHistoryDaoService for Arc<ChatHistoryManag
     }
 
     async fn close(&self, req: Request<CloseRequest>) -> TonicResult<CloseResponse> {
-        self.process_request(&req, |req| {
-            let mut dao_map_lock = self.lock_dao_map()?;
-            let dao = dao_map_lock.remove(&req.key);
+        self.process_request(&req, |req, self_lock| {
+            let dao = self_lock.loaded_daos.remove(&req.key);
             Ok(CloseResponse { success: dao.is_some() })
         })
     }
 }
 
-async fn choose_myself_async(port: u16, users: Vec<User>) -> Result<usize> {
-    log::info!("Connecting to myself chooser at port {}", port);
-    let mut client =
-        ChooseMyselfServiceClient::connect(format!("http://127.0.0.1:{}", port))
-            .await?;
-    log::info!("Sending ChooseMyselfRequest");
-    let len = users.len();
-    let request = ChooseMyselfRequest { users };
-    let response = client.choose_myself(request).await
-        .map_err(|status| anyhow!("{}", status.message()))?;
-    log::info!("Got response");
-    let response = response.get_ref().picked_option;
-    if response < 0 {
-        err!("Choice aborted!")
-    } else if response as usize >= len {
-        err!("Choice out of range!")
-    } else {
-        Ok(response as usize)
-    }
-}
-
 struct ChooseMyselfImpl {
-    runtime_handle: Arc<Handle>,
-    myself_chooser_port: u16,
+    runtime_handle: Handle,
+    client_maker: ChooseMyselfClientMaker,
 }
 
 impl MyselfChooser for ChooseMyselfImpl {
-    fn choose_myself(&self, users: &[&User]) -> Result<usize> {
-        let async_chooser =
-            choose_myself_async(self.myself_chooser_port,
-                                users.iter().map(|&u| u.clone()).collect_vec());
+    fn choose_myself(&self, users: &[User]) -> Result<usize> {
+        let users = users.to_vec();
         let handle = self.runtime_handle.clone();
+        let client_maker = self.client_maker;
 
         // We cannot use the current thread since when called via RPC, current thread is already used for async tasks.
         // We're unwrapping join() to propagate panic.
         std::thread::spawn(move || {
-            let spawned = handle.spawn(async_chooser);
-            handle.block_on(spawned)
-        }).join().unwrap()?
+            let len = users.len();
+            let choose_myself_future = async move {
+                let mut client = client_maker.make().await?;
+                log::info!("Sending ChooseMyselfRequest");
+                client.choose_myself(ChooseMyselfRequest { users })
+                    .await.map_err(|status| anyhow!("{}", status.message()))
+            };
+
+            let spawned = handle.spawn(choose_myself_future);
+            let response = handle.block_on(spawned).map(|b| b)?;
+            log::info!("Got response: {:?}", response);
+
+            let response = response?.get_ref().picked_option;
+            if response < 0 {
+                err!("Choice aborted!")
+            } else if response as usize >= len {
+                err!("Choice out of range!")
+            } else {
+                Ok(response as usize)
+            }
+        }).join().unwrap()
+    }
+}
+
+#[derive(Copy, Clone)]
+struct ChooseMyselfClientMaker {
+    port: u16,
+}
+
+impl ChooseMyselfClientMaker {
+    pub async fn make(&self) -> Result<ChooseMyselfServiceClient<Channel>> {
+        log::info!("Connecting to myself chooser at port {}", self.port);
+        let channel = tonic::transport::Endpoint::new(format!("http://127.0.0.1:{}", self.port))?.connect()
+            .await?;
+
+        Ok(ChooseMyselfServiceClient::new(channel))
     }
 }
 
@@ -320,17 +347,17 @@ pub async fn start_server<H: HttpClient>(port: u16, http_client: &'static H) -> 
     let addr = format!("127.0.0.1:{port}").parse::<SocketAddr>().unwrap();
 
     let myself_chooser_port = port + 1;
-    let runtime_handle = Arc::new(Handle::current());
+    let runtime_handle = Handle::current();
     let myself_chooser = ChooseMyselfImpl {
         runtime_handle,
-        myself_chooser_port,
+        client_maker: ChooseMyselfClientMaker { port: myself_chooser_port },
     };
-    let loader = Arc::new(Loader::new(http_client, myself_chooser));
+    let loader = Loader::new(http_client, myself_chooser);
 
-    let chm_server = Arc::new(ChatHistoryManagerServer {
-        loaded_daos: Arc::new(Mutex::new(HashMap::new())),
+    let chm_server = Arc::new(Mutex::new(ChatHistoryManagerServer {
         loader,
-    });
+        loaded_daos: HashMap::new(),
+    }));
 
     log::info!("Server listening on {}", addr);
 
@@ -351,14 +378,16 @@ pub async fn start_server<H: HttpClient>(port: u16, http_client: &'static H) -> 
 
 #[tokio::main]
 pub async fn debug_request_myself(port: u16) -> Result<usize> {
+    let conn_port = port + 1;
+    let runtime_handle = Handle::current();
     let chooser = ChooseMyselfImpl {
-        runtime_handle: Arc::new(Handle::current()),
-        myself_chooser_port: port,
+        runtime_handle,
+        client_maker: ChooseMyselfClientMaker { port: conn_port },
     };
 
     let ds_uuid = PbUuid { value: "00000000-0000-0000-0000-000000000000".to_owned() };
     let chosen = chooser.choose_myself(&[
-        &User {
+        User {
             ds_uuid: Some(ds_uuid.clone()),
             id: 100,
             first_name_option: Some("User 100 FN".to_owned()),
@@ -366,7 +395,7 @@ pub async fn debug_request_myself(port: u16) -> Result<usize> {
             username_option: None,
             phone_number_option: None,
         },
-        &User {
+        User {
             ds_uuid: Some(ds_uuid),
             id: 200,
             first_name_option: None,
@@ -376,4 +405,8 @@ pub async fn debug_request_myself(port: u16) -> Result<usize> {
         },
     ])?;
     Ok(chosen)
+}
+
+fn lock_or_status<T>(target: &Arc<Mutex<T>>) -> StatusResult<MutexGuard<'_, T>> {
+    target.lock().map_err(|_| Status::new(Code::Internal, "Mutex is poisoned!"))
 }

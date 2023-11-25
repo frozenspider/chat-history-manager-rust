@@ -1107,7 +1107,7 @@ fn parse_datetime(s: &str) -> Result<Timestamp> {
     let split =
         s.split(|c| c == '-' || c == ':' || c == 'T')
             .map(|s| s.parse::<u32>())
-            .collect::<std::result::Result<Vec<u32>, ParseIntError>>()
+            .collect::<StdResult<Vec<u32>, ParseIntError>>()
             .with_context(|| format!("Failed to parse date {s}"))?;
     let date =
         NaiveDate::from_ymd_opt(split[0] as i32, split[1], split[2]).unwrap()

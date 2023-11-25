@@ -121,6 +121,7 @@ pub fn path_to_str(path: &Path) -> Result<&str> {
 // Error handling
 //
 
+pub type StdResult<T, E> = std::result::Result<T, E>;
 pub type Result<T> = anyhow::Result<T>;
 pub type EmptyRes = Result<()>;
 
@@ -151,7 +152,7 @@ pub trait ToResult<T> {
     fn normalize_error(self) -> Result<T>;
 }
 
-impl<T> ToResult<T> for std::result::Result<T, Box<dyn std::error::Error + Send + Sync>> {
+impl<T> ToResult<T> for StdResult<T, Box<dyn std::error::Error + Send + Sync>> {
     /// Unfortunately, anyhow::Error::from_boxed is private so we're losing information.
     fn normalize_error(self) -> Result<T> {
         self.map_err(|e| anyhow!("{}", e.as_ref()))

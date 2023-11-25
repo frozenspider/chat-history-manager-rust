@@ -20,14 +20,9 @@ pub(super) fn parse(root_obj: &Object,
     }
 
     // In single chat, self section is not present. As such, myself must be populated from users.
-    let users_vec = users.id_to_user.values().collect_vec();
+    let mut users_vec = users.id_to_user.values().cloned().collect_vec();
     let myself_idx = myself_chooser.choose_myself(&users_vec)?;
-    let myself2 = users_vec[myself_idx];
-    myself.id = myself2.id;
-    myself.first_name_option = myself2.first_name_option.clone();
-    myself.last_name_option = myself2.last_name_option.clone();
-    myself.username_option = myself2.username_option.clone();
-    myself.phone_number_option = myself2.phone_number_option.clone();
+    *myself = users_vec.swap_remove(myself_idx);
 
     Ok((users, chats_with_messages))
 }

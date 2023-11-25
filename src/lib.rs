@@ -48,14 +48,14 @@ pub fn debug_request_myself(port: u16) -> EmptyRes {
 //
 
 pub trait MyselfChooser {
-    fn choose_myself(&self, users: &[&User]) -> Result<usize>;
+    fn choose_myself(&self, users: &[User]) -> Result<usize>;
 }
 
 #[derive(Clone, Copy)]
 pub struct NoChooser;
 
 impl MyselfChooser for NoChooser {
-    fn choose_myself(&self, _pretty_names: &[&User]) -> Result<usize> {
+    fn choose_myself(&self, _pretty_names: &[User]) -> Result<usize> {
         err!("No way to choose myself!")
     }
 }
