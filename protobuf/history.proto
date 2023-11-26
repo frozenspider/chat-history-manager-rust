@@ -543,13 +543,13 @@ message LastMessagesRequest {
 message MessagesBeforeRequest {
   string key = 1;
   Chat chat = 2 [(scalapb.field).no_box = true];
-  Message message = 3 [(scalapb.field).no_box = true];
+  int64 message_internal_id = 3;
   int64 limit = 4;
 }
 message MessagesAfterRequest {
   string key = 1;
   Chat chat = 2 [(scalapb.field).no_box = true];
-  Message message = 3 [(scalapb.field).no_box = true];
+  int64 message_internal_id = 3;
   int64 limit = 4;
 }
 message MessagesSliceRequest {

@@ -125,7 +125,6 @@ macro_rules! with_dao_by_key {
 
 macro_rules! uuid_from_req { ($req:ident) => { $req.ds_uuid.as_ref().context("Request has no ds_uuid")? }; }
 macro_rules! chat_from_req { ($req:ident) => { $req.chat   .as_ref().context("Request has no chat")? }; }
-macro_rules! msg_from_req { ($req:ident.$msg:ident) => { $req.$msg.as_ref().context("Request has no message")? }; }
 
 #[tonic::async_trait]
 impl<MC: MyselfChooser + 'static> HistoryLoaderService for Arc<Mutex<ChatHistoryManagerServer<MC>>> {
@@ -231,7 +230,9 @@ impl<MC: MyselfChooser + 'static> HistoryLoaderService for Arc<Mutex<ChatHistory
     async fn messages_before(&self, req: Request<MessagesBeforeRequest>) -> TonicResult<MessagesResponse> {
         with_dao_by_key!(self, req, dao, {
             Ok(MessagesResponse {
-                messages: dao.messages_before(chat_from_req!(req), msg_from_req!(req.message).internal_id(), req.limit as usize)?
+                messages: dao.messages_before(chat_from_req!(req),
+                                              MessageInternalId(req.message_internal_id),
+                                              req.limit as usize)?
             })
         })
     }
@@ -239,7 +240,9 @@ impl<MC: MyselfChooser + 'static> HistoryLoaderService for Arc<Mutex<ChatHistory
     async fn messages_after(&self, req: Request<MessagesAfterRequest>) -> TonicResult<MessagesResponse> {
         with_dao_by_key!(self, req, dao, {
             Ok(MessagesResponse {
-                messages: dao.messages_after(chat_from_req!(req), msg_from_req!(req.message).internal_id(), req.limit as usize)?
+                messages: dao.messages_after(chat_from_req!(req),
+                                             MessageInternalId(req.message_internal_id),
+                                             req.limit as usize)?
             })
         })
     }
