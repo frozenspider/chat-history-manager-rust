@@ -90,9 +90,9 @@ fn loading_2023_10() -> EmptyRes {
 
     let dao = LOADER.load(&res, &NoChooser)?;
 
-    let ds_uuid = dao.dataset.uuid.unwrap_ref();
-    let myself = &dao.myself;
-    assert_eq!(myself, &expected_myself(ds_uuid));
+    let ds_uuid = &dao.ds_uuid;
+    let myself = dao.in_mem_myself();
+    assert_eq!(myself, expected_myself(ds_uuid));
 
     let member = User {
         ds_uuid: Some(ds_uuid.clone()),
@@ -103,7 +103,7 @@ fn loading_2023_10() -> EmptyRes {
         phone_number_option: Some("+11111".to_owned()),
     };
 
-    assert_eq!(dao.users, vec![myself.clone(), member.clone()]);
+    assert_eq!(dao.in_mem_users(), vec![myself.clone(), member.clone()]);
 
     assert_eq!(dao.cwms.len(), 2);
 

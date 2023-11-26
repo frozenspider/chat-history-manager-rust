@@ -29,9 +29,9 @@ fn loading_2020_01() -> EmptyRes {
     let dao =
         LOADER.load(&res, &NoChooser)?;
 
-    let ds_uuid = dao.dataset.uuid.unwrap_ref();
-    let myself = &dao.myself;
-    assert_eq!(myself, &expected_myself(ds_uuid));
+    let ds_uuid = &dao.ds_uuid;
+    let myself = dao.in_mem_myself();
+    assert_eq!(myself, expected_myself(ds_uuid));
 
     let member = ShortUser::new(UserId(32507588), None);
     let expected_users = vec![
@@ -74,8 +74,8 @@ fn loading_2020_01() -> EmptyRes {
         },
     ];
 
-    assert_eq!(dao.users.len(), 9);
-    assert_eq!(dao.users, expected_users);
+    assert_eq!(dao.in_mem_users().len(), 9);
+    assert_eq!(dao.in_mem_users(), expected_users);
 
     assert_eq!(dao.cwms.len(), 4);
 
@@ -130,9 +130,9 @@ fn loading_2021_05() -> EmptyRes {
     let dao =
         LOADER.load(&res, &NoChooser)?;
 
-    let ds_uuid = dao.dataset.uuid.unwrap_ref();
-    let myself = &dao.myself;
-    assert_eq!(myself, &expected_myself(ds_uuid));
+    let ds_uuid = &dao.ds_uuid;
+    let myself = dao.in_mem_myself();
+    assert_eq!(myself, expected_myself(ds_uuid));
 
     // We only know of myself + two users (other's IDs aren't known), as well as service "member".
     let service_member =
@@ -153,8 +153,8 @@ fn loading_2021_05() -> EmptyRes {
         username_option: None,
         phone_number_option: Some("+7 999 333 44 55".to_owned()), // Taken from contacts list
     };
-    assert_eq!(dao.users.len(), 4);
-    assert_eq!(dao.users.iter().collect_vec(), vec![myself, &service_member, &member1, &member2]);
+    assert_eq!(dao.in_mem_users().len(), 4);
+    assert_eq!(dao.in_mem_users().iter().collect_vec(), vec![&myself, &service_member, &member1, &member2]);
 
     assert_eq!(dao.cwms.len(), 1);
 
@@ -198,9 +198,9 @@ fn loading_2021_06_supergroup() -> EmptyRes {
     let dao =
         LOADER.load(&res, &NoChooser)?;
 
-    let ds_uuid = dao.dataset.uuid.unwrap_ref();
-    let myself = &dao.myself;
-    assert_eq!(myself, &expected_myself(ds_uuid));
+    let ds_uuid = &dao.ds_uuid;
+    let myself = dao.in_mem_myself();
+    assert_eq!(myself, expected_myself(ds_uuid));
 
     // We only know of myself + two users (other's IDs aren't known), as well as service "member".
     let u222222222 =
@@ -211,10 +211,9 @@ fn loading_2021_06_supergroup() -> EmptyRes {
         ShortUser::new_name_str(UserId(444444444), "Vvvvvvvv Bbbbbbb").to_user(ds_uuid);
 
     {
-        let mut sorted_users = dao.users.iter().collect_vec();
-        sorted_users.sort_by_key(|&u| u.id);
+        let sorted_users = dao.in_mem_users().into_iter().sorted_by_key(|u| u.id).collect_vec();
         assert_eq!(sorted_users.len(), 4);
-        assert_eq!(sorted_users, vec![myself, &u222222222, &u333333333, &u444444444]);
+        assert_eq!(sorted_users.iter().collect_vec(), vec![&myself, &u222222222, &u333333333, &u444444444]);
     }
 
     assert_eq!(dao.cwms.len(), 1);
@@ -330,9 +329,9 @@ fn loading_2021_07() -> EmptyRes {
     let dao =
         LOADER.load(&res, &NoChooser)?;
 
-    let ds_uuid = dao.dataset.uuid.unwrap_ref();
-    let myself = &dao.myself;
-    assert_eq!(myself, &expected_myself(ds_uuid));
+    let ds_uuid = &dao.ds_uuid;
+    let myself = dao.in_mem_myself();
+    assert_eq!(myself, expected_myself(ds_uuid));
 
     let member = User {
         ds_uuid: Some(ds_uuid.clone()),
@@ -342,8 +341,8 @@ fn loading_2021_07() -> EmptyRes {
         username_option: None,
         phone_number_option: Some("+7 999 333 44 55".to_owned()), // Taken from contacts list
     };
-    assert_eq!(dao.users.len(), 2);
-    assert_eq!(dao.users.iter().collect_vec(), vec![myself, &member]);
+    assert_eq!(dao.in_mem_users().len(), 2);
+    assert_eq!(dao.in_mem_users().iter().collect_vec(), vec![&myself, &member]);
 
     assert_eq!(dao.cwms.len(), 1);
 
@@ -409,9 +408,9 @@ fn loading_2023_01() -> EmptyRes {
     // Parsing as UTC+5.
     let offset = FixedOffset::east_opt(5 * 3600).unwrap();
 
-    let ds_uuid = dao.dataset.uuid.unwrap_ref();
-    let myself = &dao.myself;
-    assert_eq!(myself, &expected_myself(ds_uuid));
+    let ds_uuid = &dao.ds_uuid;
+    let myself = dao.in_mem_myself();
+    assert_eq!(myself, expected_myself(ds_uuid));
 
     let member = User {
         ds_uuid: Some(ds_uuid.clone()),
@@ -429,8 +428,8 @@ fn loading_2023_01() -> EmptyRes {
         username_option: None,
         phone_number_option: None,
     };
-    assert_eq!(dao.users.len(), 3);
-    assert_eq!(dao.users.iter().collect_vec(), vec![myself, &member, &channel_user]);
+    assert_eq!(dao.in_mem_users().len(), 3);
+    assert_eq!(dao.in_mem_users().iter().collect_vec(), vec![&myself, &member, &channel_user]);
 
     assert_eq!(dao.cwms.len(), 1);
 
@@ -571,9 +570,9 @@ fn loading_2023_08() -> EmptyRes {
     let dao =
         LOADER.load(&res, &NoChooser)?;
 
-    let ds_uuid = dao.dataset.uuid.unwrap_ref();
-    let myself = &dao.myself;
-    assert_eq!(myself, &expected_myself(ds_uuid));
+    let ds_uuid = &dao.ds_uuid;
+    let myself = dao.in_mem_myself();
+    assert_eq!(myself, expected_myself(ds_uuid));
 
     let unnamed_user = User {
         ds_uuid: Some(ds_uuid.clone()),
@@ -583,8 +582,8 @@ fn loading_2023_08() -> EmptyRes {
         username_option: None,
         phone_number_option: None,
     };
-    assert_eq!(dao.users.len(), 2);
-    assert_eq!(dao.users.iter().collect_vec(), vec![myself, &unnamed_user]);
+    assert_eq!(dao.in_mem_users().len(), 2);
+    assert_eq!(dao.in_mem_users().iter().collect_vec(), vec![&myself, &unnamed_user]);
 
     assert_eq!(dao.cwms.len(), 1);
 
@@ -657,9 +656,9 @@ fn loading_2023_10_audio_video() -> EmptyRes {
     let dao =
         LOADER.load(&res, &NoChooser)?;
 
-    let ds_uuid = dao.dataset.uuid.unwrap_ref();
-    let myself = &dao.myself;
-    assert_eq!(myself, &expected_myself(ds_uuid));
+    let ds_uuid = &dao.ds_uuid;
+    let myself = dao.in_mem_myself();
+    assert_eq!(myself, expected_myself(ds_uuid));
 
     let unnamed_user = User {
         ds_uuid: Some(ds_uuid.clone()),
@@ -669,8 +668,8 @@ fn loading_2023_10_audio_video() -> EmptyRes {
         username_option: None,
         phone_number_option: None,
     };
-    assert_eq!(dao.users.len(), 2);
-    assert_eq!(dao.users.iter().collect_vec(), vec![myself, &unnamed_user]);
+    assert_eq!(dao.in_mem_users().len(), 2);
+    assert_eq!(dao.in_mem_users().iter().collect_vec(), vec![&myself, &unnamed_user]);
 
     assert_eq!(dao.cwms.len(), 1);
 

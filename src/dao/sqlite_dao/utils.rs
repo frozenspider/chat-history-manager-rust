@@ -169,7 +169,7 @@ pub mod chat {
     pub fn deserialize(raw: RawChatQ,
                        conn: &mut SqliteConnection,
                        ds_uuid: &PbUuid,
-                       cache: &SqliteCache) -> Result<ChatWithDetails> {
+                       cache: &DaoCacheInner) -> Result<ChatWithDetails> {
         let mut last_msg_vec = message::fetch(conn, |conn| {
             Ok(schema::message::table
                 .filter(schema::message::columns::chat_id.eq(raw.chat.id))

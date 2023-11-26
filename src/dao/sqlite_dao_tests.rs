@@ -250,7 +250,7 @@ fn inserts() -> EmptyRes {
         2,
         &|_, _, _| {});
     let src_dao = dao_holder.dao.as_ref();
-    let ds_uuid = src_dao.dataset.uuid();
+    let ds_uuid = &src_dao.ds_uuid;
     let src_ds_root = src_dao.dataset_root(ds_uuid);
 
     let (mut dst_dao, _dst_dao_tmpdir) = create_sqlite_dao();
@@ -258,9 +258,9 @@ fn inserts() -> EmptyRes {
     assert_eq!(dst_dao.datasets()?, vec![]);
 
     // Inserting dataset and users
-    dst_dao.insert_dataset(src_dao.dataset.clone())?;
-    for u in src_dao.users.clone() {
-        let is_myself = u.id == src_dao.myself.id;
+    dst_dao.insert_dataset(src_dao.in_mem_dataset())?;
+    for u in src_dao.in_mem_users() {
+        let is_myself = u.id == src_dao.in_mem_myself().id;
         dst_dao.insert_user(u, is_myself)?;
     }
     assert_eq!(dst_dao.datasets()?, src_dao.datasets()?);

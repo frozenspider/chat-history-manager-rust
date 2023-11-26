@@ -1,11 +1,9 @@
 #![allow(dead_code)]
 
-use std::borrow::Borrow;
-use std::cell::{Ref, RefCell};
-use std::collections::HashMap;
+use std::cell::{RefCell};
 use std::default::Default;
 use std::fs;
-use std::ops::{Deref, DerefMut};
+use std::ops::{DerefMut};
 use std::path::{Path, PathBuf};
 
 use diesel::{insert_into, update};
@@ -33,7 +31,7 @@ pub struct SqliteDao {
     name: String,
     db_file: PathBuf,
     conn: RefCell<SqliteConnection>,
-    cache: Box<RefCell<SqliteCache>>,
+    cache: DaoCache,
 }
 
 impl SqliteDao {
@@ -83,56 +81,12 @@ impl SqliteDao {
             name: format!("{} database", path_file_name(&db_file)?),
             db_file: db_file.to_path_buf(),
             conn,
-            cache: SqliteCache::new_wrapped(),
+            cache: DaoCache::new(),
         })
-    }
-
-    /// Lazily initialize cache and return the reference to it.
-    fn cache(&self) -> Result<Ref<SqliteCache>> {
-        let mut cache = self.cache.as_ref().borrow_mut();
-        if !cache.initialized {
-            cache.datasets =
-                schema::dataset::table
-                    .select(RawDataset::as_select())
-                    .load_iter(self.conn.borrow_mut().deref_mut())?
-                    .flatten()
-                    .map(utils::dataset::deserialize)
-                    .try_collect()?;
-
-            let ds_uuids = cache.datasets.iter().map(|ds| ds.uuid.clone().unwrap()).collect_vec();
-            for ds_uuid in ds_uuids {
-                let uuid = Uuid::parse_str(&ds_uuid.value)?;
-                let rows: Vec<(User, bool)> = schema::user::table
-                    .filter(schema::user::columns::ds_uuid.eq(uuid.as_ref()))
-                    .select(RawUser::as_select())
-                    .load_iter(self.conn.borrow_mut().deref_mut())?
-                    .flatten()
-                    .map(utils::user::deserialize)
-                    .try_collect()?;
-                let (mut myselves, mut users): (Vec<_>, Vec<_>) =
-                    rows.into_iter().partition_map(|(users, is_myself)|
-                        if is_myself { Either::Left(users) } else { Either::Right(users) });
-                require!(myselves.len() > 0, "Myself not found!");
-                require!(myselves.len() < 2, "More than one myself found!");
-                let myself = myselves.remove(0);
-                users.insert(0, myself.clone());
-                cache.users.insert(ds_uuid, UserCacheForDataset {
-                    myself,
-                    user_by_id: users.into_iter().map(|u| (u.id(), u)).collect(),
-                });
-            }
-
-            cache.initialized = true;
-        }
-        drop(cache);
-
-        Ok(self.cache.deref().borrow())
     }
 
     pub fn copy_all_from(&self, src: &impl ChatHistoryDao) -> EmptyRes {
         measure(|| {
-            let mut cache = self.cache.as_ref().borrow_mut();
-
             let src_datasets = src.datasets()?;
 
             for src_ds in src_datasets.iter() {
@@ -201,9 +155,7 @@ impl SqliteDao {
                 }, |_, t| log::info!("Dataset '{}' inserted in {t} ms", ds_uuid.value))?;
             }
 
-            // Invalidate the cache
-            cache.initialized = false;
-            drop(cache);
+            self.invalidate_cache()?;
 
             require!(src_datasets.len() == self.datasets()?.len(), "Datasets have different sizes after merge!");
 
@@ -283,12 +235,6 @@ impl SqliteDao {
         utils::message::fetch(self.conn.borrow_mut().deref_mut(), get_raw_messages_with_content)
     }
 
-    fn invalidate_cache(&self) -> EmptyRes {
-        let mut cache = self.cache.as_ref().borrow_mut();
-        cache.initialized = false;
-        Ok(())
-    }
-
     fn copy_messages(&self,
                      conn: &mut SqliteConnection,
                      src_msgs: &[Message],
@@ -333,6 +279,45 @@ impl SqliteDao {
     }
 }
 
+impl WithCache for SqliteDao {
+    fn get_cache_unchecked(&self) -> &DaoCache { &self.cache }
+
+    fn init_cache(&self, inner: &mut DaoCacheInner) -> EmptyRes {
+        inner.datasets =
+            schema::dataset::table
+                .select(RawDataset::as_select())
+                .load_iter(self.conn.borrow_mut().deref_mut())?
+                .flatten()
+                .map(utils::dataset::deserialize)
+                .try_collect()?;
+
+        let ds_uuids = inner.datasets.iter().map(|ds| ds.uuid.clone().unwrap()).collect_vec();
+        for ds_uuid in ds_uuids {
+            let uuid = Uuid::parse_str(&ds_uuid.value)?;
+            let rows: Vec<(User, bool)> = schema::user::table
+                .filter(schema::user::columns::ds_uuid.eq(uuid.as_ref()))
+                .select(RawUser::as_select())
+                .load_iter(self.conn.borrow_mut().deref_mut())?
+                .flatten()
+                .map(utils::user::deserialize)
+                .try_collect()?;
+            let (mut myselves, mut users): (Vec<_>, Vec<_>) =
+                rows.into_iter().partition_map(|(users, is_myself)|
+                    if is_myself { Either::Left(users) } else { Either::Right(users) });
+            require!(myselves.len() > 0, "Myself not found!");
+            require!(myselves.len() < 2, "More than one myself found!");
+            let myself = myselves.remove(0);
+            users.insert(0, myself.clone());
+            inner.users.insert(ds_uuid, UserCacheForDataset {
+                myself,
+                user_by_id: users.into_iter().map(|u| (u.id(), u)).collect(),
+            });
+        }
+
+        Ok(())
+    }
+}
+
 impl ChatHistoryDao for SqliteDao {
     fn name(&self) -> &str {
         &self.name
@@ -342,41 +327,20 @@ impl ChatHistoryDao for SqliteDao {
         self.db_file.parent().unwrap()
     }
 
-    fn datasets(&self) -> Result<Vec<Dataset>> {
-        Ok(self.cache()?.datasets.clone())
-    }
-
     fn dataset_root(&self, ds_uuid: &PbUuid) -> DatasetRoot {
         DatasetRoot(self.db_file.parent().expect("Database file has no parent!").join(&ds_uuid.value).to_path_buf())
-    }
-
-    fn myself(&self, ds_uuid: &PbUuid) -> Result<User> {
-        Ok(self.cache()?.borrow().users[ds_uuid].myself.clone())
-    }
-
-    fn users_inner(&self, ds_uuid: &PbUuid) -> Result<(Vec<User>, UserId)> {
-        let cache = self.cache()?;
-        let cache = cache.borrow();
-        let cache = cache.users.get(ds_uuid).context("Dataset has no users!")?;
-        let users = cache.user_by_id.values().cloned().collect_vec();
-        Ok((users, UserId(cache.myself.id)))
-    }
-
-    fn user_option(&self, ds_uuid: &PbUuid, id: i64) -> Result<Option<User>> {
-        Ok(self.cache()?.borrow().users[ds_uuid].user_by_id.get(&UserId(id)).cloned())
     }
 
     fn chats_inner(&self, ds_uuid: &PbUuid) -> Result<Vec<ChatWithDetails>> {
         let uuid = Uuid::parse_str(&ds_uuid.value)?;
         let mut conn = self.conn.borrow_mut();
         let conn = conn.deref_mut();
-        let cache = self.cache()?;
-        let cache = cache.deref();
+        let cache = self.get_cache()?;
 
         let rows: Vec<ChatWithDetails> =
             utils::chat::select_by_ds(&uuid, conn)?
                 .into_iter()
-                .map(|raw: RawChatQ| utils::chat::deserialize(raw, conn, ds_uuid, cache))
+                .map(|raw: RawChatQ| utils::chat::deserialize(raw, conn, ds_uuid, &*cache))
                 .try_collect()?;
 
         Ok(rows)
@@ -386,13 +350,12 @@ impl ChatHistoryDao for SqliteDao {
         let uuid = Uuid::parse_str(&ds_uuid.value)?;
         let mut conn = self.conn.borrow_mut();
         let conn = conn.deref_mut();
-        let cache = self.cache()?;
-        let cache = cache.deref();
+        let cache = self.get_cache()?;
 
         let mut rows: Vec<ChatWithDetails> =
             utils::chat::select_by_ds_and_id(&uuid, id, conn)?
                 .into_iter()
-                .map(|raw: RawChatQ| utils::chat::deserialize(raw, conn, ds_uuid, cache))
+                .map(|raw: RawChatQ| utils::chat::deserialize(raw, conn, ds_uuid, &*cache))
                 .try_collect()?;
 
         if rows.is_empty() { Ok(None) } else { Ok(Some(rows.remove(0))) }
@@ -614,34 +577,6 @@ impl MutableChatHistoryDao for SqliteDao {
 //
 // Helpers
 //
-
-type UserCache = HashMap<PbUuid, UserCacheForDataset>;
-
-pub struct UserCacheForDataset {
-    pub myself: User,
-    pub user_by_id: HashMap<UserId, User>,
-}
-
-#[derive(Default)]
-pub struct SqliteCache {
-    pub initialized: bool,
-    pub datasets: Vec<Dataset>,
-    pub users: UserCache,
-}
-
-impl SqliteCache {
-    fn new_wrapped() -> Box<RefCell<Self>> {
-        Box::new(RefCell::new(SqliteCache { initialized: false, ..Default::default() }))
-    }
-}
-
-impl std::hash::Hash for PbUuid {
-    fn hash<H: std::hash::Hasher>(&self, hasher: &mut H) {
-        self.value.hash(hasher)
-    }
-}
-
-impl Eq for PbUuid {}
 
 const BACKUPS_DIR: &str = "_backups";
 const MAX_BACKUPS: i32 = 3;

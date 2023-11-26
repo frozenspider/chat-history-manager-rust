@@ -1,28 +1,63 @@
+use std::cell::{Ref, RefCell};
+use std::collections::HashMap;
 use std::path::Path;
+use deepsize::DeepSizeOf;
 
-use crate::protobuf::history::*;
 use crate::*;
+use crate::protobuf::history::*;
 
 pub mod in_memory_dao;
 pub mod sqlite_dao;
+
+pub trait WithCache {
+    /// For internal use
+    fn get_cache_unchecked(&self) -> &DaoCache;
+
+    /// For internal use: lazily initialize the cache, and return a reference to it
+    fn init_cache(&self, inner: &mut DaoCacheInner) -> EmptyRes;
+
+    /// For internal use: lazily initialize the cache, and return a reference to immutable inner cache
+    fn get_cache(&self) -> Result<Ref<DaoCacheInner>> {
+        let cache = self.get_cache_unchecked();
+        if cache.inner.borrow().initialized == false {
+            let mut inner_mut = cache.inner.borrow_mut();
+            self.init_cache(&mut *inner_mut)?;
+            inner_mut.initialized = true;
+            drop(inner_mut);
+        }
+        Ok(cache.inner.borrow())
+    }
+
+    /// For internal use, mark cache as invalid
+    fn invalidate_cache(&self) -> EmptyRes {
+        let cache = self.get_cache_unchecked();
+        let mut cache = (*cache.inner).borrow_mut();
+        cache.initialized = false;
+        Ok(())
+    }
+}
 
 /**
  * Everything except for messages should be pre-cached and readily available.
  * Should support equality.
  */
-pub trait ChatHistoryDao: Send {
+pub trait ChatHistoryDao: WithCache + Send {
     /** User-friendly name of a loaded data */
     fn name(&self) -> &str;
 
     /** Directory which stores eveything - including database itself at the root level */
     fn storage_path(&self) -> &Path;
 
-    fn datasets(&self) -> Result<Vec<Dataset>>;
+    fn datasets(&self) -> Result<Vec<Dataset>> {
+        Ok(self.get_cache()?.datasets.clone())
+    }
 
     /** Directory which stores eveything in the dataset. All files are guaranteed to have this as a prefix. */
     fn dataset_root(&self, ds_uuid: &PbUuid) -> DatasetRoot;
 
-    fn myself(&self, ds_uuid: &PbUuid) -> Result<User>;
+    fn myself(&self, ds_uuid: &PbUuid) -> Result<User> {
+        Ok(self.get_cache()?.users[ds_uuid].myself.clone())
+    }
 
     /** Contains myself as the first element, other users are sorted by ID. Method is expected to be fast. */
     fn users(&self, ds_uuid: &PbUuid) -> Result<Vec<User>> {
@@ -32,9 +67,16 @@ pub trait ChatHistoryDao: Send {
     }
 
     /** Returns all users, as well as myself ID. Method is expected to be fast. */
-    fn users_inner(&self, ds_uuid: &PbUuid) -> Result<(Vec<User>, UserId)>;
+    fn users_inner(&self, ds_uuid: &PbUuid) -> Result<(Vec<User>, UserId)> {
+        let cache = self.get_cache()?;
+        let users_cache = cache.users.get(ds_uuid).context("Dataset has no users!")?;
+        let users = users_cache.user_by_id.values().cloned().collect_vec();
+        Ok((users, UserId(users_cache.myself.id)))
+    }
 
-    fn user_option(&self, ds_uuid: &PbUuid, id: i64) -> Result<Option<User>>;
+    fn user_option(&self, ds_uuid: &PbUuid, id: i64) -> Result<Option<User>> {
+        Ok(self.get_cache()?.users[ds_uuid].user_by_id.get(&UserId(id)).cloned())
+    }
 
     /**
      * Returns chats ordered by last message timestamp, descending.
@@ -114,4 +156,40 @@ pub trait MutableChatHistoryDao: ChatHistoryDao {
     /// Internal ID will be ignored.
     /// Content will be resolved based on the given dataset root and copied accordingly.
     fn insert_messages(&mut self, msgs: Vec<Message>, chat: &Chat, src_ds_root: &DatasetRoot) -> EmptyRes;
+}
+
+type UserCache = HashMap<PbUuid, UserCacheForDataset>;
+
+#[derive(DeepSizeOf)]
+pub struct UserCacheForDataset {
+    pub myself: User,
+    pub user_by_id: HashMap<UserId, User>,
+}
+
+impl std::hash::Hash for PbUuid {
+    fn hash<H: std::hash::Hasher>(&self, hasher: &mut H) {
+        self.value.hash(hasher)
+    }
+}
+
+impl Eq for PbUuid {}
+
+#[derive(DeepSizeOf)]
+pub struct DaoCache {
+    pub inner: Box<RefCell<DaoCacheInner>>,
+}
+
+#[derive(Default, DeepSizeOf)]
+pub struct DaoCacheInner {
+    pub initialized: bool,
+    pub datasets: Vec<Dataset>,
+    pub users: UserCache,
+}
+
+impl DaoCache {
+    fn new() -> Self {
+        DaoCache {
+            inner: Box::new(RefCell::new(DaoCacheInner { initialized: false, ..Default::default() }))
+        }
+    }
 }

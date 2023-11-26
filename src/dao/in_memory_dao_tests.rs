@@ -8,7 +8,7 @@ fn basics() -> EmptyRes {
     let dao = dao_holder.dao;
     assert_eq!(dao.name(), &dao.name);
     assert_eq!(dao.storage_path(), &dao.ds_root);
-    assert_eq!(dao.datasets()?.iter().collect_vec(), vec![&dao.dataset]);
+    assert_eq!(dao.datasets()?.iter().collect_vec(), vec![&dao.in_mem_dataset()]);
     let ds_uuid = dao.datasets()?.remove(0).uuid.unwrap();
 
     let users = dao.users(&ds_uuid)?;

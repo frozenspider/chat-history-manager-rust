@@ -107,10 +107,10 @@ impl<MC: MyselfChooser + 'static> HistoryLoaderService for Arc<Mutex<ChatHistory
             let path = Path::new(&req.path);
             let dao = self_lock.loader.load(path)?;
             Ok(ParseReturnFullResponse {
-                ds: Some(dao.dataset),
+                ds: Some(dao.in_mem_dataset()),
                 root_file: String::from(dao.ds_root.to_str().unwrap()),
-                myself: Some(dao.myself),
-                users: dao.users,
+                myself: Some(dao.in_mem_myself()),
+                users: (dao.in_mem_users()),
                 cwms: dao.cwms,
             })
         })

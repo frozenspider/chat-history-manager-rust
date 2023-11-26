@@ -18,11 +18,10 @@ macro_rules! subtract_or_zero {
 #[derive(DeepSizeOf)]
 pub struct InMemoryDao {
     pub name: String,
-    pub dataset: Dataset,
+    pub ds_uuid: PbUuid,
     pub ds_root: PathBuf,
-    pub myself: User,
-    pub users: Vec<User>,
     pub cwms: Vec<ChatWithMessages>,
+    cache: DaoCache,
 }
 
 impl InMemoryDao {
@@ -33,12 +32,36 @@ impl InMemoryDao {
                users: Vec<User>,
                cwms: Vec<ChatWithMessages>) -> Self {
         let ds_root = ds_root.canonicalize().expect("Could not canonicalize dataset root");
+        let ds_uuid = dataset.uuid().clone();
         assert!(users.iter().any(|u| *u == myself));
-        InMemoryDao { name, dataset, ds_root, myself, users, cwms }
+
+        let cache = DaoCache::new();
+        let mut cache_inner = (*cache.inner).borrow_mut();
+        cache_inner.initialized = true;
+        cache_inner.datasets = vec![dataset];
+        cache_inner.users.insert(ds_uuid.clone(), UserCacheForDataset {
+            myself,
+            user_by_id: users.into_iter().map(|u| (u.id(), u)).collect(),
+        });
+        drop(cache_inner);
+
+        InMemoryDao { name, ds_uuid, ds_root, cwms, cache }
+    }
+
+    pub fn in_mem_dataset(&self) -> Dataset {
+        self.get_cache().unwrap().datasets.iter().next().unwrap().clone()
+    }
+
+    pub fn in_mem_myself(&self) -> User {
+        self.get_cache().unwrap().users[&self.ds_uuid].myself.clone()
+    }
+
+    pub fn in_mem_users(&self) -> Vec<User> {
+        self.users(&self.ds_uuid).unwrap()
     }
 
     fn chat_members(&self, chat: &Chat) -> Vec<User> {
-        let me = self.myself.clone();
+        let me = self.in_mem_myself();
         let mut members = chat.member_ids.iter()
             .filter(|&id| *id != me.id)
             .map(|id| self.user_option(chat.ds_uuid(), *id)
@@ -68,6 +91,14 @@ impl InMemoryDao {
     }
 }
 
+impl WithCache for InMemoryDao {
+    fn get_cache_unchecked(&self) -> &DaoCache { &self.cache }
+
+    fn init_cache(&self, _inner: &mut DaoCacheInner) -> EmptyRes { Ok(()) }
+
+    fn invalidate_cache(&self) -> EmptyRes { err!("Cannot invalidate cache of in-memory DAO!") }
+}
+
 impl ChatHistoryDao for InMemoryDao {
     fn name(&self) -> &str {
         self.name.as_str()
@@ -77,24 +108,8 @@ impl ChatHistoryDao for InMemoryDao {
         &self.ds_root
     }
 
-    fn datasets(&self) -> Result<Vec<Dataset>> {
-        Ok(vec![self.dataset.clone()])
-    }
-
     fn dataset_root(&self, _ds_uuid: &PbUuid) -> DatasetRoot {
         DatasetRoot(self.storage_path().to_owned())
-    }
-
-    fn myself(&self, _ds_uuid: &PbUuid) -> Result<User> {
-        Ok(self.myself.clone())
-    }
-
-    fn users_inner(&self, _ds_uuid: &PbUuid) -> Result<(Vec<User>, UserId)> {
-        Ok((self.users.clone(), self.myself.id()))
-    }
-
-    fn user_option(&self, _ds_uuid: &PbUuid, id: i64) -> Result<Option<User>> {
-        Ok(self.users.iter().find(|u| u.id == id).cloned())
     }
 
     fn chats_inner(&self, _ds_uuid: &PbUuid) -> Result<Vec<ChatWithDetails>> {

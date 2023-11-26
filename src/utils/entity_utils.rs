@@ -1,5 +1,6 @@
 use std::fmt::{Display, Formatter};
 use std::path::{Path, PathBuf};
+use deepsize::DeepSizeOf;
 
 use derive_deref::Deref;
 use itertools::Itertools;
@@ -50,7 +51,7 @@ impl DatasetRoot {
     }
 }
 
-#[derive(Deref, Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Deref, Clone, Copy, Debug, PartialEq, Eq, Hash, DeepSizeOf)]
 pub struct UserId(pub i64);
 
 impl UserId {
