@@ -16,7 +16,7 @@ option (scalapb.options) = {
 service HistoryLoaderService {
   // Parse a history file and return it entirely
   rpc ParseReturnFull(ParseRequest) returns (ParseReturnFullResponse) {}
-  // Parse a history file and return its DAO handle
+  // Parse/open a history file and return its DAO handle
   rpc ParseReturnHandle(ParseRequest) returns (ParseReturnHandleResponse) {}
 }
 

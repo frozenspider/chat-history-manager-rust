@@ -7,6 +7,7 @@ use const_format::concatcp;
 use itertools::{Either, Itertools};
 
 use crate::*;
+use crate::dao::ChatHistoryDao;
 use crate::loader::telegram::TelegramDataLoader;
 use crate::loader::tinder_android::TinderAndroidDataLoader;
 use crate::loader::whatsapp_android::WhatsAppAndroidDataLoader;
@@ -66,11 +67,15 @@ impl<MC: MyselfChooser> Loader<MC> {
                 Box::new(WhatsAppAndroidDataLoader),
                 Box::new(WhatsAppTextDataLoader),
             ],
-            myself_chooser
+            myself_chooser,
         }
     }
 
-    pub fn load(&self, root_path: &Path) -> Result<Box<InMemoryDao>> {
+    pub fn load(&self, root_path: &Path) -> Result<Box<dyn ChatHistoryDao>> {
+        Ok(self.parse(root_path)?)
+    }
+
+    pub fn parse(&self, root_path: &Path) -> Result<Box<InMemoryDao>> {
         let (named_errors, loads): (Vec<_>, Vec<_>) =
             self.loaders.iter()
                 .partition_map(|loader| match loader.looks_about_right(root_path) {

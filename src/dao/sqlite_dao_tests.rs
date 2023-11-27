@@ -514,7 +514,7 @@ struct TestDaos {
 
 fn init() -> TestDaos {
     let src_dir = resource(TELEGRAM_DIR);
-    let src_dao = LOADER.load(&src_dir).unwrap();
+    let src_dao = LOADER.parse(&src_dir).unwrap();
     init_from(src_dao, src_dir, None)
 }
 

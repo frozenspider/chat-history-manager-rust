@@ -29,7 +29,7 @@ pub fn parse_file(path: &str) -> Result<Box<InMemoryDao>> {
         static LOADER: loader::Loader<NoChooser> = loader::Loader::new(&ReqwestHttpClient, NoChooser);
     }
     LOADER.with(|loader| {
-        loader.load(Path::new(path))
+        loader.parse(Path::new(path))
     })
 }
 

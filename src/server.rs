@@ -105,7 +105,7 @@ impl<MC: MyselfChooser + 'static> HistoryLoaderService for Arc<Mutex<ChatHistory
     async fn parse_return_full(&self, req: Request<ParseRequest>) -> TonicResult<ParseReturnFullResponse> {
         self.process_request(&req, move |req, self_lock| {
             let path = Path::new(&req.path);
-            let dao = self_lock.loader.load(path)?;
+            let dao = self_lock.loader.parse(path)?;
             Ok(ParseReturnFullResponse {
                 ds: Some(dao.in_mem_dataset()),
                 root_file: String::from(dao.ds_root.to_str().unwrap()),
