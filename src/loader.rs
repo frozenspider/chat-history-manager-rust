@@ -75,6 +75,7 @@ impl<MC: MyselfChooser> Loader<MC> {
         Ok(self.parse(root_path)?)
     }
 
+    /// Parses a history in a foreign format
     pub fn parse(&self, root_path: &Path) -> Result<Box<InMemoryDao>> {
         let (named_errors, loads): (Vec<_>, Vec<_>) =
             self.loaders.iter()

@@ -19,8 +19,8 @@ use crate::*;
 use crate::dao::ChatHistoryDao;
 use crate::loader::Loader;
 use crate::protobuf::history::*;
-use crate::protobuf::history::chat_history_dao_service_server::*;
 use crate::protobuf::history::choose_myself_service_client::ChooseMyselfServiceClient;
+use crate::protobuf::history::history_parser_service_server::*;
 use crate::protobuf::history::history_loader_service_server::*;
 
 pub(crate) const FILE_DESCRIPTOR_SET: &[u8] =
@@ -101,39 +101,18 @@ impl<MC: MyselfChooser> ChatHistoryManagerServerTrait<MC> for Arc<Mutex<ChatHist
 }
 
 #[tonic::async_trait]
-impl<MC: MyselfChooser + 'static> HistoryLoaderService for Arc<Mutex<ChatHistoryManagerServer<MC>>> {
-    async fn parse_return_full(&self, req: Request<ParseRequest>) -> TonicResult<ParseReturnFullResponse> {
+impl<MC: MyselfChooser + 'static> HistoryParserService for Arc<Mutex<ChatHistoryManagerServer<MC>>> {
+    async fn parse(&self, req: Request<ParseLoadRequest>) -> TonicResult<ParseResponse> {
         self.process_request(&req, move |req, self_lock| {
             let path = Path::new(&req.path);
             let dao = self_lock.loader.parse(path)?;
-            Ok(ParseReturnFullResponse {
+            Ok(ParseResponse {
                 ds: Some(dao.in_mem_dataset()),
                 root_file: String::from(dao.ds_root.to_str().unwrap()),
                 myself: Some(dao.in_mem_myself()),
                 users: (dao.in_mem_users()),
                 cwms: dao.cwms,
             })
-        })
-    }
-
-    async fn parse_return_handle(&self, req: Request<ParseRequest>) -> TonicResult<ParseReturnHandleResponse> {
-        self.process_request(&req, move |req, self_lock| {
-            let path = fs::canonicalize(&req.path)?;
-            let path_string = path_to_str(&path)?.to_owned();
-
-            if let Some(dao) = self_lock.loaded_daos.get(&path_string) {
-                let dao = dao.borrow();
-                return Ok(ParseReturnHandleResponse {
-                    file: Some(LoadedFile { key: path_string, name: dao.name().to_owned() })
-                });
-            }
-
-            let dao = self_lock.loader.load(&path)?;
-            let response = ParseReturnHandleResponse {
-                file: Some(LoadedFile { key: path_string.clone(), name: dao.name().to_owned() })
-            };
-            self_lock.loaded_daos.insert(path_string, RefCell::new(dao));
-            Ok(response)
         })
     }
 }
@@ -149,7 +128,28 @@ macro_rules! chat_from_req { ($req:ident) => { $req.chat   .as_ref().context("Re
 macro_rules! msg_from_req { ($req:ident.$msg:ident) => { $req.$msg.as_ref().context("Request has no message")? }; }
 
 #[tonic::async_trait]
-impl<MC: MyselfChooser + 'static> ChatHistoryDaoService for Arc<Mutex<ChatHistoryManagerServer<MC>>> {
+impl<MC: MyselfChooser + 'static> HistoryLoaderService for Arc<Mutex<ChatHistoryManagerServer<MC>>> {
+    async fn load(&self, req: Request<ParseLoadRequest>) -> TonicResult<LoadResponse> {
+        self.process_request(&req, move |req, self_lock| {
+            let path = fs::canonicalize(&req.path)?;
+            let path_string = path_to_str(&path)?.to_owned();
+
+            if let Some(dao) = self_lock.loaded_daos.get(&path_string) {
+                let dao = dao.borrow();
+                return Ok(LoadResponse {
+                    file: Some(LoadedFile { key: path_string, name: dao.name().to_owned() })
+                });
+            }
+
+            let dao = self_lock.loader.load(&path)?;
+            let response = LoadResponse {
+                file: Some(LoadedFile { key: path_string.clone(), name: dao.name().to_owned() })
+            };
+            self_lock.loaded_daos.insert(path_string, RefCell::new(dao));
+            Ok(response)
+        })
+    }
+
     async fn get_loaded_files(&self, req: Request<GetLoadedFilesRequest>) -> TonicResult<GetLoadedFilesResponse> {
         self.process_request(&req, |_, self_lock| {
             let files = self_lock.loaded_daos.iter()
@@ -367,8 +367,8 @@ pub async fn start_server<H: HttpClient>(port: u16, http_client: &'static H) -> 
         .unwrap();
 
     Server::builder()
-        .add_service(HistoryLoaderServiceServer::new(chm_server.clone()))
-        .add_service(ChatHistoryDaoServiceServer::new(chm_server))
+        .add_service(HistoryParserServiceServer::new(chm_server.clone()))
+        .add_service(HistoryLoaderServiceServer::new(chm_server))
         .add_service(reflection_service)
         .serve(addr)
         .await?;

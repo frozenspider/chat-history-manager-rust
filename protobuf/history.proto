@@ -13,18 +13,16 @@ option (scalapb.options) = {
   enum_strip_prefix: true
 };
 
-service HistoryLoaderService {
+service HistoryParserService {
   // Parse a history file and return it entirely
-  rpc ParseReturnFull(ParseRequest) returns (ParseReturnFullResponse) {}
-  // Parse/open a history file and return its DAO handle
-  rpc ParseReturnHandle(ParseRequest) returns (ParseReturnHandleResponse) {}
+  rpc Parse(ParseLoadRequest) returns (ParseResponse) {}
 }
 
-message ParseRequest {
+message ParseLoadRequest {
   string path = 1;
 }
 
-message ParseReturnFullResponse {
+message ParseResponse {
   Dataset ds = 1 [(scalapb.field).no_box = true];
 
   string root_file = 2;
@@ -35,10 +33,6 @@ message ParseReturnFullResponse {
   repeated User users = 4;
 
   repeated ChatWithMessages cwms = 5;
-}
-message ParseReturnHandleResponse {
-  // Can be used for querying ChatHistoryDaoService.
-  LoadedFile file = 1;
 }
 
 service ChooseMyselfService {
@@ -430,10 +424,12 @@ message MessageServiceGroupCall {
 }
 
 //
-// ChatHistoryDaoService
+// HistoryLoaderService
 //
 
-service ChatHistoryDaoService {
+service HistoryLoaderService {
+  // Parse/open a history file and return its DAO handle
+  rpc Load(ParseLoadRequest) returns (LoadResponse) {}
   rpc GetLoadedFiles(GetLoadedFilesRequest) returns (GetLoadedFilesResponse) {}
   rpc Name(NameRequest) returns (NameResponse) {}
   rpc StoragePath(StoragePathRequest) returns (StoragePathResponse) {}
@@ -456,6 +452,10 @@ service ChatHistoryDaoService {
   // Whether given data path is the one loaded in this DAO.
   rpc IsLoaded(IsLoadedRequest) returns (IsLoadedResponse) {}
   rpc Close(CloseRequest) returns (CloseResponse) {}
+}
+
+message LoadResponse {
+  LoadedFile file = 1;
 }
 
 message GetLoadedFilesRequest {}
