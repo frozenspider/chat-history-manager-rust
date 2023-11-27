@@ -12,6 +12,7 @@ pub use anyhow::{anyhow, bail, Context};
 use chrono::Local;
 use hashers::fx_hash::FxHasher;
 use lazy_static::lazy_static;
+use unicode_segmentation::UnicodeSegmentation;
 
 pub mod entity_utils;
 
@@ -204,6 +205,10 @@ pub fn file_hash(path: &Path) -> Result<String> {
 //
 // Misc
 //
+
+pub fn truncate_to(str: String, max_len: usize) -> String {
+    str.graphemes(true).take(max_len).collect::<String>()
+}
 
 pub fn transpose_option_result<T>(x: Option<Result<T>>) -> Result<Option<T>> {
     x.map_or(Ok(None), |v| v.map(Some))

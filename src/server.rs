@@ -12,7 +12,6 @@ use itertools::Itertools;
 use tokio::runtime::Handle;
 use tonic::{Code, Request, Response, Status, transport::Server};
 use tonic::transport::{Channel, Endpoint};
-use unicode_segmentation::UnicodeSegmentation;
 
 use crate::*;
 use crate::dao::ChatHistoryDao;
@@ -24,10 +23,6 @@ use crate::protobuf::history::history_loader_service_server::*;
 
 pub(crate) const FILE_DESCRIPTOR_SET: &[u8] =
     tonic::include_file_descriptor_set!("grpc_reflection_descriptor");
-
-macro_rules! truncate_to {
-    ($str:expr, $maxlen:expr) => {$str.graphemes(true).take($maxlen).collect::<String>()};
-}
 
 type StatusResult<T> = StdResult<T, Status>;
 type TonicResult<T> = StatusResult<Response<T>>;
@@ -91,7 +86,7 @@ impl<MC: MyselfChooser> ChatHistoryManagerServerTrait<MC> for Arc<Mutex<ChatHist
         log::info!(">>> Request:  {:?}", req.get_ref());
         let response_result = logic(req.get_ref())
             .map(Response::new);
-        log::info!("{}", truncate_to!(format!("<<< Response: {:?}", response_result), 150));
+        log::info!("<<< Response: {}", truncate_to(format!("{:?}", response_result), 150));
         response_result.map_err(|err| {
             eprintln!("Request failed!\n{:?}", err);
             Status::new(Code::Internal, error_to_string(&err))

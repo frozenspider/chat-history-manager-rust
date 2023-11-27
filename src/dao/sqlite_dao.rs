@@ -161,72 +161,11 @@ impl SqliteDao {
 
             for src_ds in src_datasets.iter() {
                 let ds_uuid = src_ds.uuid();
-                let src_ds_root = src.dataset_root(ds_uuid)?;
-                let dst_ds_root = self.dataset_root(ds_uuid)?;
-                require!(*src_ds_root != *dst_ds_root, "Source and destination dataset root paths are the same!");
-
-                self.copy_all_sanity_check(src, ds_uuid, src_ds, &src_ds_root, &dst_ds_root)?;
+                ensure_data_sources_are_equal(src, self, ds_uuid)?;
             }
 
             Ok(())
         }, |_, t| log::info!("Dao '{}' fully copied {t} ms", src.name()))
-    }
-
-    fn copy_all_sanity_check(&self,
-                             src: &impl ChatHistoryDao,
-                             ds_uuid: &PbUuid,
-                             src_ds: &Dataset,
-                             src_ds_root: &DatasetRoot,
-                             dst_ds_root: &DatasetRoot) -> EmptyRes {
-        measure(|| {
-            let ds = self.datasets()?.into_iter().find(|ds| ds.uuid() == ds_uuid)
-                .with_context(|| format!("Dataset {} not found after insert!", ds_uuid.value))?;
-            require!(*src_ds == ds, "Inserted dataset is not the same as original!");
-
-            measure(|| {
-                let src_users = src.users(ds_uuid)?;
-                let dst_users = self.users(ds_uuid)?;
-                require!(src_users.len() == dst_users.len(),
-                     "User count differs:\nWas    {} ({:?})\nBecame {} ({:?})",
-                     src_users.len(), src_users, dst_users.len(), dst_users);
-                for (i, (src_user, dst_user)) in src_users.iter().zip(dst_users.iter()).enumerate() {
-                    require!(src_user == dst_user,
-                             "User #{i} differs:\nWas    {:?}\nBecame {:?}", src_user, dst_user);
-                }
-                Ok(())
-            }, |_, t| log::info!("Users checked in {t} ms"))?;
-
-            let src_chats = src.chats(ds_uuid)?;
-            let dst_chats = self.chats(ds_uuid)?;
-            require!(src_chats.len() == dst_chats.len(),
-                     "Chat count differs:\nWas    {}\nBecame {}", src_chats.len(), dst_chats.len());
-
-            for (i, (src_cwd, dst_cwd)) in src_chats.iter().zip(dst_chats.iter()).enumerate() {
-                measure(|| {
-                    require!(PracticalEqTuple::new(&src_cwd.chat, src_ds_root, src_cwd).practically_equals(
-                            &PracticalEqTuple::new(&dst_cwd.chat, dst_ds_root, dst_cwd))?,
-                             "Chat #{i} differs:\nWas    {:?}\nBecame {:?}", src_cwd.chat, dst_cwd.chat);
-
-                    let src_messages = src.last_messages(&src_cwd.chat, src_cwd.chat.msg_count as usize)?;
-                    let dst_messages = self.last_messages(&dst_cwd.chat, dst_cwd.chat.msg_count as usize)?;
-                    require!(src_messages.len() == dst_messages.len(),
-                             "Messages size for chat {} differs:\nWas    {}\nBecame {}",
-                             src_cwd.chat.qualified_name(), src_chats.len(), dst_chats.len());
-
-                    for (j, (src_msg, dst_msg)) in src_messages.iter().zip(dst_messages.iter()).enumerate() {
-                        let src_pet = PracticalEqTuple::new(src_msg, src_ds_root, &src_cwd);
-                        let dst_pet = PracticalEqTuple::new(dst_msg, dst_ds_root, &dst_cwd);
-                        require!(src_pet.practically_equals(&dst_pet)?,
-                                 "Message #{j} for chat {} differs:\nWas    {:?}\nBecame {:?}",
-                                 src_cwd.chat.qualified_name(), src_msg, dst_msg);
-                        //
-                    }
-                    Ok(())
-                }, |_, t| log::info!("Chat {} checked in {t} ms", dst_cwd.chat.qualified_name()))?;
-            }
-
-            Ok(())
-        }, |_, t| log::info!("Dataset '{}' checked in {t} ms", ds_uuid.value))
     }
 
     fn fetch_messages<F>(&self, get_raw_messages_with_content: F) -> Result<Vec<Message>>

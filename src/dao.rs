@@ -197,3 +197,70 @@ impl DaoCache {
         }
     }
 }
+
+const BATCH_SIZE: usize = 5_000;
+
+fn ensure_data_sources_are_equal(src: &impl ChatHistoryDao,
+                                 dst: &impl ChatHistoryDao,
+                                 ds_uuid: &PbUuid) -> EmptyRes {
+    measure(|| {
+        let src_ds = src.datasets()?.into_iter().find(|ds| ds.uuid() == ds_uuid)
+            .with_context(|| format!("Dataset {} not found in source DAO!", ds_uuid.value))?;
+        let dst_ds = src.datasets()?.into_iter().find(|ds| ds.uuid() == ds_uuid)
+            .with_context(|| format!("Dataset {} not found in destination DAO!", ds_uuid.value))?;
+        require!(src_ds == dst_ds, "Destination dataset is not the same as original");
+        let src_ds_root = src.dataset_root(ds_uuid)?;
+        let dst_ds_root = dst.dataset_root(ds_uuid)?;
+        require!(*src_ds_root != *dst_ds_root, "Source and destination dataset root paths are the same!");
+
+        measure(|| {
+            let src_users = src.users(ds_uuid)?;
+            let dst_users = dst.users(ds_uuid)?;
+            require!(src_users.len() == dst_users.len(),
+                     "User count differs:\nWas    {} ({:?})\nBecame {} ({:?})",
+                     src_users.len(), src_users, dst_users.len(), dst_users);
+            for (i, (src_user, dst_user)) in src_users.iter().zip(dst_users.iter()).enumerate() {
+                require!(src_user == dst_user,
+                         "User #{i} differs:\nWas    {:?}\nBecame {:?}", src_user, dst_user);
+            }
+            Ok(())
+        }, |_, t| log::info!("Users checked in {t} ms"))?;
+
+        let src_chats = src.chats(ds_uuid)?;
+        let dst_chats = dst.chats(ds_uuid)?;
+        require!(src_chats.len() == dst_chats.len(),
+                 "Chat count differs:\nWas    {}\nBecame {}", src_chats.len(), dst_chats.len());
+
+        for (i, (src_cwd, dst_cwd)) in src_chats.iter().zip(dst_chats.iter()).enumerate() {
+            measure(|| {
+                require!(PracticalEqTuple::new(&src_cwd.chat, &src_ds_root, src_cwd).practically_equals(
+                        &PracticalEqTuple::new(&dst_cwd.chat, &dst_ds_root, dst_cwd))?,
+                         "Chat #{i} differs:\nWas    {:?}\nBecame {:?}", src_cwd.chat, dst_cwd.chat);
+
+                let msg_count = src_cwd.chat.msg_count as usize;
+                let mut offset: usize = 0;
+                while offset < msg_count {
+                    let src_messages = src.scroll_messages(&src_cwd.chat, offset, BATCH_SIZE)?;
+                    let dst_messages = dst.scroll_messages(&dst_cwd.chat, offset, BATCH_SIZE)?;
+                    require!(!src_messages.is_empty() && !dst_messages.is_empty(),
+                             "Empty messages batch returned, either flawed batching logic or incorrect src_chat.msgCount");
+                    require!(src_messages.len() == dst_messages.len(),
+                             "Messages size for chat {} differs:\nWas    {}\nBecame {}",
+                             src_cwd.chat.qualified_name(), src_chats.len(), dst_chats.len());
+
+                    for (j, (src_msg, dst_msg)) in src_messages.iter().zip(dst_messages.iter()).enumerate() {
+                        let src_pet = PracticalEqTuple::new(src_msg, &src_ds_root, &src_cwd);
+                        let dst_pet = PracticalEqTuple::new(dst_msg, &dst_ds_root, &dst_cwd);
+                        require!(src_pet.practically_equals(&dst_pet)?,
+                                 "Message #{j} for chat {} differs:\nWas    {:?}\nBecame {:?}",
+                                 src_cwd.chat.qualified_name(), src_msg, dst_msg);
+                    }
+                    offset += src_messages.len();
+                }
+                Ok(())
+            }, |_, t| log::info!("Chat {} checked in {t} ms", dst_cwd.chat.qualified_name()))?;
+        }
+
+        Ok(())
+    }, |_, t| log::info!("Dataset '{}' checked in {t} ms", ds_uuid.value))
+}
