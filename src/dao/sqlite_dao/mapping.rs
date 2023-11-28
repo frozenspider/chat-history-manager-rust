@@ -31,6 +31,7 @@ pub mod schema {
             tpe -> Text,
             img_path -> Nullable<Text>,
             msg_count -> Integer,
+            main_chat_id -> Nullable<BigInt>,
         }
     }
 
@@ -164,6 +165,8 @@ pub struct RawChat {
     pub tpe: String,
     pub img_path: Option<String>,
     pub msg_count: i32,
+    // Unused for now
+    pub main_chat_id: Option<i64>,
 }
 
 // We cannot use #[diesel(belongs_to(...))] because Diesel doesn't support multi-column foreign keys.

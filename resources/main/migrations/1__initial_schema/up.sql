@@ -14,6 +14,7 @@ CREATE TABLE chat (
   type                TEXT NOT NULL,
   msg_count           INTEGER NOT NULL,
   img_path            TEXT,
+  main_chat_id        INTEGER,
   PRIMARY KEY (ds_uuid, id)
 ) STRICT, WITHOUT ROWID;
 
