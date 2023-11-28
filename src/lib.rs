@@ -26,7 +26,7 @@ mod utils;
 
 pub fn parse_file(path: &str) -> Result<Box<InMemoryDao>> {
     thread_local! {
-        static LOADER: loader::Loader<NoChooser> = loader::Loader::new(&ReqwestHttpClient, NoChooser);
+        static LOADER: loader::Loader<NoChooser> = loader::Loader::new(&ReqwestHttpClient, NoChooser, None, None);
     }
     LOADER.with(|loader| {
         loader.parse(Path::new(path))

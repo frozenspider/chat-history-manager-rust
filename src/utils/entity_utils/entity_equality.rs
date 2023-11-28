@@ -63,7 +63,9 @@ macro_rules! cloned_equals_without {
 
 impl<'a> PracticalEq for Tup<'a, Chat> {
     fn practically_equals(&self, other: &Self) -> Result<bool> {
-        Ok(cloned_equals_without!(self.v, other.v, Chat, img_path_option: None) &&
+        Ok(cloned_equals_without!(self.v, other.v, Chat, img_path_option: None, member_ids: vec![]) &&
+            self.v.member_ids.len() == other.v.member_ids.len() &&
+            self.v.member_ids.iter().all(|e| other.v.member_ids.contains(e)) &&
             self.apply(|v| &v.img_path_option).practically_equals(&other.apply(|v| &v.img_path_option))?)
     }
 }
@@ -111,6 +113,7 @@ impl<'a> PracticalEq for Tup<'a, MessageService> {
             }
             case!(PinMessage, c1, c2) => Ok(c1 == c2),
             case!(ClearHistory, c1, c2) => Ok(c1 == c2),
+            case!(BlockUser, c1, c2) => Ok(c1 == c2),
             case!(GroupCreate, c1, c2) =>
                 Ok(c1.title == c2.title &&
                     members_practically_equals((&c1.members, self.cwd), (&c2.members, other.cwd))?),

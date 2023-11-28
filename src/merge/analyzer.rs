@@ -19,15 +19,15 @@ struct DatasetDiffAnalyzer<'a> {
 }
 
 impl<'a> DatasetDiffAnalyzer<'a> {
-    pub fn new(
+    pub fn create(
         m_dao: &'a dyn ChatHistoryDao,
         m_ds: &'a Dataset,
         s_dao: &'a dyn ChatHistoryDao,
         s_ds: &'a Dataset,
-    ) -> Self {
-        let m_root = m_dao.dataset_root(m_ds.uuid());
-        let s_root = s_dao.dataset_root(s_ds.uuid());
-        DatasetDiffAnalyzer { m_dao, m_root, s_dao, s_root }
+    ) -> Result<Self> {
+        let m_root = m_dao.dataset_root(m_ds.uuid())?;
+        let s_root = s_dao.dataset_root(s_ds.uuid())?;
+        Ok(DatasetDiffAnalyzer { m_dao, m_root, s_dao, s_root })
     }
 
     /** Note that we can only detect conflicts if data source supports source IDs. */

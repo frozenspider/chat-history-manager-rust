@@ -108,17 +108,12 @@ impl ChatHistoryDao for InMemoryDao {
         &self.ds_root
     }
 
-    fn dataset_root(&self, _ds_uuid: &PbUuid) -> DatasetRoot {
-        DatasetRoot(self.storage_path().to_owned())
+    fn dataset_root(&self, _ds_uuid: &PbUuid) -> Result<DatasetRoot> {
+        Ok(DatasetRoot(self.storage_path().to_owned()))
     }
 
     fn chats_inner(&self, _ds_uuid: &PbUuid) -> Result<Vec<ChatWithDetails>> {
         Ok(self.cwms.iter().map(|cwm| self.cwm_to_cwd(cwm)).collect_vec())
-    }
-
-    fn chat_option(&self, _ds_uuid: &PbUuid, id: i64) -> Result<Option<ChatWithDetails>> {
-        Ok(self.cwm_option(id)
-            .map(|cwm| self.cwm_to_cwd(cwm)))
     }
 
     fn scroll_messages(&self, chat: &Chat, offset: usize, limit: usize) -> Result<Vec<Message>> {

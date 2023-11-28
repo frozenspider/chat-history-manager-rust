@@ -742,11 +742,11 @@ fn create_messages(max_id: MessageSourceId) -> Vec<Message> {
 }
 
 fn analyzer(helper: &MergerHelper) -> DatasetDiffAnalyzer {
-    DatasetDiffAnalyzer::new(
+    DatasetDiffAnalyzer::create(
         helper.m.dao_holder.dao.as_ref(),
         &helper.m.ds,
         helper.s.dao_holder.dao.as_ref(),
         &helper.s.ds,
-    )
+    ).unwrap()
 }
 

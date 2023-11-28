@@ -431,6 +431,7 @@ service HistoryLoaderService {
   // Parse/open a history file and return its DAO handle
   rpc Load(ParseLoadRequest) returns (LoadResponse) {}
   rpc GetLoadedFiles(GetLoadedFilesRequest) returns (GetLoadedFilesResponse) {}
+  rpc SaveAs(SaveAsRequest) returns (LoadedFile) {}
   rpc Name(NameRequest) returns (NameResponse) {}
   rpc StoragePath(StoragePathRequest) returns (StoragePathResponse) {}
   rpc Datasets(DatasetsRequest) returns (DatasetsResponse) {}
@@ -449,6 +450,7 @@ service HistoryLoaderService {
   // Count messages between the given ones (inclusive). Messages must be present.
   rpc MessagesSliceLen(MessagesSliceRequest) returns (CountMessagesResponse) {}
   rpc MessageOption(MessageOptionRequest) returns (MessageOptionResponse) {}
+  rpc MessageOptionByInternalId(MessageOptionByInternalIdRequest) returns (MessageOptionResponse) {}
   // Whether given data path is the one loaded in this DAO.
   rpc IsLoaded(IsLoadedRequest) returns (IsLoadedResponse) {}
   rpc Close(CloseRequest) returns (CloseResponse) {}
@@ -466,6 +468,11 @@ message GetLoadedFilesResponse {
 message LoadedFile {
   string key = 1;
   string name = 2;
+}
+
+message SaveAsRequest {
+  string key = 1;
+  string new_folder_name = 2;
 }
 
 message NameRequest {
@@ -570,6 +577,11 @@ message MessageOptionRequest {
   string key = 1;
   Chat chat = 2 [(scalapb.field).no_box = true];
   int64 source_id = 3;
+}
+message MessageOptionByInternalIdRequest {
+  string key = 1;
+  Chat chat = 2 [(scalapb.field).no_box = true];
+  int64 internal_id = 3;
 }
 message MessageOptionResponse {
   optional Message message = 1 [(scalapb.field).no_box = false];

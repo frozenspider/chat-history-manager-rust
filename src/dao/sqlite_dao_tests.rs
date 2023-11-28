@@ -23,7 +23,7 @@ use super::*;
 const TELEGRAM_DIR: &str = "telegram_2020-01";
 
 lazy_static! {
-    static ref LOADER: Loader<NoChooser> = Loader::new::<MockHttpClient>(&HTTP_CLIENT, NoChooser);
+    static ref LOADER: Loader<NoChooser> = Loader::new::<MockHttpClient>(&HTTP_CLIENT, NoChooser, None, None);
 }
 
 type Tup<'a, T> = PracticalEqTuple<'a, T>;
@@ -251,10 +251,10 @@ fn inserts() -> EmptyRes {
         &|_, _, _| {});
     let src_dao = dao_holder.dao.as_ref();
     let ds_uuid = &src_dao.ds_uuid;
-    let src_ds_root = src_dao.dataset_root(ds_uuid);
+    let src_ds_root = src_dao.dataset_root(ds_uuid)?;
 
     let (mut dst_dao, _dst_dao_tmpdir) = create_sqlite_dao();
-    let dst_ds_root = dst_dao.dataset_root(ds_uuid);
+    let dst_ds_root = dst_dao.dataset_root(ds_uuid)?;
     assert_eq!(dst_dao.datasets()?, vec![]);
 
     // Inserting dataset and users
@@ -522,8 +522,8 @@ fn init_from(src_dao: Box<InMemoryDao>, src_dir: PathBuf, src_dao_tmpdir: Option
     let (dst_dao, dst_dao_tmpdir) = create_sqlite_dao();
     dst_dao.copy_all_from(src_dao.as_ref()).unwrap();
     let ds_uuid = src_dao.datasets().unwrap()[0].uuid().clone();
-    let src_ds_root = src_dao.dataset_root(&ds_uuid);
-    let dst_ds_root = dst_dao.dataset_root(&ds_uuid);
+    let src_ds_root = src_dao.dataset_root(&ds_uuid).unwrap();
+    let dst_ds_root = dst_dao.dataset_root(&ds_uuid).unwrap();
     TestDaos { src_dao, src_dir, src_dao_tmpdir, dst_dao, dst_dao_tmpdir, ds_uuid, src_ds_root, dst_ds_root }
 }
 

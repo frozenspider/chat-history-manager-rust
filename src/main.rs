@@ -12,9 +12,7 @@ static GLOBAL: MiMalloc = MiMalloc;
 
 /** Starts a server by default. */
 fn main() {
-    env_logger::Builder::new()
-        .filter(None, LevelFilter::Info)
-        .init();
+    init_logger();
 
     let mut args = args();
     args.next(); // Consume first argument, which is a command itself.
@@ -56,4 +54,22 @@ fn execute_command(command: Option<String>, args: Vec<String>) -> EmptyRes {
         }
     }
     Ok(())
+}
+
+fn init_logger() {
+    env_logger::Builder::new()
+        .filter(None, LevelFilter::Debug)
+        .format(|buf, record| {
+            use std::io::Write;
+
+            let timestamp = buf.timestamp_millis();
+            let level = record.level();
+            let target = record.target();
+
+            let thread = std::thread::current();
+            writeln!(buf, "{} {} {} - {} [{}]",
+                     timestamp, level, target, buf.style().value(record.args()),
+                     thread.name().unwrap_or("<unnamed>"))
+        })
+        .init();
 }

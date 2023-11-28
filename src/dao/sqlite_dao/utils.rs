@@ -129,6 +129,7 @@ pub mod chat {
                   SELECT GROUP_CONCAT(u.id) FROM user u
                   INNER JOIN chat_member cm ON cm.ds_uuid = c.ds_uuid AND cm.user_id = u.id
                   WHERE u.ds_uuid = c.ds_uuid AND cm.chat_id = c.id
+                  ORDER BY u.id
                 ) AS member_ids
             FROM chat c";
     const DS_IS: &str = "c.ds_uuid = ?";
@@ -716,7 +717,7 @@ pub mod message {
                 let raw = raw_or_bail!();
                 GroupCreate(MessageServiceGroupCreate {
                     title: get_or_bail!(raw.title),
-                    members: deserialize_arr(get_or_bail!(raw.members)),
+                    members: raw.members.map(|s| deserialize_arr(s)).unwrap_or_default(),
                 })
             }
             "group_edit_title" => {

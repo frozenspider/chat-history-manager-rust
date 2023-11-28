@@ -5,19 +5,26 @@ use std::path::Path;
 use chrono::Local;
 use const_format::concatcp;
 use itertools::{Either, Itertools};
+use tokio::runtime::Handle;
+use tonic::transport::Channel;
 
 use crate::*;
 use crate::dao::ChatHistoryDao;
+use crate::dao::grpc_remote_dao::GrpcRemoteDao;
+use crate::dao::sqlite_dao::SqliteDao;
 use crate::loader::telegram::TelegramDataLoader;
 use crate::loader::tinder_android::TinderAndroidDataLoader;
 use crate::loader::whatsapp_android::WhatsAppAndroidDataLoader;
 use crate::loader::whatsapp_text::WhatsAppTextDataLoader;
 use crate::protobuf::history::{Dataset, PbUuid, SourceType};
+use crate::protobuf::history::history_loader_service_client::HistoryLoaderServiceClient;
 
 mod telegram;
 mod tinder_android;
 mod whatsapp_android;
 mod whatsapp_text;
+
+const H2_SUFFIX: &str = ".mv.db";
 
 trait DataLoader {
     fn name(&self) -> &'static str;
@@ -56,10 +63,15 @@ trait DataLoader {
 pub struct Loader<MC: MyselfChooser> {
     loaders: Vec<Box<dyn DataLoader + Sync>>,
     myself_chooser: MC,
+    runtime_handle: Option<Handle>,
+    channel: Option<Channel>,
 }
 
 impl<MC: MyselfChooser> Loader<MC> {
-    pub fn new<H: HttpClient>(http_client: &'static H, myself_chooser: MC) -> Loader<MC> {
+    pub fn new<H: HttpClient>(http_client: &'static H,
+                              myself_chooser: MC,
+                              runtime_handle: Option<Handle>,
+                              channel: Option<Channel>) -> Loader<MC> {
         Loader {
             loaders: vec![
                 Box::new(TelegramDataLoader),
@@ -68,19 +80,38 @@ impl<MC: MyselfChooser> Loader<MC> {
                 Box::new(WhatsAppTextDataLoader),
             ],
             myself_chooser,
+            runtime_handle,
+            channel,
         }
     }
 
-    pub fn load(&self, root_path: &Path) -> Result<Box<dyn ChatHistoryDao>> {
-        Ok(self.parse(root_path)?)
+    /// Can handle the following:
+    /// * Sqlite DB
+    /// * H2 DB - opens remotely it via gRPC DAO
+    /// * In other cases, attempts to parse a file as a foreign history
+    pub fn load(&self, path: &Path) -> Result<Box<dyn ChatHistoryDao>> {
+        let filename = path_file_name(path)?;
+        if filename == SqliteDao::FILENAME {
+            Ok(Box::new(SqliteDao::load(path)?))
+        } else if filename.ends_with(H2_SUFFIX) {
+            // This is an H2 database, let's open it remotely using Scala counterpart via gRPC
+            let key = path_to_str(path)?.to_owned();
+            let storage_path = path.parent().unwrap().to_path_buf();
+            let runtime_handle = self.runtime_handle.clone().context("Runtime handle not supplied!")?;
+            let channel = self.channel.clone().context("Channel was not supplied!")?;
+            let client = HistoryLoaderServiceClient::new(channel);
+            Ok(Box::new(GrpcRemoteDao::create(key, storage_path, runtime_handle, client)?))
+        } else {
+            Ok(self.parse(path)?)
+        }
     }
 
     /// Parses a history in a foreign format
-    pub fn parse(&self, root_path: &Path) -> Result<Box<InMemoryDao>> {
+    pub fn parse(&self, path: &Path) -> Result<Box<InMemoryDao>> {
         let (named_errors, loads): (Vec<_>, Vec<_>) =
             self.loaders.iter()
-                .partition_map(|loader| match loader.looks_about_right(root_path) {
-                    Ok(()) => Either::Right(|| loader.load(root_path, &self.myself_chooser)),
+                .partition_map(|loader| match loader.looks_about_right(path) {
+                    Ok(()) => Either::Right(|| loader.load(path, &self.myself_chooser)),
                     Err(why) => Either::Left((loader.name(), why)),
                 });
         match loads.first() {

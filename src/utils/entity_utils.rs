@@ -172,6 +172,28 @@ impl ChatWithDetails {
     }
 }
 
+impl TryFrom<ChatWithDetailsPb> for ChatWithDetails {
+    type Error = anyhow::Error;
+
+    fn try_from(value: ChatWithDetailsPb) -> Result<Self> {
+        Ok(Self {
+            chat: value.chat.context("Chat was empty")?,
+            last_msg_option: value.last_msg_option,
+            members: value.members,
+        })
+    }
+}
+
+impl From<ChatWithDetails> for ChatWithDetailsPb {
+    fn from(value: ChatWithDetails) -> Self {
+        Self {
+            chat: Some(value.chat),
+            last_msg_option: value.last_msg_option,
+            members: value.members,
+        }
+    }
+}
+
 impl Chat {
     /// Unfortunately needed heler due to rust-protobuf code generation strategy.
     pub fn ds_uuid(&self) -> &PbUuid {
