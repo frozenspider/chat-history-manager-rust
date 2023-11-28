@@ -137,7 +137,7 @@ pub mod chat {
     const ORDER: &str = "ORDER BY c.id ASC";
 
     const SELECT_BY_DS_SQL: &str = concatcp!(SELECT, " WHERE ", DS_IS, " ", ORDER);
-    const SELECT_BY_DS_AND_ID_SQL: &str = concatcp!(SELECT_BY_DS_SQL, " AND ", ID_IS, " ", ORDER);
+    const SELECT_BY_DS_AND_ID_SQL: &str = concatcp!(SELECT, " WHERE ", DS_IS, " AND ", ID_IS, " ", ORDER);
 
     pub fn select_by_ds(ds_uuid: &Uuid,
                         conn: &mut SqliteConnection) -> Result<Vec<RawChatQ>> {

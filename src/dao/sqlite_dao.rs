@@ -77,7 +77,7 @@ impl SqliteDao {
         }
 
         Ok(SqliteDao {
-            name: format!("{} database", path_file_name(&db_file)?),
+            name: format!("{} database", path_file_name(&db_file.parent().unwrap())?),
             db_file: db_file.to_path_buf(),
             conn,
             cache: DaoCache::new(),

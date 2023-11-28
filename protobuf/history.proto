@@ -15,10 +15,10 @@ option (scalapb.options) = {
 
 service HistoryParserService {
   // Parse a history file and return it entirely
-  rpc Parse(ParseLoadRequest) returns (ParseResponse) {}
+  rpc Parse(ParseRequest) returns (ParseResponse) {}
 }
 
-message ParseLoadRequest {
+message ParseRequest {
   string path = 1;
 }
 
@@ -53,7 +53,7 @@ message Dataset {
 }
 
 message User {
-  PbUuid dsUuid = 1 [(scalapb.field).no_box = true];
+  PbUuid ds_uuid = 1 [(scalapb.field).no_box = true];
   // Unique within a dataset.
   int64 id = 2;
   // If there's no first/last name separation, everything will be in first name.
@@ -75,7 +75,7 @@ message PbUuid {
 
 // The request with a id of the book
 message Chat {
-  PbUuid dsUuid = 1 [(scalapb.field).no_box = true];
+  PbUuid ds_uuid = 1 [(scalapb.field).no_box = true];
   // Unique within a dataset
   int64 id = 2;
 
@@ -433,8 +433,9 @@ message MessageServiceGroupCall {
 
 service HistoryLoaderService {
   // Parse/open a history file and return its DAO handle
-  rpc Load(ParseLoadRequest) returns (LoadResponse) {}
+  rpc Load(LoadRequest) returns (LoadResponse) {}
   rpc GetLoadedFiles(GetLoadedFilesRequest) returns (GetLoadedFilesResponse) {}
+  rpc Close(CloseRequest) returns (CloseResponse) {}
 }
 
 service HistoryDaoService {
@@ -460,11 +461,14 @@ service HistoryDaoService {
   rpc MessageOptionByInternalId(MessageOptionByInternalIdRequest) returns (MessageOptionResponse) {}
   // Whether given data path is the one loaded in this DAO.
   rpc IsLoaded(IsLoadedRequest) returns (IsLoadedResponse) {}
-  rpc Close(CloseRequest) returns (CloseResponse) {}
 }
 
+message LoadRequest {
+  string key = 1;
+  string path = 2;
+}
 message LoadResponse {
-  LoadedFile file = 1;
+  string name = 1;
 }
 
 message GetLoadedFilesRequest {}
@@ -505,7 +509,7 @@ message DatasetsResponse {
 
 message DatasetRootRequest {
   string key = 1;
-  PbUuid dsUuid = 2 [(scalapb.field).no_box = true];
+  PbUuid ds_uuid = 2 [(scalapb.field).no_box = true];
 }
 message DatasetRootResponse {
   string path = 1;
@@ -513,7 +517,7 @@ message DatasetRootResponse {
 
 message MyselfRequest {
   string key = 1;
-  PbUuid dsUuid = 2 [(scalapb.field).no_box = true];
+  PbUuid ds_uuid = 2 [(scalapb.field).no_box = true];
 }
 message MyselfResponse {
   User myself = 1 [(scalapb.field).no_box = true];
@@ -521,7 +525,7 @@ message MyselfResponse {
 
 message UsersRequest {
   string key = 1;
-  PbUuid dsUuid = 2 [(scalapb.field).no_box = true];
+  PbUuid ds_uuid = 2 [(scalapb.field).no_box = true];
 }
 message UsersResponse {
   repeated User users = 1;
@@ -529,7 +533,7 @@ message UsersResponse {
 
 message ChatsRequest {
   string key = 1;
-  PbUuid dsUuid = 2 [(scalapb.field).no_box = true];
+  PbUuid ds_uuid = 2 [(scalapb.field).no_box = true];
 }
 message ChatsResponse {
   repeated ChatWithDetailsPB cwds = 1;
@@ -607,4 +611,44 @@ message CloseRequest {
 }
 message CloseResponse {
   bool success = 1;
+}
+
+//
+// MergeService
+//
+
+service MergeService {
+  rpc Analyze(AnalyzeRequest) returns (AnalyzeResponse) {}
+}
+
+message AnalyzeRequest {
+  string master_dao_key = 1;
+  PbUuid master_ds_uuid = 2 [(scalapb.field).no_box = true];
+
+  string slave_dao_key = 3;
+  PbUuid slave_ds_uuid = 4 [(scalapb.field).no_box = true];
+
+  repeated int64 chat_ids = 5;
+}
+message AnalyzeResponse {
+  repeated ChatAnalysis analysis = 1;
+}
+message ChatAnalysis {
+  int64 chat_id = 1;
+  repeated AnalysisSection sections = 2;
+}
+// This has internal IDs, those not corresponding to the type are unused
+message AnalysisSection {
+  AnalysisSectionType tpe = 1;
+
+  int64 first_master_msg_id = 2;
+  int64 last_master_msg_id = 3;
+  int64 first_slave_msg_id = 4;
+  int64 last_slave_msg_id = 5;
+}
+enum AnalysisSectionType {
+  ANALYSIS_SECTION_TYPE_MATCH = 0;
+  ANALYSIS_SECTION_TYPE_RETENTION = 1;
+  ANALYSIS_SECTION_TYPE_ADDITION = 2;
+  ANALYSIS_SECTION_TYPE_CONFLICT = 3;
 }

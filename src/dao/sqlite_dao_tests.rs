@@ -69,6 +69,9 @@ fn fetching() -> EmptyRes {
     assert_eq!(src_chats.len(), dst_chats.len());
 
     for (src_cwd, dst_cwd) in src_chats.iter().zip(dst_chats.iter()) {
+        assert_eq!(daos.src_dao.chat_option(&daos.ds_uuid, src_cwd.chat.id)?, Some(src_cwd.clone()));
+        assert_eq!(daos.dst_dao.chat_option(&daos.ds_uuid, dst_cwd.chat.id)?, Some(dst_cwd.clone()));
+
         let practically_eq = |src_msgs: &Vec<Message>, dst_msgs: &Vec<Message>| {
             Tup::new(src_msgs, &daos.src_ds_root, &src_cwd)
                 .practically_equals(&Tup::new(dst_msgs, &daos.dst_ds_root, &dst_cwd))

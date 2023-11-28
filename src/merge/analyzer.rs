@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use std::cmp::Ordering;
 
 use crate::*;
@@ -10,7 +8,7 @@ use crate::protobuf::history::*;
 #[path = "analyzer_tests.rs"]
 mod tests;
 
-struct DatasetDiffAnalyzer<'a> {
+pub struct DatasetDiffAnalyzer<'a> {
     m_dao: &'a dyn ChatHistoryDao,
     m_root: DatasetRoot,
 
@@ -414,6 +412,28 @@ fn equals_with_no_mismatching_content(mm_eq: PracticalEqTuple<MasterMessage>,
     use message::Typed::*;
     use message_service::SealedValueOptional::*;
 
+    // Special case: Telegram 2023-11 started exporting double styles (bold+X)
+    // as bold instead of an X. We want to ignore this change.
+    fn text_to_comparable(rte: &RichTextElement) -> RichTextElement {
+        use rich_text_element::Val::*;
+        match rte.val {
+            Some(Italic(ref v)) => RichText::make_bold(v.text.clone()),
+            Some(Underline(ref v)) => RichText::make_bold(v.text.clone()),
+            Some(Strikethrough(ref v)) => RichText::make_bold(v.text.clone()),
+            _ => rte.clone()
+        }
+    }
+    fn regular_msg_to_comparable(m: &Message, mr: &MessageRegular) -> Message {
+        Message {
+            typed: Some(Regular(MessageRegular {
+                content_option: None,
+                edit_timestamp_option: None,
+                ..mr.clone()
+            })),
+            text: m.text.iter().map(text_to_comparable).collect_vec(),
+            ..m.clone()
+        }
+    }
     fn has_content(c: &Option<Content>, root: &DatasetRoot) -> bool {
         c.as_ref().and_then(|c| c.path_file_option(root))
             .map(|p| p.exists())
@@ -428,22 +448,8 @@ fn equals_with_no_mismatching_content(mm_eq: PracticalEqTuple<MasterMessage>,
 
     match (mm_eq.v.0.typed(), sm_eq.v.0.typed()) {
         (Regular(mm_regular), Regular(sm_regular)) => {
-            let mm_copy = Message {
-                typed: Some(Regular(MessageRegular {
-                    content_option: None,
-                    edit_timestamp_option: None,
-                    ..mm_regular.clone()
-                })),
-                ..mm_eq.v.0.clone()
-            };
-            let sm_copy = Message {
-                typed: Some(Regular(MessageRegular {
-                    content_option: None,
-                    edit_timestamp_option: None,
-                    ..sm_regular.clone()
-                })),
-                ..sm_eq.v.0.clone()
-            };
+            let mm_copy = regular_msg_to_comparable(&mm_eq.v.0, &mm_regular);
+            let sm_copy = regular_msg_to_comparable(&sm_eq.v.0, &sm_regular);
 
             if !mm_eq.with(&mm_copy).practically_equals(&sm_eq.with(&sm_copy))? {
                 return Ok(false);

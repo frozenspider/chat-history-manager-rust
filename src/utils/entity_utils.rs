@@ -32,15 +32,15 @@ impl PbUuid {
 pub struct DatasetRoot(pub PathBuf);
 
 impl DatasetRoot {
-    pub fn to_absolute(&self, path: &str) -> PathBuf {
-        let path = Path::new(path);
-        assert!(!path.is_absolute());
+    pub fn to_absolute(&self, path_str: &str) -> PathBuf {
+        let path = Path::new(path_str);
+        assert!(!path.is_absolute(), "Path {} needs to be relative!", path_str);
         self.0.join(path)
     }
 
     pub fn to_relative(&self, path: &Path) -> Result<String> {
         let ds_root = &self.0;
-        assert!(ds_root.is_absolute());
+        assert!(ds_root.is_absolute(), "Path {} needs to be absolute!", path_to_str(path)?);
         let path = path.canonicalize()?;
         let path = path.to_str().with_context(|| "Path is not a valid string!")?;
         let ds_root = ds_root.to_str().with_context(|| "Dataset root is not a valid string!")?;

@@ -25,6 +25,8 @@ mod tinder_android;
 mod whatsapp_android;
 mod whatsapp_text;
 
+pub const TEST_KEY_PREFIX: &str = "test://";
+
 const H2_SUFFIX: &str = ".mv.db";
 
 trait DataLoader {
@@ -90,19 +92,25 @@ impl Loader {
     /// * Sqlite DB
     /// * H2 DB - opens remotely it via gRPC DAO
     /// * In other cases, attempts to parse a file as a foreign history
-    pub fn load(&self, path: &Path) -> Result<Box<dyn ChatHistoryDao>> {
+    pub fn load(&self, key: String, path: &Path) -> Result<Box<dyn ChatHistoryDao>> {
         let filename = path_file_name(path)?;
         if filename == SqliteDao::FILENAME {
             Ok(Box::new(SqliteDao::load(path)?))
         } else if filename.ends_with(H2_SUFFIX) {
             // This is an H2 database, let's open it remotely using Scala counterpart via gRPC
-            let key = path_to_str(path)?.to_owned();
             let storage_path = path.parent().unwrap().to_path_buf();
             let runtime_handle = self.runtime_handle.clone().context("Runtime handle not supplied!")?;
             let channel = self.channel.clone().context("Channel was not supplied!")?;
             let loader_client = HistoryLoaderServiceClient::new(channel.clone());
             let dao_client = HistoryDaoServiceClient::new(channel);
             Ok(Box::new(GrpcRemoteDao::create(key, storage_path, runtime_handle, loader_client, dao_client)?))
+        } else if key.starts_with(TEST_KEY_PREFIX) {
+            // This is a call from Scala front-end tests. Dataset is already loaded.
+            let storage_path = path.parent().unwrap().to_path_buf();
+            let runtime_handle = self.runtime_handle.clone().context("Runtime handle not supplied!")?;
+            let channel = self.channel.clone().context("Channel was not supplied!")?;
+            let dao_client = HistoryDaoServiceClient::new(channel);
+            Ok(Box::new(GrpcRemoteDao::create_without_loading(key, storage_path, runtime_handle, dao_client)?))
         } else {
             Ok(self.parse(path)?)
         }

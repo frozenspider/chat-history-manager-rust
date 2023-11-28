@@ -30,10 +30,11 @@ impl GrpcRemoteDao {
                   runtime_handle: Handle,
                   mut loader_client: LoaderClient,
                   dao_client: DaoClient) -> Result<Self> {
+        let key_clone = key.clone();
         let path = key.clone();
         let handle = runtime_handle.clone();
         let response = std::thread::spawn(move || {
-            let req = ParseLoadRequest { path };
+            let req = LoadRequest { key: key_clone, path };
             log::debug!("<<< Request:  {:?}", req);
             let future = loader_client.load(req);
             let response_result = handle.block_on(future).map(|w| w.into_inner())
@@ -41,8 +42,19 @@ impl GrpcRemoteDao {
             log::debug!(">>> Response: {}", truncate_to(format!("{:?}", response_result), 150));
             response_result
         }).join().unwrap()?;
-        require!(response.file.map(|f| f.key).as_ref() == Some(&key),
-                 "Remote load returned unexpected result");
+        let dao_client = Arc::new(Mutex::new(dao_client));
+        Ok(GrpcRemoteDao {
+            name: response.name,
+            key,
+            storage_path,
+            runtime_handle,
+            cache: DaoCache::new(),
+            client: dao_client,
+        })
+    }
+
+    /// Create a GrpcRemoteDao without issuing a LoadRequest, needed for testing purposes
+    pub fn create_without_loading(key: String, storage_path: PathBuf, runtime_handle: Handle, dao_client: DaoClient) -> Result<Self> {
         let name = format!("{} database", path_file_name(&storage_path)?);
         let dao_client = Arc::new(Mutex::new(dao_client));
         Ok(GrpcRemoteDao {

@@ -10,7 +10,7 @@ use super::*;
 
 #[tonic::async_trait]
 impl HistoryParserService for Arc<Mutex<ChatHistoryManagerServer>> {
-    async fn parse(&self, req: Request<ParseLoadRequest>) -> TonicResult<ParseResponse> {
+    async fn parse(&self, req: Request<ParseRequest>) -> TonicResult<ParseResponse> {
         self.process_request(&req, move |req, self_lock| {
             let path = Path::new(&req.path);
             let dao = self_lock.loader.parse(path)?;
@@ -27,23 +27,18 @@ impl HistoryParserService for Arc<Mutex<ChatHistoryManagerServer>> {
 
 #[tonic::async_trait]
 impl HistoryLoaderService for Arc<Mutex<ChatHistoryManagerServer>> {
-    async fn load(&self, req: Request<ParseLoadRequest>) -> TonicResult<LoadResponse> {
+    async fn load(&self, req: Request<LoadRequest>) -> TonicResult<LoadResponse> {
         self.process_request(&req, move |req, self_lock| {
             let path = fs::canonicalize(&req.path)?;
-            let path_string = path_to_str(&path)?.to_owned();
 
-            if let Some(dao) = self_lock.loaded_daos.get(&path_string) {
+            if let Some(dao) = self_lock.loaded_daos.get(&req.key) {
                 let dao = dao.borrow();
-                return Ok(LoadResponse {
-                    file: Some(LoadedFile { key: path_string, name: dao.name().to_owned() })
-                });
+                return Ok(LoadResponse { name: dao.name().to_owned() });
             }
 
-            let dao = self_lock.loader.load(&path)?;
-            let response = LoadResponse {
-                file: Some(LoadedFile { key: path_string.clone(), name: dao.name().to_owned() })
-            };
-            self_lock.loaded_daos.insert(path_string, RefCell::new(dao));
+            let dao = self_lock.loader.load(req.key.clone(), &path)?;
+            let response = LoadResponse { name: dao.name().to_owned() };
+            self_lock.loaded_daos.insert(req.key.clone(), RefCell::new(dao));
             Ok(response)
         })
     }
@@ -54,6 +49,13 @@ impl HistoryLoaderService for Arc<Mutex<ChatHistoryManagerServer>> {
                 .map(|(k, dao)| LoadedFile { key: k.clone(), name: dao.borrow().name().to_owned() })
                 .collect_vec();
             Ok(GetLoadedFilesResponse { files })
+        })
+    }
+
+    async fn close(&self, req: Request<CloseRequest>) -> TonicResult<CloseResponse> {
+        self.process_request(&req, |req, self_lock| {
+            let dao = self_lock.loaded_daos.remove(&req.key);
+            Ok(CloseResponse { success: dao.is_some() })
         })
     }
 }

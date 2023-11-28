@@ -731,6 +731,32 @@ fn present_absent_not_downloaded() -> EmptyRes {
     Ok(())
 }
 
+#[test]
+fn telegram_2023_11_amending_double_style_export() -> EmptyRes {
+    let msgs = create_messages(src_id(0));
+    let msgs_a = msgs.iter().map(|m| Message {
+        text: vec![RichText::make_bold(format!("Text in other style"))],
+        ..m.clone()
+    }).collect_vec();
+    let msgs_b = msgs.iter().map(|m| Message {
+        text: vec![RichText::make_italic(format!("Text in other style"))],
+        ..m.clone()
+    }).collect_vec();
+    let helper = MergerHelper::new_as_is(MAX_USER_ID, msgs_a, msgs_b);
+    let analysis = analyzer(&helper).analyze(helper.m.cwd(), helper.s.cwd(), "")?;
+    assert_eq!(
+        analysis, vec![
+            Match(MergeAnalysisSectionMatch {
+                first_master_msg_id: helper.m.msgs[&src_id(0)].typed_id(),
+                last_master_msg_id: helper.m.msgs[&src_id(0)].typed_id(),
+                first_slave_msg_id: helper.s.msgs[&src_id(0)].typed_id(),
+                last_slave_msg_id: helper.s.msgs[&src_id(0)].typed_id(),
+            }),
+        ]
+    );
+    Ok(())
+}
+
 //
 // Helpers
 //

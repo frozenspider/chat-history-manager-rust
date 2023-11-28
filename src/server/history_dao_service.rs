@@ -13,8 +13,8 @@ macro_rules! with_dao_by_key {
     };
 }
 
-macro_rules! uuid_from_req { ($req:ident) => { $req.ds_uuid.as_ref().context("Request has no ds_uuid")? }; }
-macro_rules! chat_from_req { ($req:ident) => { $req.chat   .as_ref().context("Request has no chat")? }; }
+macro_rules! uuid_from_req { ($req:ident) => { from_req!($req.ds_uuid) }; }
+macro_rules! chat_from_req { ($req:ident) => { from_req!($req.chat) }; }
 
 #[tonic::async_trait]
 impl HistoryDaoService for Arc<Mutex<ChatHistoryManagerServer>> {
@@ -181,13 +181,6 @@ impl HistoryDaoService for Arc<Mutex<ChatHistoryManagerServer>> {
             Ok(IsLoadedResponse {
                 is_loaded: dao.is_loaded(&Path::new(&req.storage_path))
             })
-        })
-    }
-
-    async fn close(&self, req: Request<CloseRequest>) -> TonicResult<CloseResponse> {
-        self.process_request(&req, |req, self_lock| {
-            let dao = self_lock.loaded_daos.remove(&req.key);
-            Ok(CloseResponse { success: dao.is_some() })
         })
     }
 }

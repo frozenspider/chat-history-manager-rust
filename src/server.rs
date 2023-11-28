@@ -19,12 +19,15 @@ use crate::dao::sqlite_dao::SqliteDao;
 use crate::loader::Loader;
 use crate::protobuf::history::*;
 use crate::protobuf::history::choose_myself_service_client::ChooseMyselfServiceClient;
+use crate::protobuf::history::history_dao_service_server::HistoryDaoServiceServer;
 use crate::protobuf::history::history_loader_service_server::HistoryLoaderServiceServer;
 use crate::protobuf::history::history_parser_service_server::HistoryParserServiceServer;
+use crate::protobuf::history::merge_service_server::MergeServiceServer;
 
 mod myself_chooser;
 mod history_loader_service;
 mod history_dao_service;
+mod merge_service;
 
 pub(crate) const FILE_DESCRIPTOR_SET: &[u8] =
     tonic::include_file_descriptor_set!("grpc_reflection_descriptor");
@@ -37,6 +40,13 @@ type DaoKey = String;
 type DaoRefCell = RefCell<Box<dyn ChatHistoryDao>>;
 
 type ChmLock<'a> = MutexGuard<'a, ChatHistoryManagerServer>;
+
+#[macro_export]
+macro_rules! from_req {
+    ($req:ident.$field:ident) => {
+        $req.$field.as_ref().context(concat!("Request has no ", stringify!($field)))?
+    };
+}
 
 // Should be used wrapped in Arc<Mutex<Self>>
 pub struct ChatHistoryManagerServer {
@@ -127,7 +137,9 @@ pub async fn start_server<H: HttpClient>(port: u16, http_client: &'static H) -> 
 
     Server::builder()
         .add_service(HistoryParserServiceServer::new(chm_server.clone()))
-        .add_service(HistoryLoaderServiceServer::new(chm_server))
+        .add_service(HistoryLoaderServiceServer::new(chm_server.clone()))
+        .add_service(HistoryDaoServiceServer::new(chm_server.clone()))
+        .add_service(MergeServiceServer::new(chm_server))
         .add_service(reflection_service)
         .serve(addr)
         .await?;
