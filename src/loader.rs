@@ -11,6 +11,7 @@ use tonic::transport::Channel;
 use crate::*;
 use crate::dao::ChatHistoryDao;
 use crate::dao::grpc_remote_dao::GrpcRemoteDao;
+use crate::dao::sqlite_dao::SqliteDao;
 use crate::loader::telegram::TelegramDataLoader;
 use crate::loader::tinder_android::TinderAndroidDataLoader;
 use crate::loader::whatsapp_android::WhatsAppAndroidDataLoader;
@@ -84,27 +85,33 @@ impl<MC: MyselfChooser> Loader<MC> {
         }
     }
 
-    /// If H2 DB is supplied, opens it via gRPC DAO, otherwise attempts to parse it as a foreign history
-    pub fn load(&self, root_path: &Path) -> Result<Box<dyn ChatHistoryDao>> {
-        if path_file_name(root_path)?.ends_with(H2_SUFFIX) {
+    /// Can handle the following:
+    /// * Sqlite DB
+    /// * H2 DB - opens remotely it via gRPC DAO
+    /// * In other cases, attempts to parse a file as a foreign history
+    pub fn load(&self, path: &Path) -> Result<Box<dyn ChatHistoryDao>> {
+        let filename = path_file_name(path)?;
+        if filename == SqliteDao::FILENAME {
+            Ok(Box::new(SqliteDao::load(path)?))
+        } else if filename.ends_with(H2_SUFFIX) {
             // This is an H2 database, let's open it remotely using Scala counterpart via gRPC
-            let key = path_to_str(root_path)?.to_owned();
-            let storage_path = root_path.parent().unwrap().to_path_buf();
+            let key = path_to_str(path)?.to_owned();
+            let storage_path = path.parent().unwrap().to_path_buf();
             let runtime_handle = self.runtime_handle.clone().context("Runtime handle not supplied!")?;
             let channel = self.channel.clone().context("Channel was not supplied!")?;
             let client = HistoryLoaderServiceClient::new(channel);
             Ok(Box::new(GrpcRemoteDao::create(key, storage_path, runtime_handle, client)?))
         } else {
-            Ok(self.parse(root_path)?)
+            Ok(self.parse(path)?)
         }
     }
 
     /// Parses a history in a foreign format
-    pub fn parse(&self, root_path: &Path) -> Result<Box<InMemoryDao>> {
+    pub fn parse(&self, path: &Path) -> Result<Box<InMemoryDao>> {
         let (named_errors, loads): (Vec<_>, Vec<_>) =
             self.loaders.iter()
-                .partition_map(|loader| match loader.looks_about_right(root_path) {
-                    Ok(()) => Either::Right(|| loader.load(root_path, &self.myself_chooser)),
+                .partition_map(|loader| match loader.looks_about_right(path) {
+                    Ok(()) => Either::Right(|| loader.load(path, &self.myself_chooser)),
                     Err(why) => Either::Left((loader.name(), why)),
                 });
         match loads.first() {

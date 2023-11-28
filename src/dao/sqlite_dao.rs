@@ -85,7 +85,7 @@ impl SqliteDao {
         })
     }
 
-    pub fn copy_all_from(&self, src: &impl ChatHistoryDao) -> EmptyRes {
+    pub fn copy_all_from(&self, src: &dyn ChatHistoryDao) -> EmptyRes {
         measure(|| {
             let src_datasets = src.datasets()?;
 
@@ -136,7 +136,7 @@ impl SqliteDao {
                             Ok::<_, anyhow::Error>(())
                         })?;
 
-                        const BATCH_SIZE: usize = 1000;
+                        const BATCH_SIZE: usize = 5_000;
                         let mut offset: usize = 0;
                         loop {
                             let src_msgs = src.scroll_messages(&src_cwd.chat, offset, BATCH_SIZE)?;

@@ -32,11 +32,11 @@ impl GrpcRemoteDao {
             let mut client = client_copy.lock().map_err(|_| anyhow!("Mutex is poisoned!"))?;
             let client = client.deref_mut();
             let req = ParseLoadRequest { path };
-            log::info!("<<< Request:  {:?}", req);
+            log::debug!("<<< Request:  {:?}", req);
             let future = client.load(req);
             let response_result = handle.block_on(future).map(|w| w.into_inner())
                 .map_err(|status| anyhow!("Request failed: {:?}", status));
-            log::info!(">>> Response: {}", truncate_to(format!("{:?}", response_result), 150));
+            log::debug!(">>> Response: {}", truncate_to(format!("{:?}", response_result), 150));
             response_result
         }).join().unwrap()?;
         require!(response.file.map(|f| f.key).as_ref() == Some(&key),
@@ -63,10 +63,10 @@ impl GrpcRemoteDao {
         std::thread::spawn(move || {
             let mut client = client.lock().map_err(|_| anyhow!("Mutex is poisoned!"))?;
             let client = client.deref_mut();
-            log::info!("<<< Request:  {:?}", req);
+            log::debug!("<<< Request:  {:?}", req);
             let future = do_request(client, req);
             let res = handle.block_on(future).map(|w| w.into_inner()).map_err(|status| anyhow!("Request failed: {:?}", status));
-            log::info!(">>> Response: {}", truncate_to(format!("{:?}", res), 150));
+            log::debug!(">>> Response: {}", truncate_to(format!("{:?}", res), 150));
             res
         }).join().unwrap()
     }

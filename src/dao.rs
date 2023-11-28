@@ -200,8 +200,8 @@ impl DaoCache {
 
 const BATCH_SIZE: usize = 5_000;
 
-fn ensure_data_sources_are_equal(src: &impl ChatHistoryDao,
-                                 dst: &impl ChatHistoryDao,
+fn ensure_data_sources_are_equal(src: &dyn ChatHistoryDao,
+                                 dst: &dyn ChatHistoryDao,
                                  ds_uuid: &PbUuid) -> EmptyRes {
     measure(|| {
         let src_ds = src.datasets()?.into_iter().find(|ds| ds.uuid() == ds_uuid)
@@ -258,7 +258,8 @@ fn ensure_data_sources_are_equal(src: &impl ChatHistoryDao,
                     offset += src_messages.len();
                 }
                 Ok(())
-            }, |_, t| log::info!("Chat {} checked in {t} ms", dst_cwd.chat.qualified_name()))?;
+            }, |_, t| log::info!("Chat {} ({} messages) checked in {t} ms", dst_cwd.chat.qualified_name(),
+                                                                            dst_cwd.chat.msg_count))?;
         }
 
         Ok(())

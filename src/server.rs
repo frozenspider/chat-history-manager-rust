@@ -15,6 +15,7 @@ use tonic::transport::{Channel, Endpoint};
 
 use crate::*;
 use crate::dao::ChatHistoryDao;
+use crate::dao::sqlite_dao::SqliteDao;
 use crate::loader::Loader;
 use crate::protobuf::history::*;
 use crate::protobuf::history::choose_myself_service_client::ChooseMyselfServiceClient;
@@ -83,10 +84,10 @@ impl<MC: MyselfChooser> ChatHistoryManagerServerTrait<MC> for Arc<Mutex<ChatHist
         where Q: Debug,
               P: Debug,
               L: FnMut(&Q) -> Result<P> {
-        log::info!(">>> Request:  {:?}", req.get_ref());
+        log::debug!(">>> Request:  {:?}", req.get_ref());
         let response_result = logic(req.get_ref())
             .map(Response::new);
-        log::info!("<<< Response: {}", truncate_to(format!("{:?}", response_result), 150));
+        log::debug!("<<< Response: {}", truncate_to(format!("{:?}", response_result), 150));
         response_result.map_err(|err| {
             eprintln!("Request failed!\n{:?}", err);
             Status::new(Code::Internal, error_to_string(&err))
@@ -150,6 +151,43 @@ impl<MC: MyselfChooser + 'static> HistoryLoaderService for Arc<Mutex<ChatHistory
                 .collect_vec();
             Ok(GetLoadedFilesResponse { files })
         })
+    }
+
+    async fn save_as(&self, req: Request<SaveAsRequest>) -> TonicResult<LoadedFile> {
+        let mut new_dao: Option<DaoRefCell> = None;
+        let mut new_key: String = String::new();
+
+        let res = with_dao_by_key!(self, req, dao, {
+            let new_storage_path =
+                dao.storage_path().parent().map(|p| p.join(&req.new_folder_name)).context("Cannot resolve new folder")?;
+            if !new_storage_path.exists() {
+                bail!("Path does not exist!")
+            }
+            for entry in fs::read_dir(&new_storage_path)? {
+                let file_name = path_file_name(&entry?.path())?.to_owned();
+                if !file_name.starts_with(".") {
+                    bail!("Directory is not empty! Found {file_name} there")
+                }
+            }
+            let new_db_file = new_storage_path.join(SqliteDao::FILENAME);
+            let sqlite_dao = SqliteDao::create(&new_db_file)?;
+            sqlite_dao.copy_all_from(dao)?;
+            new_key =  path_to_str(&new_db_file)?.to_owned();
+            let name = sqlite_dao.name().to_owned();
+            new_dao = Some(DaoRefCell::new(Box::new(sqlite_dao)));
+            Ok(LoadedFile { key: new_key.clone(), name })
+        });
+
+        if let Some(new_dao) = new_dao {
+            let mut self_lock = lock_or_status(self)?;
+            if self_lock.loaded_daos.contains_key(&new_key) {
+                return Err(Status::new(Code::Internal,
+                                       format!("Key {} is already taken!", new_key)));
+            }
+            self_lock.loaded_daos.insert(new_key, new_dao);
+        }
+
+        res
     }
 
     async fn name(&self, req: Request<NameRequest>) -> TonicResult<NameResponse> {

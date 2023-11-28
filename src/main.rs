@@ -58,7 +58,7 @@ fn execute_command(command: Option<String>, args: Vec<String>) -> EmptyRes {
 
 fn init_logger() {
     env_logger::Builder::new()
-        .filter(None, LevelFilter::Info)
+        .filter(None, LevelFilter::Debug)
         .format(|buf, record| {
             use std::io::Write;
 

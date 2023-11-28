@@ -431,6 +431,7 @@ service HistoryLoaderService {
   // Parse/open a history file and return its DAO handle
   rpc Load(ParseLoadRequest) returns (LoadResponse) {}
   rpc GetLoadedFiles(GetLoadedFilesRequest) returns (GetLoadedFilesResponse) {}
+  rpc SaveAs(SaveAsRequest) returns (LoadedFile) {}
   rpc Name(NameRequest) returns (NameResponse) {}
   rpc StoragePath(StoragePathRequest) returns (StoragePathResponse) {}
   rpc Datasets(DatasetsRequest) returns (DatasetsResponse) {}
@@ -467,6 +468,11 @@ message GetLoadedFilesResponse {
 message LoadedFile {
   string key = 1;
   string name = 2;
+}
+
+message SaveAsRequest {
+  string key = 1;
+  string new_folder_name = 2;
 }
 
 message NameRequest {
