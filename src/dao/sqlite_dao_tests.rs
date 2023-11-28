@@ -1,29 +1,24 @@
 #![allow(unused_imports)]
 
-use std::cmp::{max, min};
-use std::collections::HashSet;
-use std::env::temp_dir;
-use chrono::prelude::*;
+use std::cmp::max;
+
 use itertools::Itertools;
-use lazy_static::lazy_static;
 use pretty_assertions::{assert_eq, assert_ne};
 use regex::Regex;
 
-use crate::{NoChooser, User};
+use crate::NoChooser;
 use crate::dao::ChatHistoryDao;
 use crate::entity_utils::*;
 use crate::loader::Loader;
 use crate::protobuf::history::*;
-use crate::protobuf::history::content::SealedValueOptional::*;
 use crate::protobuf::history::message::*;
-use crate::protobuf::history::message_service::SealedValueOptional::*;
 
 use super::*;
 
 const TELEGRAM_DIR: &str = "telegram_2020-01";
 
-lazy_static! {
-    static ref LOADER: Loader<NoChooser> = Loader::new::<MockHttpClient>(&HTTP_CLIENT, NoChooser, None, None);
+thread_local! {
+    static LOADER: Loader = Loader::new::<MockHttpClient>(&HTTP_CLIENT, Box::new(NoChooser), None, None);
 }
 
 type Tup<'a, T> = PracticalEqTuple<'a, T>;
@@ -514,7 +509,7 @@ struct TestDaos {
 
 fn init() -> TestDaos {
     let src_dir = resource(TELEGRAM_DIR);
-    let src_dao = LOADER.parse(&src_dir).unwrap();
+    let src_dao = LOADER.with(|loader| loader.parse(&src_dir).unwrap());
     init_from(src_dao, src_dir, None)
 }
 

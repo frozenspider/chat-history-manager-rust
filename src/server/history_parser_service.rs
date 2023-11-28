@@ -8,7 +8,7 @@ use crate::protobuf::history::history_parser_service_server::*;
 use super::*;
 
 #[tonic::async_trait]
-impl<MC: MyselfChooser + 'static> HistoryParserService for Arc<Mutex<ChatHistoryManagerServer<MC>>> {
+impl HistoryParserService for Arc<Mutex<ChatHistoryManagerServer>> {
     async fn parse(&self, req: Request<ParseLoadRequest>) -> TonicResult<ParseResponse> {
         self.process_request(&req, move |req, self_lock| {
             let path = Path::new(&req.path);

@@ -36,19 +36,19 @@ type TonicResult<T> = StatusResult<Response<T>>;
 type DaoKey = String;
 type DaoRefCell = RefCell<Box<dyn ChatHistoryDao>>;
 
-type ChmLock<'a, MC> = MutexGuard<'a, ChatHistoryManagerServer<MC>>;
+type ChmLock<'a> = MutexGuard<'a, ChatHistoryManagerServer>;
 
 // Should be used wrapped in Arc<Mutex<Self>>
-pub struct ChatHistoryManagerServer<MC: MyselfChooser> {
-    loader: Loader<MC>,
+pub struct ChatHistoryManagerServer {
+    loader: Loader,
     loaded_daos: HashMap<DaoKey, DaoRefCell>,
 }
 
-trait ChatHistoryManagerServerTrait<MC: MyselfChooser> {
+trait ChatHistoryManagerServerTrait {
     fn process_request<Q, P, L>(&self, req: &Request<Q>, logic: L) -> TonicResult<P>
         where Q: Debug,
               P: Debug,
-              L: FnMut(&Q, &mut ChmLock<'_, MC>) -> Result<P>;
+              L: FnMut(&Q, &mut ChmLock<'_>) -> Result<P>;
 
     fn process_request_with_dao<Q, P, L>(&self, req: &Request<Q>, key: &DaoKey, logic: L) -> TonicResult<P>
         where Q: Debug,
@@ -61,11 +61,11 @@ trait ChatHistoryManagerServerTrait<MC: MyselfChooser> {
               L: FnMut(&Q) -> Result<P>;
 }
 
-impl<MC: MyselfChooser> ChatHistoryManagerServerTrait<MC> for Arc<Mutex<ChatHistoryManagerServer<MC>>> {
+impl ChatHistoryManagerServerTrait for Arc<Mutex<ChatHistoryManagerServer>> {
     fn process_request<Q, P, L>(&self, req: &Request<Q>, mut logic: L) -> TonicResult<P>
         where Q: Debug,
               P: Debug,
-              L: FnMut(&Q, &mut ChmLock<'_, MC>) -> Result<P> {
+              L: FnMut(&Q, &mut ChmLock<'_>) -> Result<P> {
         let mut self_lock = lock_or_status(self)?;
         self.process_request_inner(req, |req| logic(req, &mut self_lock))
     }
@@ -107,10 +107,10 @@ pub async fn start_server<H: HttpClient>(port: u16, http_client: &'static H) -> 
     let remote_port = port + 1;
     let runtime_handle = Handle::current();
     let lazy_channel = Endpoint::new(format!("http://127.0.0.1:{remote_port}"))?.connect_lazy();
-    let myself_chooser = MyselfChooserImpl {
+    let myself_chooser = Box::new(MyselfChooserImpl {
         runtime_handle: runtime_handle.clone(),
         channel: lazy_channel.clone(),
-    };
+    });
     let loader = Loader::new(http_client, myself_chooser, Some(runtime_handle), Some(lazy_channel));
 
     let chm_server = Arc::new(Mutex::new(ChatHistoryManagerServer {

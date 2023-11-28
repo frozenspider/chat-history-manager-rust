@@ -17,7 +17,7 @@ macro_rules! uuid_from_req { ($req:ident) => { $req.ds_uuid.as_ref().context("Re
 macro_rules! chat_from_req { ($req:ident) => { $req.chat   .as_ref().context("Request has no chat")? }; }
 
 #[tonic::async_trait]
-impl<MC: MyselfChooser + 'static> HistoryLoaderService for Arc<Mutex<ChatHistoryManagerServer<MC>>> {
+impl HistoryLoaderService for Arc<Mutex<ChatHistoryManagerServer>> {
     async fn load(&self, req: Request<ParseLoadRequest>) -> TonicResult<LoadResponse> {
         self.process_request(&req, move |req, self_lock| {
             let path = fs::canonicalize(&req.path)?;

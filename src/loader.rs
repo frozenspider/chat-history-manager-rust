@@ -60,18 +60,18 @@ trait DataLoader {
     fn load_inner(&self, path: &Path, ds: Dataset, myself_chooser: &dyn MyselfChooser) -> Result<Box<InMemoryDao>>;
 }
 
-pub struct Loader<MC: MyselfChooser> {
-    loaders: Vec<Box<dyn DataLoader + Sync>>,
-    myself_chooser: MC,
+pub struct Loader {
+    loaders: Vec<Box<dyn DataLoader + Send>>,
+    myself_chooser: Box<dyn MyselfChooser + Send>,
     runtime_handle: Option<Handle>,
     channel: Option<Channel>,
 }
 
-impl<MC: MyselfChooser> Loader<MC> {
+impl Loader {
     pub fn new<H: HttpClient>(http_client: &'static H,
-                              myself_chooser: MC,
+                              myself_chooser: Box<dyn MyselfChooser + Send>,
                               runtime_handle: Option<Handle>,
-                              channel: Option<Channel>) -> Loader<MC> {
+                              channel: Option<Channel>) -> Self {
         Loader {
             loaders: vec![
                 Box::new(TelegramDataLoader),
@@ -111,7 +111,7 @@ impl<MC: MyselfChooser> Loader<MC> {
         let (named_errors, loads): (Vec<_>, Vec<_>) =
             self.loaders.iter()
                 .partition_map(|loader| match loader.looks_about_right(path) {
-                    Ok(()) => Either::Right(|| loader.load(path, &self.myself_chooser)),
+                    Ok(()) => Either::Right(|| loader.load(path, self.myself_chooser.as_ref())),
                     Err(why) => Either::Left((loader.name(), why)),
                 });
         match loads.first() {
@@ -125,12 +125,6 @@ impl<MC: MyselfChooser> Loader<MC> {
         }
     }
 }
-
-// Loader is stateless after construction, so it's safe to be shared between threads.
-
-unsafe impl<MC: MyselfChooser> Send for Loader<MC> {}
-
-unsafe impl<MC: MyselfChooser> Sync for Loader<MC> {}
 
 fn ensure_file_presence(root_file: &Path) -> Result<&str> {
     let root_file_str = path_to_str(root_file)?;
