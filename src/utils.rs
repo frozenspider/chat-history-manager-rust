@@ -5,7 +5,7 @@ use std::fs::File;
 use std::hash::{BuildHasher, BuildHasherDefault, Hasher as StdHasher};
 use std::io::{BufReader, Read};
 use std::ops::RangeBounds;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 pub use anyhow::{anyhow, bail, Context};
@@ -116,6 +116,20 @@ pub fn path_file_name(path: &Path) -> Result<&str> {
 
 pub fn path_to_str(path: &Path) -> Result<&str> {
     path.to_str().context("Failed to convert path to a string")
+}
+
+/// List all files (not directories!) in the given path
+pub fn list_all_files(p: &Path, recurse: bool) -> Result<Vec<PathBuf>> {
+    let mut res = vec![];
+    for entry in p.read_dir()? {
+        let path = entry?.path();
+        if path.is_file() {
+            res.push(path);
+        } else if recurse {
+            res.extend(list_all_files(&path, recurse)?.into_iter());
+        }
+    }
+    Ok(res)
 }
 
 //

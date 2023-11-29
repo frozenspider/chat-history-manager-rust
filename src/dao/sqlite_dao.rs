@@ -1,10 +1,9 @@
-#![allow(dead_code)]
-
 use std::cell::{RefCell};
 use std::default::Default;
 use std::fs;
 use std::ops::{DerefMut};
 use std::path::{Path, PathBuf};
+use chrono::Local;
 
 use diesel::{insert_into, update};
 use diesel::migration::MigrationSource;
@@ -422,6 +421,77 @@ impl ChatHistoryDao for SqliteDao {
 }
 
 impl MutableChatHistoryDao for SqliteDao {
+    fn backup(&mut self) -> EmptyRes {
+        // Diesel does not expose backup API, so we use rusqlite for that.
+        use rusqlite::*;
+        use std::io::Write;
+
+        const PAGES_PER_STEP: std::ffi::c_int = 1024;
+        const PAUSE_BETWEEN_PAGES: std::time::Duration = std::time::Duration::ZERO;
+        const MAX_BACKUPS: usize = 3;
+        const BACKUP_NAME_PREFIX: &str = "backup_";
+
+        let backup_dir = self.storage_path().join(BACKUPS_DIR_NAME);
+        if !backup_dir.exists() {
+            fs::create_dir(&backup_dir)?;
+        }
+
+        let filename = path_file_name(&self.db_file)?;
+        let backup_file = backup_dir.join(filename);
+        require!(!backup_file.exists(), "File {filename} already exists in the backups dir, last backup was incomplete?");
+
+        let src_conn = Connection::open(&self.db_file)?;
+        let mut dst_conn = Connection::open(&backup_file)?;
+        let backup = backup::Backup::new(&src_conn, &mut dst_conn)?;
+        backup.run_to_completion(PAGES_PER_STEP, PAUSE_BETWEEN_PAGES, None)?;
+
+        let list_backups = || Ok::<_, anyhow::Error>(list_all_files(&backup_dir, false)?
+            .into_iter()
+            .filter(|f| {
+                let name = path_file_name(f).unwrap();
+                name.starts_with(BACKUP_NAME_PREFIX) && name.ends_with(".zip")
+            })
+            .sorted()
+            .collect_vec());
+
+        let archive_name: String = {
+            let backup_names = list_backups()?.iter()
+                .map(|f| path_file_name(f).unwrap().to_owned())
+                .collect_vec();
+            let now_str = Local::now().format("%Y-%m-%d_%H-%M-%S");
+            let name = format!("{BACKUP_NAME_PREFIX}{now_str}.zip");
+            if !backup_names.contains(&name) {
+                name
+            } else {
+                let mut suffix = 2;
+                loop {
+                    let name = format!("{BACKUP_NAME_PREFIX}{now_str}_{suffix}.zip");
+                    if !backup_names.contains(&name) { break name; }
+                    suffix += 1;
+                }
+            }
+        };
+        let backup_bytes = fs::read(&backup_file)?;
+        let mut archive = fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(backup_dir.join(archive_name))?; // FIXME
+        let mut zip = zip::ZipWriter::new(&mut archive);
+
+        let options = zip::write::FileOptions::default().compression_method(zip::CompressionMethod::Zstd);
+        zip.start_file(path_file_name(&backup_file)?, options)?;
+        zip.write(&backup_bytes)?;
+        zip.finish()?;
+
+        fs::remove_file(&backup_file)?;
+
+        for f in list_backups()?.iter().rev().skip(MAX_BACKUPS) {
+            fs::remove_file(f)?;
+        }
+
+        Ok(())
+    }
+
     fn insert_dataset(&mut self, ds: Dataset) -> Result<Dataset> {
         self.invalidate_cache()?;
         let mut conn = self.conn.borrow_mut();
@@ -517,8 +587,7 @@ impl MutableChatHistoryDao for SqliteDao {
 // Helpers
 //
 
-const BACKUPS_DIR: &str = "_backups";
-const MAX_BACKUPS: i32 = 3;
+const BACKUPS_DIR_NAME: &str = "_backups";
 
 fn chat_root_rel_path(chat_id: i64) -> String {
     format!("chat_{chat_id}")

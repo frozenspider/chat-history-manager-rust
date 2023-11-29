@@ -297,6 +297,7 @@ fn inserts() -> EmptyRes {
     Ok(())
 }
 
+#[ignore]
 #[test]
 fn update_user() -> EmptyRes {
     Ok(())
@@ -357,6 +358,7 @@ fn update_user() -> EmptyRes {
     }
   }*/
 
+#[ignore]
 #[test]
 fn delete_chat() -> EmptyRes {
     Ok(())
@@ -385,6 +387,7 @@ fn delete_chat() -> EmptyRes {
   }
 } */
 
+#[ignore]
 #[test]
 fn absorb_user() -> EmptyRes {
     Ok(())
@@ -442,6 +445,7 @@ test("merge (absorb) user") {
   assert(h2dao.firstMessages(chatsAfter.find(_.chat.id == baseUserPc.id).get.chat, 99999) === expectedMessages)
 }*/
 
+#[ignore]
 #[test]
 fn delete_dataset() -> EmptyRes {
     Ok(())
@@ -458,6 +462,7 @@ test("delete dataset") {
 }
 */
 
+#[ignore]
 #[test]
 fn shift_dataset_time() -> EmptyRes {
     Ok(())
@@ -488,6 +493,73 @@ test("shift dataset time") {
   }
 }
 */
+
+#[test]
+fn backups() -> EmptyRes {
+    let dao_holder = create_simple_dao(
+        false,
+        "test",
+        (1..=10).map(|idx| create_regular_message(idx, 1)).collect_vec(),
+        2,
+        &|_, _, _| {});
+    let src_dao = dao_holder.dao.as_ref();
+    let ds_uuid = &src_dao.ds_uuid;
+    let src_ds_root = src_dao.dataset_root(ds_uuid)?;
+
+    let (mut dst_dao, dst_dao_tmpdir) = create_sqlite_dao();
+    assert_eq!(dst_dao.datasets()?, vec![]);
+
+    let backups_dir = dst_dao_tmpdir.path.join(BACKUPS_DIR_NAME);
+    assert_eq!(backups_dir.exists(), false);
+
+    let list_backups = || list_all_files(&backups_dir, true).unwrap().into_iter().sorted().collect_vec();
+
+    // First backup
+    dst_dao.backup()?;
+    assert_eq!(backups_dir.exists(), true);
+    let backups_1 = list_backups();
+    assert_eq!(backups_1.len(), 1);
+
+    // Inserting everything from src_dao
+    dst_dao.insert_dataset(src_dao.in_mem_dataset())?;
+    for u in src_dao.in_mem_users() {
+        let is_myself = u.id == src_dao.in_mem_myself().id;
+        dst_dao.insert_user(u, is_myself)?;
+    }
+    for src_cwd in src_dao.chats(ds_uuid)? {
+        let src_chat = src_cwd.chat;
+        let dst_chat = dst_dao.insert_chat(src_chat.clone(), &src_ds_root)?;
+        dst_dao.insert_messages(src_dao.first_messages(&src_chat, usize::MAX)?, &dst_chat, &src_ds_root)?;
+    }
+
+    // Second backup
+    dst_dao.backup()?;
+    let backups_2 = list_backups();
+    assert_eq!(backups_2.len(), 2);
+    assert_eq!(backups_2[0], backups_1[0]);
+    assert!(backups_2[0].metadata()?.len() < backups_2[1].metadata()?.len());
+
+    // Third backup
+    dst_dao.backup()?;
+    let backups_3 = list_backups();
+    assert_eq!(backups_3.len(), 3);
+    assert_eq!(backups_3[0], backups_2[0]);
+    assert_eq!(backups_3[1], backups_2[1]);
+    assert!(backups_3[0].metadata()?.len() < backups_3[1].metadata()?.len());
+    assert_eq!(backups_3[1].metadata()?.len(), backups_3[2].metadata()?.len());
+
+    // Fourth backup, first one is deleted
+    dst_dao.backup()?;
+    let backups_4 = list_backups();
+    assert_eq!(backups_4.len(), 3);
+    assert_eq!(backups_4[0], backups_3[1]);
+    assert_eq!(backups_4[1], backups_3[2]);
+    assert!(!backups_4.contains(&backups_3[0]));
+    assert_eq!(backups_4[0].metadata()?.len(), backups_4[1].metadata()?.len());
+    assert_eq!(backups_4[1].metadata()?.len(), backups_4[2].metadata()?.len());
+
+    Ok(())
+}
 
 //
 // Helpers
@@ -527,17 +599,4 @@ fn create_sqlite_dao() -> (SqliteDao, TmpDir) {
     log::info!("Using temp dir {} for Sqlite DAO", path_to_str(&tmp_dir.path).unwrap());
     let dao = SqliteDao::create(&tmp_dir.path.join(SqliteDao::FILENAME)).unwrap();
     (dao, tmp_dir)
-}
-
-fn read_all_files(p: &Path) -> Vec<PathBuf> {
-    let mut res = vec![];
-    for entry in p.read_dir().unwrap() {
-        let path = entry.unwrap().path();
-        if path.is_file() {
-            res.push(path);
-        } else {
-            res.extend(read_all_files(&path).into_iter());
-        }
-    }
-    res
 }

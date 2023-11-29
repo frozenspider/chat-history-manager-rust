@@ -146,6 +146,8 @@ pub trait ChatHistoryDao: WithCache + Send {
 }
 
 pub trait MutableChatHistoryDao: ChatHistoryDao {
+    fn backup(&mut self) -> EmptyRes;
+
     fn insert_dataset(&mut self, ds: Dataset) -> Result<Dataset>;
 
     fn insert_user(&mut self, user: User, is_myself: bool) -> Result<User>;
