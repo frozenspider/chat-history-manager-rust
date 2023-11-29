@@ -132,7 +132,7 @@ impl SqliteDao {
                                             ds_uuid: raw_ds.uuid.clone(),
                                             chat_id: src_cwd.chat.id,
                                             user_id,
-                                            order: order as i32
+                                            order: order as i32,
                                         })
                                     .collect_vec())
                                 .execute(txn)?;
@@ -277,9 +277,9 @@ impl ChatHistoryDao for SqliteDao {
 
     fn chats_inner(&self, ds_uuid: &PbUuid) -> Result<Vec<ChatWithDetails>> {
         let uuid = Uuid::parse_str(&ds_uuid.value)?;
+        let cache = self.get_cache()?;
         let mut conn = self.conn.borrow_mut();
         let conn = conn.deref_mut();
-        let cache = self.get_cache()?;
 
         let rows: Vec<ChatWithDetails> =
             utils::chat::select_by_ds(&uuid, conn)?
@@ -292,9 +292,9 @@ impl ChatHistoryDao for SqliteDao {
 
     fn chat_option(&self, ds_uuid: &PbUuid, id: i64) -> Result<Option<ChatWithDetails>> {
         let uuid = Uuid::parse_str(&ds_uuid.value)?;
+        let cache = self.get_cache()?;
         let mut conn = self.conn.borrow_mut();
         let conn = conn.deref_mut();
-        let cache = self.get_cache()?;
 
         let mut rows: Vec<ChatWithDetails> =
             utils::chat::select_by_ds_and_id(&uuid, id, conn)?
@@ -445,6 +445,10 @@ impl ChatHistoryDao for SqliteDao {
         })?;
         if vec.is_empty() { Ok(None) } else { Ok(vec.drain(..).next()) }
     }
+
+    fn as_mutable(&mut self) -> Result<&mut dyn MutableChatHistoryDao> {
+        Ok(self)
+    }
 }
 
 impl MutableChatHistoryDao for SqliteDao {
@@ -458,65 +462,79 @@ impl MutableChatHistoryDao for SqliteDao {
         const MAX_BACKUPS: usize = 3;
         const BACKUP_NAME_PREFIX: &str = "backup_";
 
-        let backup_dir = self.storage_path().join(BACKUPS_DIR_NAME);
-        if !backup_dir.exists() {
-            fs::create_dir(&backup_dir)?;
-        }
-
-        let filename = path_file_name(&self.db_file)?;
-        let backup_file = backup_dir.join(filename);
-        require!(!backup_file.exists(), "File {filename} already exists in the backups dir, last backup was incomplete?");
-
-        let src_conn = Connection::open(&self.db_file)?;
-        let mut dst_conn = Connection::open(&backup_file)?;
-        let backup = backup::Backup::new(&src_conn, &mut dst_conn)?;
-        backup.run_to_completion(PAGES_PER_STEP, PAUSE_BETWEEN_PAGES, None)?;
-
-        let list_backups = || Ok::<_, anyhow::Error>(list_all_files(&backup_dir, false)?
-            .into_iter()
-            .filter(|f| {
-                let name = path_file_name(f).unwrap();
-                name.starts_with(BACKUP_NAME_PREFIX) && name.ends_with(".zip")
-            })
-            .sorted()
-            .collect_vec());
-
-        let archive_name: String = {
-            let backup_names = list_backups()?.iter()
-                .map(|f| path_file_name(f).unwrap().to_owned())
-                .collect_vec();
-            let now_str = Local::now().format("%Y-%m-%d_%H-%M-%S");
-            let name = format!("{BACKUP_NAME_PREFIX}{now_str}.zip");
-            if !backup_names.contains(&name) {
-                name
-            } else {
-                let mut suffix = 2;
-                loop {
-                    let name = format!("{BACKUP_NAME_PREFIX}{now_str}_{suffix}.zip");
-                    if !backup_names.contains(&name) { break name; }
-                    suffix += 1;
-                }
+        measure(|| {
+            let backup_dir = self.storage_path().join(BACKUPS_DIR_NAME);
+            if !backup_dir.exists() {
+                fs::create_dir(&backup_dir)?;
             }
-        };
-        let backup_bytes = fs::read(&backup_file)?;
-        let mut archive = fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(backup_dir.join(archive_name))?; // FIXME
-        let mut zip = zip::ZipWriter::new(&mut archive);
 
-        let options = zip::write::FileOptions::default().compression_method(zip::CompressionMethod::Zstd);
-        zip.start_file(path_file_name(&backup_file)?, options)?;
-        zip.write(&backup_bytes)?;
-        zip.finish()?;
+            let filename = path_file_name(&self.db_file)?;
+            let backup_file = backup_dir.join(filename);
+            require!(!backup_file.exists(), "File {filename} already exists in the backups dir, last backup was incomplete?");
 
-        fs::remove_file(&backup_file)?;
+            {
+                let src_conn = Connection::open(&self.db_file)?;
+                let mut dst_conn = Connection::open(&backup_file)?;
+                let backup = backup::Backup::new(&src_conn, &mut dst_conn)?;
+                backup.run_to_completion(PAGES_PER_STEP, PAUSE_BETWEEN_PAGES, None)?;
+            }
 
-        for f in list_backups()?.iter().rev().skip(MAX_BACKUPS) {
-            fs::remove_file(f)?;
-        }
+            let list_backups = || Ok::<_, anyhow::Error>(list_all_files(&backup_dir, false)?
+                .into_iter()
+                .filter(|f| {
+                    let name = path_file_name(f).unwrap();
+                    name.starts_with(BACKUP_NAME_PREFIX) && name.ends_with(".zip")
+                })
+                .sorted()
+                .collect_vec());
 
-        Ok(())
+            let archive_name: String = {
+                let backup_names = list_backups()?.iter()
+                    .map(|f| path_file_name(f).unwrap().to_owned())
+                    .collect_vec();
+                let now_str = Local::now().format("%Y-%m-%d_%H-%M-%S");
+                let name = format!("{BACKUP_NAME_PREFIX}{now_str}.zip");
+                if !backup_names.contains(&name) {
+                    name
+                } else {
+                    let mut suffix = 2;
+                    loop {
+                        let name = format!("{BACKUP_NAME_PREFIX}{now_str}_{suffix}.zip");
+                        if !backup_names.contains(&name) { break name; }
+                        suffix += 1;
+                    }
+                }
+            };
+
+            // TODO: This is (relatively) slow, Deflated-compression of ~170 MB DB takes ~6 sec on my machine
+            //       in release mode. Can we do better?
+            {
+                let backup_bytes = fs::read(&backup_file)?;
+                let mut archive = fs::OpenOptions::new()
+                    .write(true)
+                    .create_new(true)
+                    .open(backup_dir.join(archive_name))?;
+                let mut zip = zip::ZipWriter::new(&mut archive);
+
+                let options = zip::write::FileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+                zip.start_file(path_file_name(&backup_file)?, options)?;
+                let mut buf = backup_bytes.as_slice();
+                while !buf.is_empty() {
+                    let res = zip.write(buf)?;
+                    require!(res != 0, "Failed writing a backup, zip file no longer accepts source bytes!");
+                    buf = &buf[res..]
+                }
+                zip.finish()?;
+            }
+
+            fs::remove_file(&backup_file)?;
+
+            for f in list_backups()?.iter().rev().skip(MAX_BACKUPS) {
+                fs::remove_file(f)?;
+            }
+
+            Ok(())
+        }, |_, t| log::info!("Backup done in {t} ms"))
     }
 
     fn insert_dataset(&mut self, ds: Dataset) -> Result<Dataset> {
@@ -548,10 +566,84 @@ impl MutableChatHistoryDao for SqliteDao {
         Ok(user)
     }
 
-    fn insert_chat(&mut self, mut chat: Chat, src_ds_root: &DatasetRoot) -> Result<Chat> {
+    fn update_user(&mut self, user: User) -> Result<User> {
+        let ds_uuid = user.ds_uuid.clone().unwrap();
+        let is_myself = user.id() == self.myself(&ds_uuid)?.id();
+
+        let old_name = self.get_cache()?.users[&ds_uuid].user_by_id[&user.id()].pretty_name_option();
+
+        self.invalidate_cache()?;
         let mut conn = self.conn.borrow_mut();
         let conn = conn.deref_mut();
 
+        let uuid = Uuid::parse_str(&ds_uuid.value).expect("Invalid UUID!");
+        let raw_user = utils::user::serialize(&user, is_myself, &Vec::from(uuid.as_ref()));
+
+        conn.transaction(|txn| {
+            use schema::*;
+            let updated_rows = update(user::dsl::user)
+                .filter(user::columns::ds_uuid.eq(uuid.as_ref()))
+                .filter(user::columns::id.eq(user.id))
+                .set(raw_user)
+                .execute(txn)?;
+            require!(updated_rows == 1, "{updated_rows} rows changed when updaing user {:?}", user);
+
+            // After changing user, rename private chat(s) with him accordingly. If user is self, do nothing.
+            if !is_myself {
+                let chat_ids: Vec<i64> = chat_member::table
+                    .filter(chat_member::columns::ds_uuid.eq(uuid.as_ref()))
+                    .filter(chat_member::columns::user_id.eq(user.id))
+                    .select(chat_member::columns::chat_id)
+                    .load(txn)?;
+
+                use utils::EnumSerialization;
+                update(chat::dsl::chat)
+                    .filter(chat::columns::ds_uuid.eq(uuid.as_ref()))
+                    .filter(chat::columns::id.eq_any(chat_ids))
+                    .filter(chat::columns::tpe.eq(ChatType::serialize(ChatType::Personal as i32)?))
+                    .set(chat::columns::name.eq(user.pretty_name_option()))
+                    .execute(txn)?;
+            }
+
+            // Update user name in "members" string field
+
+            if let Some(old_name) = old_name {
+                let new_name = user.pretty_name();
+
+                let old_mc_members: Vec<(i64, Option<String>)> = message_content::table
+                    .inner_join(message::table)
+                    .inner_join(chat::table
+                        .on(chat::columns::ds_uuid.eq(message::columns::ds_uuid)
+                            .and(chat::columns::id.eq(message::columns::chat_id))))
+                    .inner_join(chat_member::table
+                        .on(chat_member::columns::ds_uuid.eq(chat::columns::ds_uuid)
+                            .and(chat_member::columns::chat_id.eq(chat::columns::id))))
+                    .filter(chat::columns::ds_uuid.eq(uuid.as_ref()))
+                    .filter(chat_member::columns::user_id.eq(user.id))
+                    .filter(message_content::columns::members.like(format!("%{old_name}%")))
+                    .select((message_content::columns::id, message_content::columns::members))
+                    .load(txn)?;
+
+                for (id, members_string) in old_mc_members {
+                    let new_members_string = utils::serialize_arr(&utils::deserialize_arr(members_string.unwrap())
+                        .into_iter()
+                        .map(|s| if s == old_name { new_name.clone() } else { s })
+                        .collect_vec());
+
+                    update(message_content::table)
+                        .filter(message_content::columns::id.eq(id))
+                        .set(message_content::columns::members.eq(new_members_string))
+                        .execute(txn)?;
+                }
+            }
+
+            Ok(())
+        })?;
+
+        Ok(user)
+    }
+
+    fn insert_chat(&mut self, mut chat: Chat, src_ds_root: &DatasetRoot) -> Result<Chat> {
         if let Some(ref img) = chat.img_path_option {
             let dst_ds_root = self.dataset_root(chat.ds_uuid())?;
             chat.img_path_option = copy_file(&img, &None, &subpaths::ROOT,
@@ -566,6 +658,8 @@ impl MutableChatHistoryDao for SqliteDao {
         require!(chat.member_ids.first() == Some(&myself.id),
                  "First member of chat {} was not myself!", chat.qualified_name());
 
+        let mut conn = self.conn.borrow_mut();
+        let conn = conn.deref_mut();
         insert_into(schema::chat::dsl::chat)
             .values(raw_chat)
             .execute(conn)?;
@@ -574,7 +668,7 @@ impl MutableChatHistoryDao for SqliteDao {
             ds_uuid: uuid_bytes.clone(),
             chat_id: chat.id,
             user_id,
-            order: order as i32
+            order: order as i32,
         }).collect_vec();
 
         insert_into(schema::chat_member::dsl::chat_member)

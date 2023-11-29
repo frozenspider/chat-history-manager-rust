@@ -1,6 +1,7 @@
 #![allow(unused_imports)]
 
 use std::cmp::max;
+use std::fs::File;
 
 use itertools::Itertools;
 use pretty_assertions::{assert_eq, assert_ne};
@@ -300,66 +301,126 @@ fn inserts() -> EmptyRes {
     Ok(())
 }
 
-#[ignore]
 #[test]
 fn update_user() -> EmptyRes {
+    use message_service::SealedValueOptional::*;
+
+    let (mut dao, _tmp_dir) = create_sqlite_dao();
+
+    let ds = dao.insert_dataset(Dataset { uuid: Some(ZERO_PB_UUID.clone()), alias: "My Dataset".to_owned() })?;
+
+    let users: Vec<User> = (1..=3)
+        .map(|i| dao.insert_user(create_user(&ZERO_PB_UUID, i as i64), i == 1))
+        .try_collect()?;
+
+    fn make_hello_message(internal_id: i64, from_id: i64) -> Message {
+        Message::new(
+            internal_id,
+            Some(internal_id),
+            dt("2023-12-03 12:00:00", None).timestamp() + internal_id,
+            from_id,
+            vec![RichText::make_plain(format!("Hello there from u#{from_id}!"))],
+            MESSAGE_REGULAR_NO_CONTENT.clone(),
+        )
+    }
+
+    let no_ds_tmp_dir = TmpDir::new();
+    let no_ds_root = DatasetRoot(no_ds_tmp_dir.path.clone());
+
+    // Group chat, with messages containing members
+
+    let mut group_chat = create_group_chat(&ZERO_PB_UUID, 1, "Group",
+                                           vec![1, 2, 3], 123456789);
+    let group_chat_msgs = vec![
+        Message::new(
+            1, Some(1), dt("2023-12-03 12:00:00", None).timestamp(), 1,
+            vec![],
+            Typed::Service(MessageService {
+                sealed_value_optional: Some(GroupCreate(MessageServiceGroupCreate {
+                    title: group_chat.name_option.clone().unwrap(),
+                    members: users.iter().map(|u| u.pretty_name()).collect_vec(),
+                }))
+            }),
+        ),
+        make_hello_message(2, 1),
+        make_hello_message(3, 2),
+        make_hello_message(4, 3),
+    ];
+    group_chat.msg_count = group_chat_msgs.len() as i32;
+    let group_chat = dao.insert_chat(group_chat, &no_ds_root)?;
+    dao.insert_messages(group_chat_msgs.clone(), &group_chat, &no_ds_root)?;
+
+    // Personal chats
+
+    let personal_chat_u2_msgs = vec![
+        make_hello_message(1, 2),
+    ];
+    let personal_chat_u2 = create_personal_chat(&ZERO_PB_UUID, 2, &users[1], vec![1, 2], personal_chat_u2_msgs.len());
+    let personal_chat_u2 = dao.insert_chat(personal_chat_u2, &no_ds_root)?;
+    dao.insert_messages(personal_chat_u2_msgs.clone(), &personal_chat_u2, &no_ds_root)?;
+
+    let personal_chat_u3 = create_personal_chat(&ZERO_PB_UUID, 3, &users[2], vec![1, 3], 0);
+    let personal_chat_u3 = dao.insert_chat(personal_chat_u3, &no_ds_root)?;
+
+    // Updating users
+
+    let mut changed_users = users.clone();
+
+    changed_users[0].first_name_option = Some("MYSELF FN".to_owned());
+    changed_users[0].last_name_option = None;
+    changed_users[0].phone_number_option = Some("+123".to_owned());
+    changed_users[0].username_option = None;
+
+    assert_eq!(dao.update_user(changed_users[0].clone())?, changed_users[0]);
+
+    // Renaming myself should not affect private chat names
+    assert_eq!(dao.chat_option(ds.uuid(), personal_chat_u2.id)?.map(|cwd| cwd.chat), Some(personal_chat_u2.clone()));
+    assert_eq!(dao.chat_option(ds.uuid(), personal_chat_u3.id)?.map(|cwd| cwd.chat), Some(personal_chat_u3.clone()));
+    assert_eq!(dao.chat_option(ds.uuid(), group_chat.id)?.map(|cwd| cwd.chat), Some(group_chat.clone()));
+
+    changed_users[1].first_name_option = Some("U1 FN".to_owned());
+    changed_users[1].last_name_option = Some("U1 LN".to_owned());
+    changed_users[1].phone_number_option = None;
+    changed_users[1].username_option = Some("U1 UN".to_owned());
+
+    changed_users[2].first_name_option = None;
+    changed_users[2].last_name_option = None;
+    changed_users[2].phone_number_option = None;
+    changed_users[2].username_option = None;
+
+    assert_eq!(dao.update_user(changed_users[1].clone())?, changed_users[1]);
+    assert_eq!(dao.update_user(changed_users[2].clone())?, changed_users[2]);
+
+    assert_eq!(dao.users(ds.uuid())?, changed_users);
+    assert_eq!(dao.myself(ds.uuid())?, changed_users[0]);
+
+    // Personal chat names should be renamed accordingly
+
+    assert_eq!(dao.chat_option(ds.uuid(), personal_chat_u2.id)?.unwrap().chat,
+               Chat {
+                   name_option: Some("U1 FN U1 LN".to_owned()),
+                   ..personal_chat_u2.clone()
+               });
+
+    assert_eq!(dao.chat_option(ds.uuid(), personal_chat_u3.id)?.unwrap().chat,
+               Chat {
+                   name_option: None,
+                   ..personal_chat_u3.clone()
+               });
+
+    assert_eq!(dao.chat_option(ds.uuid(), group_chat.id)?.unwrap().chat,
+               group_chat);
+
+    // String members should also be renamed
+
+    if let Some(Typed::Service(MessageService {
+                                   sealed_value_optional: Some(GroupCreate(MessageServiceGroupCreate { members, .. }))
+                               })) = dao.first_messages(&group_chat, 1)?.remove(0).typed {
+        assert_eq!(members.as_ref(), vec!["MYSELF FN", "U1 FN U1 LN", UNNAMED]);
+    }
+
     Ok(())
 }
-
-/*
-  test("update user") {
-    val myself = h2dao.myself(dsUuid)
-
-    def personalChatWith(u: User): Option[Chat] =
-      h2dao.chats(dsUuid) map (_.chat) find { c =>
-        c.tpe == ChatType.Personal &&
-        c.memberIds.contains(u.id) &&
-        h2dao.firstMessages(c, 99999).exists(_.fromId == myself.id)
-      }
-
-    val users = h2dao.users(dsUuid)
-    val user1 = users.find(u => u != myself && personalChatWith(u).isDefined).get
-
-    def doUpdate(u: User): Unit = {
-      h2dao.updateUser(u)
-      val usersA = h2dao.users(dsUuid)
-      assert(usersA.find(_.id == user1.id).get === u)
-
-      val chatA = personalChatWith(u) getOrElse fail("Chat not found after updating!")
-      assert(chatA.nameOption === u.prettyNameOption)
-    }
-
-    doUpdate(
-      user1.copy(
-        firstNameOption   = Some("fn"),
-        lastNameOption    = Some("ln"),
-        usernameOption    = Some("un"),
-        phoneNumberOption = Some("+123")
-      )
-    )
-
-    doUpdate(
-      user1.copy(
-        firstNameOption   = None,
-        lastNameOption    = None,
-        usernameOption    = None,
-        phoneNumberOption = None
-      )
-    )
-
-    // Renaming self should not affect private chats
-    {
-      val chat1Before = personalChatWith(user1) getOrElse fail("Chat not found before updating!")
-      h2dao.updateUser(
-        myself.copy(
-          firstNameOption = Some("My New"),
-          lastNameOption  = Some("Name"),
-        )
-      )
-      val chat1After = personalChatWith(user1) getOrElse fail("Chat not found after updating!")
-      assert(chat1After.nameOption === chat1Before.nameOption)
-    }
-  }*/
 
 #[ignore]
 #[test]
@@ -560,6 +621,29 @@ fn backups() -> EmptyRes {
     assert!(!backups_4.contains(&backups_3[0]));
     assert_eq!(backups_4[0].metadata()?.len(), backups_4[1].metadata()?.len());
     assert_eq!(backups_4[1].metadata()?.len(), backups_4[2].metadata()?.len());
+
+    // Let's test that backup actually contains the same info
+    let last_backup = backups_4.last().unwrap().clone();
+    let mut last_backup = File::open(&last_backup)?;
+    let mut zip = zip::ZipArchive::new(&mut last_backup)?;
+    assert_eq!(zip.len(), 1);
+
+    let mut zip_file = zip.by_index(0)?;
+    assert_eq!(zip_file.name(), SqliteDao::FILENAME);
+
+    let unzip_path = backups_dir.join(zip_file.name());
+    assert!(!unzip_path.exists());
+    std::io::copy(&mut zip_file, &mut File::create(&unzip_path)?)?;
+    let dst_dataset_root = dst_dao.dataset_root(ds_uuid)?;
+    if dst_dataset_root.0.exists() {
+        fs_extra::dir::copy(&dst_dataset_root.0,
+                            backups_dir.join(path_file_name(&dst_dataset_root.0)?),
+                            &fs_extra::dir::CopyOptions::new().copy_inside(true))?;
+    }
+
+    let loaded_dao = SqliteDao::load(&unzip_path)?;
+
+    ensure_datasets_are_equal(&dst_dao, &loaded_dao, ds_uuid, ds_uuid)?;
 
     Ok(())
 }

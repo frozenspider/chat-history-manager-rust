@@ -183,4 +183,23 @@ impl HistoryDaoService for Arc<Mutex<ChatHistoryManagerServer>> {
             })
         })
     }
+
+    //
+    // Mutable DAO endpoints
+    //
+
+    async fn backup(&self, req: Request<BackupRequest>) -> TonicResult<Empty> {
+        with_dao_by_key!(self, req, dao, {
+            dao.as_mutable()?.backup()?;
+            Ok(Empty {})
+        })
+    }
+
+    async fn update_user(&self, req: Request<UpdateUserRequest>) -> TonicResult<UpdateUserResponse> {
+        with_dao_by_key!(self, req, dao, {
+            let user = req.user.as_ref().context("User was empty!")?.clone();
+            let user = dao.as_mutable()?.update_user(user)?;
+            Ok(UpdateUserResponse { user: Some(user) })
+        })
+    }
 }

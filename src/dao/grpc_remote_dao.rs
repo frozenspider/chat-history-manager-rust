@@ -137,7 +137,8 @@ impl ChatHistoryDao for GrpcRemoteDao {
         let ds_uuid = ds_uuid.clone();
         let res = self.wrap_request(
             DatasetRootRequest { key, ds_uuid: Some(ds_uuid) },
-            move |client, req| { client.dataset_root(req) }.boxed())?;
+            move |client, req| { client.dataset_root(req) }.boxed(),
+        )?;
         Ok(DatasetRoot(PathBuf::from(res.path)))
     }
 
@@ -269,5 +270,9 @@ impl ChatHistoryDao for GrpcRemoteDao {
             move |client, req| { client.message_option_by_internal_id(req) }.boxed(),
         )?;
         Ok(res.message)
+    }
+
+    fn as_mutable(&mut self) -> Result<&mut dyn MutableChatHistoryDao> {
+        err!("GrpcRemoteDao does not implement MutableChatHistoryDao")
     }
 }

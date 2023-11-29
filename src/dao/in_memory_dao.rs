@@ -196,6 +196,10 @@ impl ChatHistoryDao for InMemoryDao {
         Ok(self.messages_option(chat.id).unwrap()
             .iter().find(|m| m.internal_id == *internal_id).cloned())
     }
+
+    fn as_mutable(&mut self) -> Result<&mut dyn MutableChatHistoryDao> {
+        err!("InMemoryDao does not implement MutableChatHistoryDao")
+    }
 }
 
 fn cutout<T: Clone>(slice: &[T], start_inc: usize, end_exc: usize) -> Vec<T> {

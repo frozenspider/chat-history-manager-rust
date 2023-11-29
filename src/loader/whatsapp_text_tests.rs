@@ -283,14 +283,6 @@ fn expected_myself(ds_uuid: &PbUuid) -> User {
 }
 
 lazy_static! {
-    static ref MESSAGE_REGULAR_NO_CONTENT: Typed = Typed::Regular(MessageRegular {
-        edit_timestamp_option: None,
-        is_deleted: false,
-        forward_from_name_option: None,
-        reply_to_message_id_option: None,
-        content_option: None,
-    });
-
     static ref FILE_UNAVAILABLE: content::SealedValueOptional = File(ContentFile {
         path_option: None,
         file_name_option: None,

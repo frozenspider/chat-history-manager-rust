@@ -142,9 +142,10 @@ pub struct RawDataset {
     pub alias: String,
 }
 
-#[derive(Debug, PartialEq, Selectable, Queryable, Insertable)]
+#[derive(Debug, PartialEq, Selectable, Queryable, Insertable, AsChangeset)]
 #[diesel(table_name = schema::user)]
 #[diesel(check_for_backend(diesel::sqlite::Sqlite))]
+#[diesel(treat_none_as_null = true)]
 pub struct RawUser {
     pub ds_uuid: Vec<u8>,
     pub id: i64,
@@ -158,6 +159,7 @@ pub struct RawUser {
 #[derive(Debug, PartialEq, QueryableByName, Insertable, AsChangeset)]
 #[diesel(table_name = schema::chat)]
 #[diesel(check_for_backend(diesel::sqlite::Sqlite))]
+#[diesel(treat_none_as_null = true)]
 pub struct RawChat {
     pub ds_uuid: Vec<u8>,
     pub id: i64,
@@ -187,6 +189,7 @@ pub struct RawChatMember {
 #[derive(Debug, PartialEq, QueryableByName)]
 #[diesel(table_name = schema::chat)]
 #[diesel(check_for_backend(diesel::sqlite::Sqlite))]
+#[diesel(treat_none_as_null = true)]
 pub struct RawChatQ {
     #[diesel(embed)]
     pub chat: RawChat,
@@ -203,6 +206,7 @@ pub struct RawChatQ {
 #[diesel(primary_key(internal_id))]
 #[diesel(table_name = schema::message)]
 #[diesel(check_for_backend(diesel::sqlite::Sqlite))]
+#[diesel(treat_none_as_null = true)]
 pub struct RawMessage {
     #[diesel(deserialize_as = i64)]
     pub internal_id: Option<i64>,
@@ -224,6 +228,7 @@ pub struct RawMessage {
 #[diesel(belongs_to(RawMessage, foreign_key = message_internal_id))]
 #[diesel(table_name = schema::message_content)]
 #[diesel(check_for_backend(diesel::sqlite::Sqlite))]
+#[diesel(treat_none_as_null = true)]
 pub struct RawMessageContent {
     #[diesel(deserialize_as = i64)]
     pub id: Option<i64>,
@@ -259,6 +264,7 @@ pub struct RawMessageContent {
 #[diesel(belongs_to(RawMessage, foreign_key = message_internal_id))]
 #[diesel(table_name = schema::message_text_element)]
 #[diesel(check_for_backend(diesel::sqlite::Sqlite))]
+#[diesel(treat_none_as_null = true)]
 pub struct RawRichTextElement {
     #[diesel(deserialize_as = i64)]
     pub id: Option<i64>,

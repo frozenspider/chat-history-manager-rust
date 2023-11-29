@@ -144,6 +144,9 @@ pub trait ChatHistoryDao: WithCache + Send {
     fn is_loaded(&self, storage_path: &Path) -> bool {
         self.storage_path() == storage_path
     }
+
+    /// Return self as mutable if applicable, otherwise error out
+    fn as_mutable(&mut self) -> Result<&mut dyn MutableChatHistoryDao>;
 }
 
 pub trait MutableChatHistoryDao: ChatHistoryDao {
@@ -152,6 +155,8 @@ pub trait MutableChatHistoryDao: ChatHistoryDao {
     fn insert_dataset(&mut self, ds: Dataset) -> Result<Dataset>;
 
     fn insert_user(&mut self, user: User, is_myself: bool) -> Result<User>;
+
+    fn update_user(&mut self, user: User) -> Result<User>;
 
     /// Copies image (if any) from dataset root.
     fn insert_chat(&mut self, chat: Chat, src_ds_root: &DatasetRoot) -> Result<Chat>;

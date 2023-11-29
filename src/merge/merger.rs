@@ -109,6 +109,8 @@ fn merge_inner(
     let selected_chat_members: HashSet<i64> =
         chat_inserts.iter().map(|(cwd, _, _)| cwd.chat.member_ids.clone()).flatten().collect();
     let master_self = master_dao.myself(master_ds.uuid())?;
+    let slave_self = slave_dao.myself(slave_ds.uuid())?;
+    require!(master_self.id == slave_self.id, "Myself of merged datasets doesn't match!");
     for um in user_merges {
         let user_to_insert_option = match um {
             UserMergeDecision::Retain(user_id) => Some(master_users[&user_id].clone()),

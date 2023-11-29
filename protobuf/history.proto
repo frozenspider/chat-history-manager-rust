@@ -18,6 +18,8 @@ service HistoryParserService {
   rpc Parse(ParseRequest) returns (ParseResponse) {}
 }
 
+message Empty {}
+
 message ParseRequest {
   string path = 1;
 }
@@ -404,8 +406,7 @@ message MessageServiceGroupEditPhoto {
   ContentPhoto photo = 1 [(scalapb.field).no_box = true];
 }
 
-message MessageServiceGroupDeletePhoto {
-}
+message MessageServiceGroupDeletePhoto {}
 
 message MessageServiceGroupInviteMembers {
   repeated string members = 1;
@@ -420,8 +421,7 @@ message MessageServiceGroupMigrateFrom {
 }
 
 // Migrate to supergroup of the same name
-message MessageServiceGroupMigrateTo {
-}
+message MessageServiceGroupMigrateTo {}
 
 // This is different to PhoneCall
 message MessageServiceGroupCall {
@@ -435,7 +435,7 @@ message MessageServiceGroupCall {
 service HistoryLoaderService {
   // Parse/open a history file and return its DAO handle
   rpc Load(LoadRequest) returns (LoadResponse) {}
-  rpc GetLoadedFiles(GetLoadedFilesRequest) returns (GetLoadedFilesResponse) {}
+  rpc GetLoadedFiles(Empty) returns (GetLoadedFilesResponse) {}
   rpc Close(CloseRequest) returns (CloseResponse) {}
 }
 
@@ -462,6 +462,13 @@ service HistoryDaoService {
   rpc MessageOptionByInternalId(MessageOptionByInternalIdRequest) returns (MessageOptionResponse) {}
   // Whether given data path is the one loaded in this DAO.
   rpc IsLoaded(IsLoadedRequest) returns (IsLoadedResponse) {}
+
+  //
+  // Mutable DAO endpoints
+  //
+
+  rpc Backup(BackupRequest) returns (Empty) {}
+  rpc UpdateUser(UpdateUserRequest) returns (UpdateUserResponse) {}
 }
 
 message LoadRequest {
@@ -472,7 +479,6 @@ message LoadResponse {
   string name = 1;
 }
 
-message GetLoadedFilesRequest {}
 message GetLoadedFilesResponse {
   repeated LoadedFile files = 1;
 }
@@ -612,6 +618,18 @@ message CloseRequest {
 }
 message CloseResponse {
   bool success = 1;
+}
+
+message BackupRequest {
+  string key = 1;
+}
+
+message UpdateUserRequest {
+  string key = 1;
+  User user = 2 [(scalapb.field).no_box = true];
+}
+message UpdateUserResponse {
+  User user = 1 [(scalapb.field).no_box = true];
 }
 
 //

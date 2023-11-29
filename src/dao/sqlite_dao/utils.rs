@@ -10,11 +10,11 @@ use crate::protobuf::history::message::Typed;
 
 use super::*;
 
-fn serialize_arr(v: &[String]) -> Option<String> {
+pub fn serialize_arr(v: &[String]) -> Option<String> {
     if v.is_empty() { None } else { Some(v.iter().join(";;;")) }
 }
 
-fn deserialize_arr(v: String) -> Vec<String> {
+pub fn deserialize_arr(v: String) -> Vec<String> {
     if v.is_empty() { vec![] } else { v.split(";;;").map(|v| v.to_owned()).collect() }
 }
 
@@ -30,7 +30,7 @@ fn deserialize_bool(bi: i32) -> bool {
     }
 }
 
-trait EnumSerialization: Sized {
+pub trait EnumSerialization: Sized {
     fn serialize(v: i32) -> Result<String>;
 
     fn deserialize(v: &str) -> Result<i32>;

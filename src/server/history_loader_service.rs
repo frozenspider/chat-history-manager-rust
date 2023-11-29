@@ -43,7 +43,7 @@ impl HistoryLoaderService for Arc<Mutex<ChatHistoryManagerServer>> {
         })
     }
 
-    async fn get_loaded_files(&self, req: Request<GetLoadedFilesRequest>) -> TonicResult<GetLoadedFilesResponse> {
+    async fn get_loaded_files(&self, req: Request<Empty>) -> TonicResult<GetLoadedFilesResponse> {
         self.process_request(&req, |_, self_lock| {
             let files = self_lock.loaded_daos.iter()
                 .map(|(k, dao)| LoadedFile { key: k.clone(), name: dao.borrow().name().to_owned() })

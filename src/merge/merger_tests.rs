@@ -11,8 +11,8 @@ use super::*;
 #[test]
 fn merge_users() -> EmptyRes {
     let users = (1..=6).map(|id| create_user(&ZERO_PB_UUID, id)).collect_vec();
-    let users_a = users.iter().filter(|u| [1_i64, 2, 3, 4].contains(&u.id)).cloned().collect_vec();
-    let users_b = change_users(&users[1..], |id| [3_i64, 4, 5, 6].contains(&id));
+    let users_a = users.iter().filter(|u| [1_i64, 2, 3, 6].contains(&u.id)).cloned().collect_vec();
+    let users_b = change_users(&users[..5], |id| [2_i64, 3, 4].contains(&id));
     let cwm_a = ChatWithMessages {
         chat: Some(create_group_chat(&ZERO_PB_UUID, 1, "A",
                                      users_a.iter().map(|u| u.id).collect_vec(), 0)),
@@ -33,12 +33,12 @@ fn merge_users() -> EmptyRes {
     let (new_dao, new_ds, _tmpdir) = merge(
         &helper,
         vec![
-            UserMergeDecision::Retain(UserId(1)),
+            UserMergeDecision::MatchOrDontReplace(UserId(1)),
             UserMergeDecision::MatchOrDontReplace(UserId(2)),
             UserMergeDecision::Replace(UserId(3)),
-            UserMergeDecision::MatchOrDontReplace(UserId(4)),
+            UserMergeDecision::Add(UserId(4)),
             UserMergeDecision::DontAdd(UserId(5)),
-            UserMergeDecision::Add(UserId(6)),
+            UserMergeDecision::Retain(UserId(6)),
         ],
         vec![ChatMergeDecision::Merge {
             chat_id: ChatId(1),
@@ -57,9 +57,9 @@ fn merge_users() -> EmptyRes {
         by_id(&users_a, 1),
         by_id(&users_a, 2),
         by_id(&users_b, 3),
-        by_id(&users_a, 4),
+        by_id(&users_b, 4),
         // User 5 discarded
-        by_id(&users_b, 6),
+        by_id(&users_a, 6),
     ]);
 
     Ok(())
@@ -1024,20 +1024,6 @@ fn last_id<M, Id>(map: &MsgsMap<M>) -> Id where M: WithTypedId<Item=Id> {
 
 fn dont_replace_both_users() -> Vec<UserMergeDecision> {
     vec![UserMergeDecision::MatchOrDontReplace(UserId(1)), UserMergeDecision::MatchOrDontReplace(UserId(2))]
-}
-
-fn create_personal_chat(ds_uuid: &PbUuid, idx: i32, user: &User, member_ids: Vec<i64>, msg_count: usize) -> Chat {
-    assert!(member_ids.len() == 2);
-    Chat {
-        ds_uuid: Some(ds_uuid.clone()),
-        id: idx as i64,
-        name_option: user.pretty_name_option(),
-        source_type: SourceType::Telegram as i32,
-        tpe: ChatType::Personal as i32,
-        img_path_option: None,
-        member_ids,
-        msg_count: msg_count as i32,
-    }
 }
 
 fn change_users(users: &[User], id_condition: fn(i64) -> bool) -> Vec<User> {

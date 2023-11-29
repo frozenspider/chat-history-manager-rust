@@ -262,6 +262,20 @@ pub fn create_user(ds_uuid: &PbUuid, id: i64) -> User {
     }
 }
 
+pub fn create_personal_chat(ds_uuid: &PbUuid, idx: i32, user: &User, member_ids: Vec<i64>, msg_count: usize) -> Chat {
+    assert!(member_ids.len() == 2);
+    Chat {
+        ds_uuid: Some(ds_uuid.clone()),
+        id: idx as i64,
+        name_option: user.pretty_name_option(),
+        source_type: SourceType::Telegram as i32,
+        tpe: ChatType::Personal as i32,
+        img_path_option: None,
+        member_ids,
+        msg_count: msg_count as i32,
+    }
+}
+
 pub fn create_group_chat(ds_uuid: &PbUuid, id: i64, name_suffix: &str, member_ids: Vec<i64>, msg_count: usize) -> Chat {
     assert!(member_ids.len() >= 2);
     Chat {
