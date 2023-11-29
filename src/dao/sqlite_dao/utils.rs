@@ -545,6 +545,8 @@ pub mod message {
                 language = v.language_option.clone();
                 (Some(v.text.clone()), "prefmt_block")
             }
+            Blockquote(v) =>
+                (Some(v.text.clone()), "blockquote"),
             Spoiler(v) =>
                 (Some(v.text.clone()), "spoiler"),
         };
@@ -779,6 +781,7 @@ pub mod message {
                                           raw.hidden.map(deserialize_bool).unwrap_or_default()),
             "prefmt_inline" => RichText::make_prefmt_inline(text_or_bail!()),
             "prefmt_block" => RichText::make_prefmt_block(text_or_bail!(), raw.language),
+            "blockquote" => RichText::make_blockquote(text_or_bail!()),
             "spoiler" => RichText::make_spoiler(text_or_bail!()),
             x => bail!("Unknown rich text element {x}!")
         })

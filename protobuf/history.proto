@@ -185,6 +185,7 @@ message RichTextElement {
     RteLink             link = 6;
     RtePrefmtInline     prefmt_inline = 7;
     RtePrefmtBlock      prefmt_block = 8;
+    RteBlockquote       blockquote = 11;
     RteSpoiler          spoiler = 10;
   }
 
@@ -222,6 +223,9 @@ message RtePrefmtBlock {
   optional string language_option = 2;
 }
 message RteSpoiler {
+  string text = 1;
+}
+message RteBlockquote {
   string text = 1;
 }
 

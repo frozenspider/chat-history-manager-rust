@@ -351,6 +351,13 @@ impl RichText {
         }
     }
 
+    pub fn make_blockquote(text: String) -> RichTextElement {
+        RichTextElement {
+            searchable_string: normalize_seachable_string(text.as_str()),
+            val: Some(rich_text_element::Val::Blockquote(RteBlockquote { text })),
+        }
+    }
+
     pub fn make_spoiler(text: String) -> RichTextElement {
         RichTextElement {
             searchable_string: normalize_seachable_string(text.as_str()),

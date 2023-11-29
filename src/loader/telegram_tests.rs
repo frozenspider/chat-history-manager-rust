@@ -800,6 +800,26 @@ fn loading_2023_10_audio_video() -> EmptyRes {
     Ok(())
 }
 
+#[test]
+fn loading_2023_11_diff() -> EmptyRes {
+    let res = resource("telegram_2023-11");
+    LOADER.looks_about_right(&res)?;
+
+    let dao =
+        LOADER.load(&res, &NoChooser)?;
+
+    let cwm = &dao.cwms[0];
+    let msgs = &cwm.messages;
+    assert_eq!(msgs.len() as i32, 1);
+
+    assert_eq!(msgs[0].text, vec![
+        RichText::make_plain("This has blockquote!".to_owned()),
+        RichText::make_blockquote("My blockquote text".to_owned()),
+    ]);
+
+    Ok(())
+}
+
 //
 // Helpers
 //

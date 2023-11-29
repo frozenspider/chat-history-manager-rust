@@ -1001,6 +1001,10 @@ fn parse_rich_text_object(json_path: &str,
             check_keys!(["type", "text"]);
             Some(RichText::make_strikethrough(get_field_string!(rte_json, json_path, "text")))
         }
+        "blockquote" => {
+            check_keys!(["type", "text"]);
+            Some(RichText::make_blockquote(get_field_string!(rte_json, json_path, "text")))
+        }
         "spoiler" => {
             check_keys!(["type", "text"]);
             Some(RichText::make_spoiler(get_field_string!(rte_json, json_path, "text")))

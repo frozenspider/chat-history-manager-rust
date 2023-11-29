@@ -12,6 +12,8 @@ pub(super) fn parse(root_obj: &Object,
         "frequent_contacts" => consume(),
         "other_data" => consume(),
         "stories" => consume(),
+        "sessions" => consume(),
+        "web_sessions" => consume(),
         "contacts" =>
             parse_bw_as_object(value, "personal_information", |CB { key, value, wrong_key_action }| match key {
                 "about" => consume(),
@@ -51,7 +53,11 @@ pub(super) fn parse(root_obj: &Object,
                 }
                 "bio" => consume(),
                 _ => wrong_key_action()
-            })
+            })?;
+            if myself.id == 0 {
+                bail!("personal_information.user_id is missing!")
+            }
+            Ok(())
         }
         "chats" => {
             let json_path = "chats";
