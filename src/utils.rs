@@ -181,8 +181,9 @@ impl<T> ToResult<T> for StdResult<T, Box<dyn std::error::Error + Send + Sync>> {
 // Time measurement
 //
 
-pub fn measure<T, R>(block: T, after_call: impl Fn(&R, u128)) -> R
-    where T: FnOnce() -> R
+pub fn measure<T, AC, R>(block: T, after_call: AC) -> R
+    where T: FnOnce() -> R,
+          AC: FnOnce(&R, u128)
 {
     let start_time = Instant::now();
     let result = block();

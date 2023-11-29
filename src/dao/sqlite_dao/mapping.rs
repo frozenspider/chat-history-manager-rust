@@ -40,6 +40,7 @@ pub mod schema {
             ds_uuid -> Binary,
             chat_id -> BigInt,
             user_id -> BigInt,
+            order -> Integer,
         }
     }
 
@@ -180,6 +181,7 @@ pub struct RawChatMember {
     pub ds_uuid: Vec<u8>,
     pub chat_id: i64,
     pub user_id: i64,
+    pub order: i32,
 }
 
 #[derive(Debug, PartialEq, QueryableByName)]

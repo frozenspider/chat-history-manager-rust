@@ -34,9 +34,9 @@ fn merge_users() -> EmptyRes {
         &helper,
         vec![
             UserMergeDecision::Retain(UserId(1)),
-            UserMergeDecision::Match(UserId(2)),
+            UserMergeDecision::MatchOrDontReplace(UserId(2)),
             UserMergeDecision::Replace(UserId(3)),
-            UserMergeDecision::DontReplace(UserId(4)),
+            UserMergeDecision::MatchOrDontReplace(UserId(4)),
             UserMergeDecision::DontAdd(UserId(5)),
             UserMergeDecision::Add(UserId(6)),
         ],
@@ -61,6 +61,62 @@ fn merge_users() -> EmptyRes {
         // User 5 discarded
         by_id(&users_b, 6),
     ]);
+
+    Ok(())
+}
+
+#[test]
+fn merge_users_updating_chat_name() -> EmptyRes {
+    let users = (1..=6).map(|id| create_user(&ZERO_PB_UUID, id)).collect_vec();
+    let users_a = users.clone();
+    let users_b = change_users(&users_a, |_id| true);
+    let cwms = vec![
+        ChatWithMessages {
+            chat: Some(create_group_chat(&ZERO_PB_UUID, 1, "Group", vec![1, 2, 3], 0)),
+            messages: vec![],
+        },
+        ChatWithMessages {
+            chat: Some(create_personal_chat(&ZERO_PB_UUID, 2, &users_a[1], vec![1, 2], 0)),
+            messages: vec![],
+        },
+        ChatWithMessages {
+            chat: Some({
+                let mut chat = create_personal_chat(&ZERO_PB_UUID, 3, &users_a[2], vec![1, 3], 0);
+                chat.name_option = None;
+                chat
+            }),
+            messages: vec![],
+        },
+    ];
+    let helper = MergerHelper::new_from_daos(
+        create_dao("One", users_a.clone(), cwms.clone(), |_, _| {}),
+        create_dao("Two", users_b.clone(), cwms.clone(), |_, _| {}),
+    );
+
+    let (new_dao, new_ds, _tmpdir) = merge(
+        &helper,
+        users.iter().map(|u| UserMergeDecision::Replace(u.id())).collect_vec(),
+        cwms.iter().map(|cwm| ChatMergeDecision::Merge {
+            chat_id: ChatId(cwm.chat.as_ref().unwrap().id),
+            message_merges: Box::new(vec![]),
+        }).collect_vec(),
+    );
+
+    let new_users = new_dao.users(new_ds.uuid())?;
+    assert_eq!(new_users, users_b.clone().into_iter().map(|mut u| {
+        u.ds_uuid = new_ds.uuid.clone();
+        u
+    }).collect_vec());
+
+    let new_chats = new_dao.chats(new_ds.uuid())?.into_iter().sorted_by_key(|cwd| cwd.chat.id).collect_vec();
+    assert_eq!(new_chats.len(), 3);
+
+    assert_eq!(new_chats[0].chat.tpe, ChatType::PrivateGroup as i32);
+    assert_eq!(new_chats[0].chat.name_option.as_deref(), Some("Chat Group"));
+    assert_eq!(new_chats[1].chat.tpe, ChatType::Personal as i32);
+    assert_eq!(new_chats[1].chat.name_option.as_deref(), Some("ChangedUserFN-2 ChangedUserLN-2"));
+    assert_eq!(new_chats[2].chat.tpe, ChatType::Personal as i32);
+    assert_eq!(new_chats[2].chat.name_option.as_deref(), Some("ChangedUserFN-3 ChangedUserLN-3"));
 
     Ok(())
 }
@@ -806,8 +862,8 @@ fn members_test_helper(clue: &str,
 
     // Users 1/2 are kept, users 3/4 are replaced.
     let user_merges = vec![
-        UserMergeDecision::DontReplace(helper.m.users[0].id()),
-        UserMergeDecision::DontReplace(helper.m.users[1].id()),
+        UserMergeDecision::MatchOrDontReplace(helper.m.users[0].id()),
+        UserMergeDecision::MatchOrDontReplace(helper.m.users[1].id()),
         UserMergeDecision::Replace(helper.m.users[2].id()),
         UserMergeDecision::Replace(helper.m.users[3].id()),
     ];
@@ -967,7 +1023,7 @@ fn last_id<M, Id>(map: &MsgsMap<M>) -> Id where M: WithTypedId<Item=Id> {
 }
 
 fn dont_replace_both_users() -> Vec<UserMergeDecision> {
-    vec![UserMergeDecision::DontReplace(UserId(1)), UserMergeDecision::DontReplace(UserId(2))]
+    vec![UserMergeDecision::MatchOrDontReplace(UserId(1)), UserMergeDecision::MatchOrDontReplace(UserId(2))]
 }
 
 fn create_personal_chat(ds_uuid: &PbUuid, idx: i32, user: &User, member_ids: Vec<i64>, msg_count: usize) -> Chat {
@@ -988,9 +1044,9 @@ fn change_users(users: &[User], id_condition: fn(i64) -> bool) -> Vec<User> {
     users.iter().map(|u| {
         if id_condition(u.id) {
             User {
-                first_name_option: Some("AnotherUserFN".to_owned()),
-                last_name_option: Some("AnotherUserLN".to_owned()),
-                username_option: Some("AnotherUserUN".to_owned()),
+                first_name_option: Some(format!("ChangedUserFN-{}", u.id)),
+                last_name_option: Some(format!("ChangedUserLN-{}", u.id)),
+                username_option: Some(format!("ChangedUserUN-{}", u.id)),
                 phone_number_option: Some(format!("{}", 123000 + u.id)),
                 ..u.clone()
             }

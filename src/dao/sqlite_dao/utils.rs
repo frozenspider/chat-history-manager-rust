@@ -122,20 +122,21 @@ pub mod chat {
     use super::*;
 
     const SELECT: &str =
-        r"SELECT
+        r#"SELECT
                 c.*,
                 c.type as tpe,
                 (
-                  SELECT GROUP_CONCAT(u.id) FROM user u
-                  INNER JOIN chat_member cm ON cm.ds_uuid = c.ds_uuid AND cm.user_id = u.id
-                  WHERE u.ds_uuid = c.ds_uuid AND cm.chat_id = c.id
-                  ORDER BY u.id
+                  SELECT GROUP_CONCAT(user_id) FROM (
+                    SELECT cm.user_id FROM chat_member cm
+                    WHERE cm.ds_uuid = c.ds_uuid AND cm.chat_id = c.id
+                    ORDER BY cm."order"
+                  )
                 ) AS member_ids,
                 (
                   SELECT MAX(internal_id) FROM message m
                   WHERE m.ds_uuid = c.ds_uuid AND m.chat_id = c.id
                 ) AS last_message_internal_id
-            FROM chat c";
+            FROM chat c"#;
     const DS_IS: &str = "c.ds_uuid = ?";
     const ID_IS: &str = "c.id = :chat_id";
     const ORDER: &str = "ORDER BY c.id ASC";

@@ -1,9 +1,12 @@
+use std::cell::Ref;
 use std::sync::{Arc, Mutex};
 
 use tonic::Request;
 
 use crate::*;
-use crate::merge::analyzer::{DatasetDiffAnalyzer, MergeAnalysisSection};
+use crate::merge::analyzer::*;
+use crate::merge::merger;
+use crate::merge::merger::{ChatMergeDecision, MessagesMergeDecision, UserMergeDecision};
 use crate::protobuf::history::merge_service_server::*;
 
 use super::*;
@@ -11,40 +14,29 @@ use super::*;
 #[tonic::async_trait]
 impl MergeService for Arc<Mutex<ChatHistoryManagerServer>> {
     async fn analyze(&self, req: Request<AnalyzeRequest>) -> TonicResult<AnalyzeResponse> {
-        self.process_request(&req, move |req, self_lock| {
-            let m_dao = self_lock.loaded_daos.get(&req.master_dao_key).context("Master DAO not found")?;
-            let s_dao = self_lock.loaded_daos.get(&req.slave_dao_key).context("Slave DAO not found")?;
-
-            let m_dao = (*m_dao).borrow();
-            let s_dao = (*s_dao).borrow();
-
-            let m_ds_uuid = from_req!(req.master_ds_uuid);
-            let s_ds_uuid = from_req!(req.slave_ds_uuid);
-
-            let m_ds = m_dao.datasets()?.into_iter().find(|ds| ds.uuid() == m_ds_uuid)
-                .context("Master dataset not found!")?;
-            let s_ds = s_dao.datasets()?.into_iter().find(|ds| ds.uuid() == s_ds_uuid)
-                .context("Slave dataset not found!")?;
-
+        self.process_merge_service_request(&req, |req, m_dao, m_ds, s_dao, s_ds| {
             let analyzer = DatasetDiffAnalyzer::create(m_dao.as_ref(), &m_ds, s_dao.as_ref(), &s_ds)?;
             let mut analysis = Vec::with_capacity(req.chat_ids.len());
             for chat_id in req.chat_ids.iter() {
                 let chat_id = *chat_id;
-                let m_cwd = m_dao.chat_option(m_ds_uuid, chat_id)?
+                let m_cwd = m_dao.chat_option(m_ds.uuid(), chat_id)?
                     .with_context(|| format!("Source chat {} not found!", chat_id))?;
-                let s_cwd = s_dao.chat_option(s_ds_uuid, chat_id)?
+                let s_cwd = s_dao.chat_option(s_ds.uuid(), chat_id)?
                     .with_context(|| format!("Source chat {} not found!", chat_id))?;
                 let analyzed =
                     analyzer.analyze(&m_cwd, &s_cwd, &s_cwd.chat.qualified_name())?;
                 let sections = analyzed.into_iter().map(|a| {
                     let mut res = AnalysisSection {
                         tpe: 0,
-                        first_master_msg_id: *NO_INTERNAL_ID,
-                        last_master_msg_id: *NO_INTERNAL_ID,
-                        first_slave_msg_id: *NO_INTERNAL_ID,
-                        last_slave_msg_id: *NO_INTERNAL_ID,
+                        range: Some(MessageMergeSectionRange {
+                            first_master_msg_id: *NO_INTERNAL_ID,
+                            last_master_msg_id: *NO_INTERNAL_ID,
+                            first_slave_msg_id: *NO_INTERNAL_ID,
+                            last_slave_msg_id: *NO_INTERNAL_ID,
+                        }),
                     };
-                    macro_rules! set { ($from:ident.$k:ident) => { res.$k = *$from.$k }; }
+                    let range = res.range.as_mut().unwrap();
+                    macro_rules! set { ($from:ident.$k:ident) => { range.$k = *$from.$k }; }
                     match a {
                         MergeAnalysisSection::Match(v) => {
                             res.tpe = AnalysisSectionType::Match as i32;
@@ -75,7 +67,157 @@ impl MergeService for Arc<Mutex<ChatHistoryManagerServer>> {
                 }).collect_vec();
                 analysis.push(ChatAnalysis { chat_id, sections })
             }
-            Ok(AnalyzeResponse { analysis })
+            Ok(analysis)
+        }, |analysis, _self_lock| Ok(AnalyzeResponse { analysis }))
+    }
+
+    async fn merge(&self, req: Request<MergeRequest>) -> TonicResult<MergeResponse> {
+        self.process_merge_service_request(&req, |req, m_dao, m_ds, s_dao, s_ds| {
+            let sqlite_dao_dir = Path::new(&req.new_database_dir);
+            let user_merges = req.user_merges.iter().map(|um|
+                Ok::<_, anyhow::Error>(match UserMergeType::try_from(um.tpe)? {
+                    UserMergeType::Retain => UserMergeDecision::Retain(UserId(um.user_id)),
+                    UserMergeType::Add => UserMergeDecision::Add(UserId(um.user_id)),
+                    UserMergeType::DontAdd => UserMergeDecision::DontAdd(UserId(um.user_id)),
+                    UserMergeType::Replace => UserMergeDecision::Replace(UserId(um.user_id)),
+                    UserMergeType::MatchOrDontReplace => UserMergeDecision::MatchOrDontReplace(UserId(um.user_id)),
+                })
+            ).try_collect()?;
+            let chat_merges = req.chat_merges.iter().map(|cm|
+                Ok::<_, anyhow::Error>(match ChatMergeType::try_from(cm.tpe)? {
+                    ChatMergeType::Retain => ChatMergeDecision::Retain { master_chat_id: ChatId(cm.chat_id) },
+                    ChatMergeType::Add => ChatMergeDecision::Add { slave_chat_id: ChatId(cm.chat_id) },
+                    ChatMergeType::DontAdd => ChatMergeDecision::DontAdd { slave_chat_id: ChatId(cm.chat_id) },
+                    ChatMergeType::Merge => {
+                        use MessageMergeType as MMT;
+                        use MessagesMergeDecision as MMD;
+                        let message_merges = Box::new(cm.message_merges.iter().map(|mm| {
+                            let range = mm.range.as_ref().context("Messages range not supplied!")?;
+                            Ok::<_, anyhow::Error>(match MessageMergeType::try_from(mm.tpe)? {
+                                MMT::Match => MMD::Match(MergeAnalysisSectionMatch {
+                                    first_master_msg_id: MasterInternalId(range.first_master_msg_id),
+                                    last_master_msg_id: MasterInternalId(range.last_master_msg_id),
+                                    first_slave_msg_id: SlaveInternalId(range.first_slave_msg_id),
+                                    last_slave_msg_id: SlaveInternalId(range.last_slave_msg_id),
+                                }),
+                                MMT::Retain => MMD::Retain(MergeAnalysisSectionRetention {
+                                    first_master_msg_id: MasterInternalId(range.first_master_msg_id),
+                                    last_master_msg_id: MasterInternalId(range.last_master_msg_id),
+                                }),
+                                MMT::Add => MMD::Add(MergeAnalysisSectionAddition {
+                                    first_slave_msg_id: SlaveInternalId(range.first_slave_msg_id),
+                                    last_slave_msg_id: SlaveInternalId(range.last_slave_msg_id),
+                                }),
+                                MMT::DontAdd => MMD::DontAdd(MergeAnalysisSectionAddition {
+                                    first_slave_msg_id: SlaveInternalId(range.first_slave_msg_id),
+                                    last_slave_msg_id: SlaveInternalId(range.last_slave_msg_id),
+                                }),
+                                MMT::Replace => MMD::Replace(MergeAnalysisSectionConflict {
+                                    first_master_msg_id: MasterInternalId(range.first_master_msg_id),
+                                    last_master_msg_id: MasterInternalId(range.last_master_msg_id),
+                                    first_slave_msg_id: SlaveInternalId(range.first_slave_msg_id),
+                                    last_slave_msg_id: SlaveInternalId(range.last_slave_msg_id),
+                                }),
+                                MMT::DontReplace => MMD::DontReplace(MergeAnalysisSectionConflict {
+                                    first_master_msg_id: MasterInternalId(range.first_master_msg_id),
+                                    last_master_msg_id: MasterInternalId(range.last_master_msg_id),
+                                    first_slave_msg_id: SlaveInternalId(range.first_slave_msg_id),
+                                    last_slave_msg_id: SlaveInternalId(range.last_slave_msg_id),
+                                }),
+                            })
+                        }).try_collect()?);
+                        ChatMergeDecision::Merge { chat_id: ChatId(cm.chat_id), message_merges }
+                    }
+                })
+            ).try_collect()?;
+            let (dao, ds) = merger::merge_datasets(sqlite_dao_dir,
+                                                   &**m_dao, &m_ds,
+                                                   &**s_dao, &s_ds,
+                                                   user_merges, chat_merges)?;
+            let key = path_to_str(&dao.db_file)?.to_owned();
+            Ok((key, DaoRefCell::new(Box::new(dao)), ds))
+        }, |(key, dao, ds): (DaoKey, DaoRefCell, Dataset), self_lock| {
+            let name = dao.borrow().name().to_owned();
+            self_lock.loaded_daos.insert(key.clone(), dao);
+            Ok(MergeResponse {
+                new_file: Some(LoadedFile { key, name }),
+                new_ds_uuid: Some(ds.uuid().clone()),
+            })
+        })
+    }
+
+    async fn compare(&self, req: Request<CompareRequest>) -> TonicResult<CompareResponse> {
+        self.process_merge_service_request(&req, |_req, m_dao, m_ds, s_dao, s_ds| {
+            dao::ensure_datasets_are_equal(&**s_dao, &**m_dao, s_ds.uuid(), m_ds.uuid())
+        }, |_, _| { Ok(CompareResponse {}) })
+    }
+}
+
+trait MergeServiceHelper {
+    fn process_merge_service_request<Q, R1, R2, Process, Finalize>(&self,
+                                                                   req: &Request<Q>,
+                                                                   process: Process,
+                                                                   finalize: Finalize) -> TonicResult<R2>
+        where Q: MergeServiceRequest + Debug,
+              R2: Debug,
+              Process: FnMut(
+                  &Q,
+                  Ref<Box<dyn ChatHistoryDao>>, Dataset,
+                  Ref<Box<dyn ChatHistoryDao>>, Dataset,
+              ) -> Result<R1>,
+              Finalize: FnMut(R1, &mut ChmLock<'_>) -> Result<R2>;
+}
+
+impl MergeServiceHelper for Arc<Mutex<ChatHistoryManagerServer>> {
+    fn process_merge_service_request<Q, R1, R2, Process, Finalize>(&self,
+                                                                   req: &Request<Q>,
+                                                                   mut process: Process,
+                                                                   mut finalize: Finalize) -> TonicResult<R2>
+        where Q: MergeServiceRequest + Debug,
+              R2: Debug,
+              Process: FnMut(
+                  &Q,
+                  Ref<Box<dyn ChatHistoryDao>>, Dataset,
+                  Ref<Box<dyn ChatHistoryDao>>, Dataset,
+              ) -> Result<R1>,
+              Finalize: FnMut(R1, &mut ChmLock<'_>) -> Result<R2> {
+        self.process_request(&req, move |req, self_lock| {
+            let m_dao = self_lock.loaded_daos.get(req.master_dao_key()).context("Master DAO not found")?;
+            let s_dao = self_lock.loaded_daos.get(req.slave_dao_key()).context("Slave DAO not found")?;
+
+            let m_dao = (*m_dao).borrow();
+            let s_dao = (*s_dao).borrow();
+
+            let m_ds_uuid = req.master_ds_uuid().context("Request has no master_ds_uuid")?;
+            let s_ds_uuid = req.slave_ds_uuid().context("Request has no slave_ds_uuid")?;
+
+            let m_ds = m_dao.datasets()?.into_iter().find(|ds| ds.uuid() == m_ds_uuid)
+                .context("Master dataset not found!")?;
+            let s_ds = s_dao.datasets()?.into_iter().find(|ds| ds.uuid() == s_ds_uuid)
+                .context("Slave dataset not found!")?;
+
+            let pre_res = process(req, m_dao, m_ds, s_dao, s_ds)?;
+            finalize(pre_res, self_lock)
         })
     }
 }
+
+trait MergeServiceRequest {
+    fn master_dao_key(&self) -> &String;
+    fn master_ds_uuid(&self) -> Option<&PbUuid>;
+    fn slave_dao_key(&self) -> &String;
+    fn slave_ds_uuid(&self) -> Option<&PbUuid>;
+}
+macro_rules! merge_req_impl {
+    ($class:ident) => {
+        impl MergeServiceRequest for $class {
+            fn master_dao_key(&self) -> &String { &self.master_dao_key }
+            fn master_ds_uuid(&self) -> Option<&PbUuid> { self.master_ds_uuid.as_ref() }
+            fn slave_dao_key(&self) -> &String { &self.slave_dao_key }
+            fn slave_ds_uuid(&self) -> Option<&PbUuid> { self.slave_ds_uuid.as_ref() }
+        }
+    };
+}
+merge_req_impl!(AnalyzeRequest);
+merge_req_impl!(MergeRequest);
+merge_req_impl!(CompareRequest);

@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use std::collections::{HashMap, HashSet};
 
 use crate::*;
@@ -26,14 +24,14 @@ pub fn merge_datasets(
     chat_merges: Vec<ChatMergeDecision>,
 ) -> Result<(SqliteDao, Dataset)> {
     measure(|| {
-        let master_users = master_dao.users(master_ds.uuid())?;
-        let slave_users = slave_dao.users(slave_ds.uuid())?;
-        let master_users: HashMap<_, _> = master_users.into_iter().map(|u| (u.id(), u)).collect();
-        let slave_users: HashMap<_, _> = slave_users.into_iter().map(|u| (u.id(), u)).collect();
-        let master_cwds = master_dao.chats(master_ds.uuid())?;
-        let slave_cwds = slave_dao.chats(slave_ds.uuid())?;
-        let master_cwds: HashMap<_, _> = master_cwds.into_iter().map(|cwd| (cwd.id(), cwd)).collect();
-        let slave_cwds: HashMap<_, _> = slave_cwds.into_iter().map(|cwd| (cwd.id(), cwd)).collect();
+        fn get_users_and_cwds(dao: &dyn ChatHistoryDao, ds_uuid: &PbUuid)
+                              -> Result<(HashMap<UserId, User>, HashMap<ChatId, ChatWithDetails>)> {
+            Ok((dao.users(ds_uuid)?.into_iter().map(|u| (u.id(), u)).collect(),
+                dao.chats(ds_uuid)?.into_iter().map(|cwd| (cwd.id(), cwd)).collect()))
+        }
+
+        let (master_users, master_cwds) = get_users_and_cwds(master_dao, master_ds.uuid())?;
+        let (slave_users, slave_cwds) = get_users_and_cwds(slave_dao, slave_ds.uuid())?;
 
         // Input validity check: users
         let master_user_id_merges = user_merges.iter().map(|m| m.master_user_id_option()).flatten().collect_vec();
@@ -113,9 +111,8 @@ fn merge_inner(
     let master_self = master_dao.myself(master_ds.uuid())?;
     for um in user_merges {
         let user_to_insert_option = match um {
-            UserMergeDecision::Match(user_id) => Some(master_users[&user_id].clone()),
             UserMergeDecision::Retain(user_id) => Some(master_users[&user_id].clone()),
-            UserMergeDecision::DontReplace(user_id) => Some(master_users[&user_id].clone()),
+            UserMergeDecision::MatchOrDontReplace(user_id) => Some(master_users[&user_id].clone()),
             UserMergeDecision::Add(user_id) => Some(slave_users[&user_id].clone()),
             UserMergeDecision::DontAdd(user_id) if selected_chat_members.contains(&user_id.0) =>
                 bail!("Cannot skip user {} because it's used in a chat that wasn't skipped", user_id.0),
@@ -137,13 +134,17 @@ fn merge_inner(
         // For merged personal chats, name should match whatever user name was chosen
         if cwd.chat.tpe == ChatType::Personal as i32 {
             let interlocutors = cwd.members.iter().filter(|u| u.id != master_self.id).collect_vec();
-            if interlocutors.len() != 1 {
-                bail!("More than one other member for personal chat {}!", cwd.chat.qualified_name())
+            if interlocutors.len() > 1 {
+                bail!("Personal chat {} has multiple other members: {:?}",
+                      cwd.chat.qualified_name(), interlocutors.iter().map(|u| u.id).collect_vec())
             }
-            let final_user = final_users.iter().find(|u| u.id == interlocutors[0].id).with_context(||
-                format!("User {} not found among final users! Personal chat should've been skipped",
-                        interlocutors[0].id))?;
-            cwd.chat.name_option = final_user.pretty_name_option();
+            // Could happen e.g. if other members never wrote anything.
+            if !interlocutors.is_empty() {
+                let final_user = final_users.iter().find(|u| u.id == interlocutors[0].id).with_context(||
+                    format!("User {} not found among final users! Personal chat should've been skipped",
+                            interlocutors[0].id))?;
+                cwd.chat.name_option = final_user.pretty_name_option();
+            }
         }
 
         let mut new_chat = new_dao.insert_chat(cwd.chat.clone(), chat_ds_root)?;
@@ -225,12 +226,16 @@ fn merge_inner(
                             vec![]
                         }
                         MessagesMergeDecision::Replace(v) => {
+                            // Treat exactly as Add
+                            // TODO: Should we analyze content and make sure nothing is lost?
                             let msgs = slave_dao.messages_slice(&slave_cwd.chat,
                                                                 v.first_slave_msg_id.generalize(),
                                                                 v.last_slave_msg_id.generalize())?;
                             vec![(Source::Slave, msgs)]
                         }
                         MessagesMergeDecision::DontReplace(v) => {
+                            // Treat exactly as Retain
+                            // TODO: Should we analyze content and make sure nothing is lost?
                             let msgs = master_dao.messages_slice(&master_cwd.chat,
                                                                  v.first_master_msg_id.generalize(),
                                                                  v.last_master_msg_id.generalize())?;
@@ -334,9 +339,6 @@ fn fixup_members(msg: &mut Message, final_users: &[User], cwd: &ChatWithDetails)
 
 #[derive(Debug)]
 pub enum UserMergeDecision {
-    /// Same in master and slave
-    Match(UserId),
-
     /// Only in master
     Retain(UserId),
 
@@ -347,31 +349,29 @@ pub enum UserMergeDecision {
 
     /// Conflicts between master and slave, use slave
     Replace(UserId),
-    /// Conflicts between master and slave, use master
-    DontReplace(UserId),
+    /// Conflicts between master and slave - or they match, use master either way
+    MatchOrDontReplace(UserId),
 }
 
 impl UserMergeDecision {
     pub fn master_user_id_option(&self) -> Option<UserId> {
         match self {
-            UserMergeDecision::Match(id) => Some(*id),
             UserMergeDecision::Retain(id) => Some(*id),
             UserMergeDecision::Add(_) => None,
             UserMergeDecision::DontAdd(_) => None,
             UserMergeDecision::Replace(id) => Some(*id),
-            UserMergeDecision::DontReplace(id) => Some(*id),
+            UserMergeDecision::MatchOrDontReplace(id) => Some(*id),
         }
     }
 
 
     pub fn slave_user_id_option(&self) -> Option<UserId> {
         match self {
-            UserMergeDecision::Match(id) => Some(*id),
             UserMergeDecision::Retain(_) => None,
             UserMergeDecision::Add(id) => Some(*id),
             UserMergeDecision::DontAdd(id) => Some(*id),
             UserMergeDecision::Replace(id) => Some(*id),
-            UserMergeDecision::DontReplace(id) => Some(*id),
+            UserMergeDecision::MatchOrDontReplace(id) => Some(*id),
         }
     }
 }

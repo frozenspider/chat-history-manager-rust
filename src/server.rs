@@ -98,12 +98,12 @@ impl ChatHistoryManagerServerTrait for Arc<Mutex<ChatHistoryManagerServer>> {
         where Q: Debug,
               P: Debug,
               L: FnMut(&Q) -> Result<P> {
-        log::debug!(">>> Request:  {:?}", req.get_ref());
+        log::debug!(">>> Request:  {}", truncate_to(format!("{:?}", req.get_ref()), 150));
         let response_result = logic(req.get_ref())
             .map(Response::new);
         log::debug!("<<< Response: {}", truncate_to(format!("{:?}", response_result), 150));
         response_result.map_err(|err| {
-            eprintln!("Request failed!\n{:?}", err);
+            eprintln!("Request failed! Error was:\n{:?}", err);
             Status::new(Code::Internal, error_to_string(&err))
         })
     }

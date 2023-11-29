@@ -33,6 +33,7 @@ CREATE TABLE chat_member (
   ds_uuid             BLOB NOT NULL,
   chat_id             INTEGER NOT NULL,
   user_id             INTEGER NOT NULL,
+  "order"             INTEGER NOT NULL,
   PRIMARY KEY (ds_uuid, chat_id, user_id),
   FOREIGN KEY (ds_uuid, chat_id) REFERENCES chat (ds_uuid, id),
   FOREIGN KEY (ds_uuid, user_id) REFERENCES user (ds_uuid, id)

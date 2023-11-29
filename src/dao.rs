@@ -127,6 +127,7 @@ pub trait ChatHistoryDao: WithCache + Send {
     fn messages_after_impl(&self, chat: &Chat, msg_id: MessageInternalId, limit: usize) -> Result<Vec<Message>>;
 
     /// Return N messages between the given ones (inclusive). Messages must be present.
+    /// Note: this might need rework in future, as the returned slice is unbounded.
     fn messages_slice(&self, chat: &Chat, msg1_id: MessageInternalId, msg2_id: MessageInternalId) -> Result<Vec<Message>>;
 
     /// Count messages between the given ones (inclusive). Messages must be present.
@@ -202,41 +203,47 @@ impl DaoCache {
 
 const BATCH_SIZE: usize = 5_000;
 
-fn ensure_data_sources_are_equal(src: &dyn ChatHistoryDao,
+pub fn ensure_datasets_are_equal(src: &dyn ChatHistoryDao,
                                  dst: &dyn ChatHistoryDao,
-                                 ds_uuid: &PbUuid) -> EmptyRes {
+                                 src_ds_uuid: &PbUuid,
+                                 dst_ds_uuid: &PbUuid) -> EmptyRes {
     measure(|| {
-        let src_ds = src.datasets()?.into_iter().find(|ds| ds.uuid() == ds_uuid)
-            .with_context(|| format!("Dataset {} not found in source DAO!", ds_uuid.value))?;
-        let dst_ds = src.datasets()?.into_iter().find(|ds| ds.uuid() == ds_uuid)
-            .with_context(|| format!("Dataset {} not found in destination DAO!", ds_uuid.value))?;
+        let src_ds = src.datasets()?.into_iter().find(|ds| ds.uuid() == src_ds_uuid)
+            .with_context(|| format!("Dataset {} not found in source DAO!", src_ds_uuid.value))?;
+        let mut dst_ds = src.datasets()?.into_iter().find(|ds| ds.uuid() == dst_ds_uuid)
+            .with_context(|| format!("Dataset {} not found in destination DAO!", dst_ds_uuid.value))?;
+        dst_ds.uuid = Some(src_ds_uuid.clone());
         require!(src_ds == dst_ds, "Destination dataset is not the same as original");
-        let src_ds_root = src.dataset_root(ds_uuid)?;
-        let dst_ds_root = dst.dataset_root(ds_uuid)?;
+        let src_ds_root = src.dataset_root(src_ds_uuid)?;
+        let dst_ds_root = dst.dataset_root(dst_ds_uuid)?;
         require!(*src_ds_root != *dst_ds_root, "Source and destination dataset root paths are the same!");
 
         measure(|| {
-            let src_users = src.users(ds_uuid)?;
-            let dst_users = dst.users(ds_uuid)?;
+            let src_users = src.users(src_ds_uuid)?;
+            let dst_users = dst.users(dst_ds_uuid)?;
             require!(src_users.len() == dst_users.len(),
                      "User count differs:\nWas    {} ({:?})\nBecame {} ({:?})",
                      src_users.len(), src_users, dst_users.len(), dst_users);
-            for (i, (src_user, dst_user)) in src_users.iter().zip(dst_users.iter()).enumerate() {
-                require!(src_user == dst_user,
+            for (i, (src_user, mut dst_user)) in src_users.iter().zip(dst_users.into_iter()).enumerate() {
+                dst_user.ds_uuid = Some(src_ds_uuid.clone());
+                require!(*src_user == dst_user,
                          "User #{i} differs:\nWas    {:?}\nBecame {:?}", src_user, dst_user);
             }
             Ok(())
         }, |_, t| log::info!("Users checked in {t} ms"))?;
 
-        let src_chats = src.chats(ds_uuid)?;
-        let dst_chats = dst.chats(ds_uuid)?;
+        let src_chats = src.chats(src_ds_uuid)?;
+        let dst_chats = dst.chats(dst_ds_uuid)?;
         require!(src_chats.len() == dst_chats.len(),
                  "Chat count differs:\nWas    {}\nBecame {}", src_chats.len(), dst_chats.len());
 
         for (i, (src_cwd, dst_cwd)) in src_chats.iter().zip(dst_chats.iter()).enumerate() {
             measure(|| {
+                let mut dst_cwd = dst_cwd.clone();
+                dst_cwd.chat.ds_uuid = Some(src_ds_uuid.clone());
+
                 require!(PracticalEqTuple::new(&src_cwd.chat, &src_ds_root, src_cwd).practically_equals(
-                        &PracticalEqTuple::new(&dst_cwd.chat, &dst_ds_root, dst_cwd))?,
+                        &PracticalEqTuple::new(&dst_cwd.chat, &dst_ds_root, &dst_cwd))?,
                          "Chat #{i} differs:\nWas    {:?}\nBecame {:?}", src_cwd.chat, dst_cwd.chat);
 
                 let msg_count = src_cwd.chat.msg_count as usize;
@@ -265,5 +272,5 @@ fn ensure_data_sources_are_equal(src: &dyn ChatHistoryDao,
         }
 
         Ok(())
-    }, |_, t| log::info!("Dataset '{}' checked in {t} ms", ds_uuid.value))
+    }, |_, t| log::info!("Dataset '{}' checked in {t} ms", src_ds_uuid.value))
 }

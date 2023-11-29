@@ -87,7 +87,8 @@ message Chat {
   // Path relative to data root!
   optional string img_path_option = 5;
 
-  // Always contains myself
+  // Always contains myself as the first element. The rest might be empty, e.g. if nobody ever wrote anything.
+  // Members must be in some fixed order.
   repeated int64 member_ids = 6;
   int32 msg_count = 7;
 }
@@ -619,6 +620,10 @@ message CloseResponse {
 
 service MergeService {
   rpc Analyze(AnalyzeRequest) returns (AnalyzeResponse) {}
+  rpc Merge(MergeRequest) returns (MergeResponse) {}
+
+  // Temporary endpoint that helps to ensure new merging does the same the old merging does
+  rpc Compare(CompareRequest) returns (CompareResponse) {}
 }
 
 message AnalyzeRequest {
@@ -640,15 +645,98 @@ message ChatAnalysis {
 // This has internal IDs, those not corresponding to the type are unused
 message AnalysisSection {
   AnalysisSectionType tpe = 1;
-
-  int64 first_master_msg_id = 2;
-  int64 last_master_msg_id = 3;
-  int64 first_slave_msg_id = 4;
-  int64 last_slave_msg_id = 5;
+  MessageMergeSectionRange range = 2 [(scalapb.field).no_box = true];
 }
 enum AnalysisSectionType {
   ANALYSIS_SECTION_TYPE_MATCH = 0;
   ANALYSIS_SECTION_TYPE_RETENTION = 1;
   ANALYSIS_SECTION_TYPE_ADDITION = 2;
   ANALYSIS_SECTION_TYPE_CONFLICT = 3;
+}
+message MessageMergeSectionRange {
+  int64 first_master_msg_id = 1;
+  int64 last_master_msg_id = 2;
+  int64 first_slave_msg_id = 3;
+  int64 last_slave_msg_id = 4;
+}
+
+message MergeRequest {
+  string master_dao_key = 1;
+  PbUuid master_ds_uuid = 2 [(scalapb.field).no_box = true];
+
+  string slave_dao_key = 3;
+  PbUuid slave_ds_uuid = 4 [(scalapb.field).no_box = true];
+
+  string new_database_dir = 5;
+
+  repeated UserMerge user_merges = 6;
+  repeated ChatMerge chat_merges = 7;
+}
+message UserMerge {
+  UserMergeType tpe = 1;
+  int64 user_id = 2;
+}
+enum UserMergeType {
+  // Only in master
+  USER_MERGE_TYPE_RETAIN = 0;
+
+  // Only in slave, add
+  USER_MERGE_TYPE_ADD = 1;
+  // Only in slave, do not add
+  USER_MERGE_TYPE_DONT_ADD = 2;
+
+  // Conflicts between master and slave, use slave
+  USER_MERGE_TYPE_REPLACE = 3;
+  // Conflicts between master and slave - or they match, use master either way
+  USER_MERGE_TYPE_MATCH_OR_DONT_REPLACE = 4;
+}
+message ChatMerge {
+  ChatMergeType tpe = 1;
+  int64 chat_id = 2;
+  repeated MessageMerge message_merges = 3;
+}
+enum ChatMergeType{
+  // Only in master
+  CHAT_MERGE_TYPE_RETAIN = 0;
+  // Only in slave, add
+  CHAT_MERGE_TYPE_ADD = 1;
+  // Only in slave, do not add
+  CHAT_MERGE_TYPE_DONT_ADD = 2;
+  // Exists in both, act according to message merge decisions
+  CHAT_MERGE_TYPE_MERGE = 3;
+}
+message MessageMerge {
+  MessageMergeType tpe = 1;
+  MessageMergeSectionRange range = 2;
+}
+enum MessageMergeType {
+  // Same in master and slave
+  MESSAGE_MERGE_TYPE_MATCH = 0;
+
+  // Only in master
+  MESSAGE_MERGE_TYPE_RETAIN = 1;
+
+  // Only in slave, add
+  MESSAGE_MERGE_TYPE_ADD = 2;
+  // Only in slave, do not add
+  MESSAGE_MERGE_TYPE_DONT_ADD = 3;
+
+  // Conflicts between master and slave, use slave
+  MESSAGE_MERGE_TYPE_REPLACE = 4;
+  // Conflicts between master and slave, use master
+  MESSAGE_MERGE_TYPE_DONT_REPLACE = 5;
+}
+message MergeResponse {
+  LoadedFile new_file = 1 [(scalapb.field).no_box = true];
+  PbUuid new_ds_uuid = 2 [(scalapb.field).no_box = true];
+}
+
+message CompareRequest {
+  string master_dao_key = 1;
+  PbUuid master_ds_uuid = 2 [(scalapb.field).no_box = true];
+
+  string slave_dao_key = 3;
+  PbUuid slave_ds_uuid = 4 [(scalapb.field).no_box = true];
+}
+message CompareResponse {
 }

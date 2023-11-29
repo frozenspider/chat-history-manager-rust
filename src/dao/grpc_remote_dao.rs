@@ -38,7 +38,7 @@ impl GrpcRemoteDao {
             log::debug!("<<< Request:  {:?}", req);
             let future = loader_client.load(req);
             let response_result = handle.block_on(future).map(|w| w.into_inner())
-                .map_err(|status| anyhow!("Request failed: {:?}", status));
+                .map_err(|status| anyhow!("Request failed! Server response status: {:?}", status));
             log::debug!(">>> Response: {}", truncate_to(format!("{:?}", response_result), 150));
             response_result
         }).join().unwrap()?;
@@ -80,7 +80,7 @@ impl GrpcRemoteDao {
             let client = client.deref_mut();
             log::debug!("<<< Request:  {:?}", req);
             let future = do_request(client, req);
-            let res = handle.block_on(future).map(|w| w.into_inner()).map_err(|status| anyhow!("Request failed: {:?}", status));
+            let res = handle.block_on(future).map(|w| w.into_inner()).map_err(|status| anyhow!("Request failed! Server response status: {:?}", status));
             log::debug!(">>> Response: {}", truncate_to(format!("{:?}", res), 150));
             res
         }).join().unwrap()
