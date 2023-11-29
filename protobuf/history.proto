@@ -431,6 +431,9 @@ service HistoryLoaderService {
   // Parse/open a history file and return its DAO handle
   rpc Load(ParseLoadRequest) returns (LoadResponse) {}
   rpc GetLoadedFiles(GetLoadedFilesRequest) returns (GetLoadedFilesResponse) {}
+}
+
+service HistoryDaoService {
   rpc SaveAs(SaveAsRequest) returns (LoadedFile) {}
   rpc Name(NameRequest) returns (NameResponse) {}
   rpc StoragePath(StoragePathRequest) returns (StoragePathResponse) {}

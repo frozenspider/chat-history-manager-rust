@@ -9,9 +9,11 @@ use tonic::transport::Channel;
 
 use crate::*;
 use crate::dao::*;
+use crate::protobuf::history::history_dao_service_client::HistoryDaoServiceClient;
 use crate::protobuf::history::history_loader_service_client::HistoryLoaderServiceClient;
 
-type Client = HistoryLoaderServiceClient<Channel>;
+type LoaderClient = HistoryLoaderServiceClient<Channel>;
+type DaoClient = HistoryDaoServiceClient<Channel>;
 
 pub struct GrpcRemoteDao {
     name: String,
@@ -19,21 +21,21 @@ pub struct GrpcRemoteDao {
     storage_path: PathBuf,
     runtime_handle: Handle,
     cache: DaoCache,
-    client: Arc<Mutex<Client>>,
+    client: Arc<Mutex<DaoClient>>,
 }
 
 impl GrpcRemoteDao {
-    pub fn create(key: String, storage_path: PathBuf, runtime_handle: Handle, client: Client) -> Result<Self> {
+    pub fn create(key: String,
+                  storage_path: PathBuf,
+                  runtime_handle: Handle,
+                  mut loader_client: LoaderClient,
+                  dao_client: DaoClient) -> Result<Self> {
         let path = key.clone();
-        let client = Arc::new(Mutex::new(client));
-        let client_copy = client.clone();
         let handle = runtime_handle.clone();
         let response = std::thread::spawn(move || {
-            let mut client = client_copy.lock().map_err(|_| anyhow!("Mutex is poisoned!"))?;
-            let client = client.deref_mut();
             let req = ParseLoadRequest { path };
             log::debug!("<<< Request:  {:?}", req);
-            let future = client.load(req);
+            let future = loader_client.load(req);
             let response_result = handle.block_on(future).map(|w| w.into_inner())
                 .map_err(|status| anyhow!("Request failed: {:?}", status));
             log::debug!(">>> Response: {}", truncate_to(format!("{:?}", response_result), 150));
@@ -42,19 +44,20 @@ impl GrpcRemoteDao {
         require!(response.file.map(|f| f.key).as_ref() == Some(&key),
                  "Remote load returned unexpected result");
         let name = format!("{} database", path_file_name(&storage_path)?);
+        let dao_client = Arc::new(Mutex::new(dao_client));
         Ok(GrpcRemoteDao {
             name,
             key,
             storage_path,
             runtime_handle,
             cache: DaoCache::new(),
-            client,
+            client: dao_client,
         })
     }
 
     fn wrap_request<Req, ReqFn, Res>(&self, req: Req, do_request: ReqFn) -> Result<Res>
         where Req: Send + Sync + Debug + 'static,
-              ReqFn: for<'a> FnOnce(&mut Client, Req) -> BoxFuture<'_, StdResult<tonic::Response<Res>, tonic::Status>>,
+              ReqFn: for<'a> FnOnce(&mut DaoClient, Req) -> BoxFuture<'_, StdResult<tonic::Response<Res>, tonic::Status>>,
               ReqFn: Send + Sync + 'static,
               Res: Send + Sync + Debug + 'static
     {

@@ -17,6 +17,7 @@ use crate::loader::tinder_android::TinderAndroidDataLoader;
 use crate::loader::whatsapp_android::WhatsAppAndroidDataLoader;
 use crate::loader::whatsapp_text::WhatsAppTextDataLoader;
 use crate::protobuf::history::{Dataset, PbUuid, SourceType};
+use crate::protobuf::history::history_dao_service_client::HistoryDaoServiceClient;
 use crate::protobuf::history::history_loader_service_client::HistoryLoaderServiceClient;
 
 mod telegram;
@@ -99,8 +100,9 @@ impl Loader {
             let storage_path = path.parent().unwrap().to_path_buf();
             let runtime_handle = self.runtime_handle.clone().context("Runtime handle not supplied!")?;
             let channel = self.channel.clone().context("Channel was not supplied!")?;
-            let client = HistoryLoaderServiceClient::new(channel);
-            Ok(Box::new(GrpcRemoteDao::create(key, storage_path, runtime_handle, client)?))
+            let loader_client = HistoryLoaderServiceClient::new(channel.clone());
+            let dao_client = HistoryDaoServiceClient::new(channel);
+            Ok(Box::new(GrpcRemoteDao::create(key, storage_path, runtime_handle, loader_client, dao_client)?))
         } else {
             Ok(self.parse(path)?)
         }

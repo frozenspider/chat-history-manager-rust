@@ -23,8 +23,8 @@ use crate::protobuf::history::history_loader_service_server::HistoryLoaderServic
 use crate::protobuf::history::history_parser_service_server::HistoryParserServiceServer;
 
 mod myself_chooser;
-mod history_parser_service;
 mod history_loader_service;
+mod history_dao_service;
 
 pub(crate) const FILE_DESCRIPTOR_SET: &[u8] =
     tonic::include_file_descriptor_set!("grpc_reflection_descriptor");
