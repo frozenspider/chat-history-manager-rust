@@ -110,6 +110,9 @@ impl<'a> SmartSlice<'a> for &str {
 // File system
 //
 
+/// 64 KiB
+pub const FILE_BUF_CAPACITY: usize = 64 * 1024;
+
 pub fn path_file_name(path: &Path) -> Result<&str> {
     path.file_name().and_then(|p: &OsStr| p.to_str()).context("Failed to convert filename to string")
 }
@@ -204,7 +207,7 @@ pub fn file_hash(path: &Path) -> Result<String> {
     let mut hashers = [hasher().build_hasher(), hasher().build_hasher()];
 
     let file = File::open(path)?;
-    let mut reader = BufReader::new(file);
+    let mut reader = BufReader::with_capacity(FILE_BUF_CAPACITY, file);
     let mut buffer = [0; 512];
 
     for i in [0, 1].iter().cycle() /* Can't cycle over a mutable iterator */ {

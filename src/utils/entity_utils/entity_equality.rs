@@ -176,8 +176,8 @@ impl<'a> PracticalEq for Tup<'a, String> {
                 }
 
                 // Use buf readers since they are much faster
-                let f1 = BufReader::new(f1);
-                let f2 = BufReader::new(f2);
+                let f1 = BufReader::with_capacity(FILE_BUF_CAPACITY, f1);
+                let f2 = BufReader::with_capacity(FILE_BUF_CAPACITY, f2);
 
                 // Do a byte to byte comparison of the two files
                 for (b1, b2) in f1.bytes().zip(f2.bytes()) {
