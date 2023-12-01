@@ -303,7 +303,7 @@ impl ChatHistoryDao for SqliteDao {
         self.fetch_messages(|conn| {
             Ok(schema::message::table
                 .filter(schema::message::columns::chat_id.eq(chat.id))
-                .order_by((schema::message::columns::time_sent.asc(), schema::message::columns::internal_id.asc()))
+                .order_by(schema::message::columns::internal_id.asc())
                 .left_join(schema::message_content::table)
                 .offset(offset as i64)
                 .limit(limit as i64)
@@ -316,7 +316,7 @@ impl ChatHistoryDao for SqliteDao {
         let mut msgs = self.fetch_messages(|conn| {
             Ok(schema::message::table
                 .filter(schema::message::columns::chat_id.eq(chat.id))
-                .order_by((schema::message::columns::time_sent.desc(), schema::message::columns::internal_id.desc()))
+                .order_by(schema::message::columns::internal_id.desc())
                 .left_join(schema::message_content::table)
                 .limit(limit as i64)
                 .select((RawMessage::as_select(), Option::<RawMessageContent>::as_select()))
@@ -332,7 +332,7 @@ impl ChatHistoryDao for SqliteDao {
             Ok(table
                 .filter(columns::chat_id.eq(chat.id))
                 .filter(columns::internal_id.lt(*msg_id))
-                .order_by((columns::time_sent.desc(), columns::internal_id.desc()))
+                .order_by(columns::internal_id.desc())
                 .left_join(schema::message_content::table)
                 .limit(limit as i64)
                 .select((RawMessage::as_select(), Option::<RawMessageContent>::as_select()))
@@ -348,7 +348,7 @@ impl ChatHistoryDao for SqliteDao {
             Ok(table
                 .filter(columns::chat_id.eq(chat.id))
                 .filter(columns::internal_id.gt(*msg_id))
-                .order_by((columns::time_sent.asc(), columns::internal_id.asc()))
+                .order_by(columns::internal_id.asc())
                 .left_join(schema::message_content::table)
                 .limit(limit as i64)
                 .select((RawMessage::as_select(), Option::<RawMessageContent>::as_select()))
@@ -363,7 +363,7 @@ impl ChatHistoryDao for SqliteDao {
                 .filter(columns::chat_id.eq(chat.id))
                 .filter(columns::internal_id.ge(*msg1_id))
                 .filter(columns::internal_id.le(*msg2_id))
-                .order_by((columns::time_sent.asc(), columns::internal_id.asc()))
+                .order_by(columns::internal_id.asc())
                 .left_join(schema::message_content::table)
                 .select((RawMessage::as_select(), Option::<RawMessageContent>::as_select()))
                 .load(conn)?)
@@ -379,7 +379,7 @@ impl ChatHistoryDao for SqliteDao {
             .filter(columns::chat_id.eq(chat.id))
             .filter(columns::internal_id.ge(*msg1_id))
             .filter(columns::internal_id.le(*msg2_id))
-            .order_by((columns::time_sent.asc(), columns::internal_id.asc()))
+            .order_by(columns::internal_id.asc())
             .count()
             .get_result(conn)?;
 

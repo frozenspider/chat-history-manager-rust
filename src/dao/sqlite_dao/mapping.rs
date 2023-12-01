@@ -192,6 +192,9 @@ pub struct RawChatQ {
     // Derived, artificial fields
     #[diesel(sql_type = Nullable < Text >)]
     pub member_ids: Option<String>,
+
+    #[diesel(sql_type = Nullable < BigInt >)]
+    pub last_message_internal_id: Option<i64>,
 }
 
 #[derive(Debug, PartialEq, Clone, Identifiable, Selectable, Queryable, Insertable)]

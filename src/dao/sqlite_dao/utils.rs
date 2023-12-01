@@ -130,7 +130,11 @@ pub mod chat {
                   INNER JOIN chat_member cm ON cm.ds_uuid = c.ds_uuid AND cm.user_id = u.id
                   WHERE u.ds_uuid = c.ds_uuid AND cm.chat_id = c.id
                   ORDER BY u.id
-                ) AS member_ids
+                ) AS member_ids,
+                (
+                  SELECT MAX(internal_id) FROM message m
+                  WHERE m.ds_uuid = c.ds_uuid AND m.chat_id = c.id
+                ) AS last_message_internal_id
             FROM chat c";
     const DS_IS: &str = "c.ds_uuid = ?";
     const ID_IS: &str = "c.id = :chat_id";
@@ -172,15 +176,16 @@ pub mod chat {
                        conn: &mut SqliteConnection,
                        ds_uuid: &PbUuid,
                        cache: &DaoCacheInner) -> Result<ChatWithDetails> {
-        let mut last_msg_vec = message::fetch(conn, |conn| {
-            Ok(schema::message::table
-                .filter(schema::message::columns::chat_id.eq(raw.chat.id))
-                .left_join(schema::message_content::table)
-                .order_by(schema::message::columns::time_sent.desc())
-                .limit(1)
-                .select((RawMessage::as_select(), Option::<RawMessageContent>::as_select()))
-                .load(conn)?)
-        })?;
+        let last_msg_option =
+            transpose_option_result(raw.last_message_internal_id.map(|last_message_internal_id| {
+                Ok(message::fetch(conn, |conn| {
+                    Ok(schema::message::table
+                        .filter(schema::message::columns::internal_id.eq(last_message_internal_id))
+                        .left_join(schema::message_content::table)
+                        .select((RawMessage::as_select(), Option::<RawMessageContent>::as_select()))
+                        .load(conn)?)
+                })?.remove(0))
+            }))?;
         let mut cwd = ChatWithDetails {
             chat: Chat {
                 ds_uuid: Some(ds_uuid.clone()),
@@ -194,7 +199,7 @@ pub mod chat {
                     .unwrap_or(Ok(vec![]))?,
                 msg_count: raw.chat.msg_count as i32,
             },
-            last_msg_option: last_msg_vec.pop(),
+            last_msg_option,
             members: vec![] /* Will be set right next */,
         };
         cwd.members = resolve_users(&cache.users[ds_uuid], cwd.chat.member_ids())?;
