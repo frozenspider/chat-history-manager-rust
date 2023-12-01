@@ -64,7 +64,7 @@ impl<'a> DatasetDiffAnalyzer<'a> {
                 //
 
                 ((Some(mm), Some(sm)), NoState) if matches(mm, sm)? => {
-                    let (mm, sm) = cx.advance_both();
+                    let (mm, sm) = cx.advance_both()?;
                     let mm_internal_id = mm.typed_id();
                     let sm_internal_id = sm.typed_id();
 
@@ -114,7 +114,7 @@ impl<'a> DatasetDiffAnalyzer<'a> {
                     // Conflict started
                     // (Conflicts are only detectable if data source supply source IDs)
 
-                    let (mm, sm) = cx.advance_both();
+                    let (mm, sm) = cx.advance_both()?;
                     let mm_internal_id = mm.typed_id();
                     let sm_internal_id = sm.typed_id();
                     state = InProgress(Conflict {
@@ -125,7 +125,7 @@ impl<'a> DatasetDiffAnalyzer<'a> {
 
                 ((_, Some(_sm)), NoState) if cx.cmp_master_slave().is_gt() => {
                     // Addition started
-                    let sm = cx.advance_slave();
+                    let sm = cx.advance_slave()?;
                     let sm_internal_id = sm.typed_id();
                     state = InProgress(Addition {
                         first_slave_msg_id: sm_internal_id,
@@ -134,7 +134,7 @@ impl<'a> DatasetDiffAnalyzer<'a> {
 
                 ((Some(_mm), _), NoState) if cx.cmp_master_slave().is_lt() => {
                     // Retention started
-                    let mm = cx.advance_master();
+                    let mm = cx.advance_master()?;
                     let mm_internal_id = mm.typed_id();
                     state = InProgress(Retention {
                         first_master_msg_id: mm_internal_id,
@@ -146,7 +146,7 @@ impl<'a> DatasetDiffAnalyzer<'a> {
                 //
 
                 ((Some(mm), Some(sm)), InProgress(Match { .. })) if matches(mm, sm)? => {
-                    cx.advance_both();
+                    cx.advance_both()?;
                 }
 
                 //
@@ -155,7 +155,7 @@ impl<'a> DatasetDiffAnalyzer<'a> {
 
                 ((_, Some(_sm)), InProgress(Addition { .. }))
                 if /*state.prev_master_msg_option == cx.prev_mm &&*/ cx.cmp_master_slave().is_gt() => {
-                    cx.advance_slave();
+                    cx.advance_slave()?;
                 }
 
 
@@ -165,7 +165,7 @@ impl<'a> DatasetDiffAnalyzer<'a> {
 
                 ((Some(_mm), _), _state @ InProgress(Retention { .. }))
                 if /*cx.prev_sm == prevSlaveMsgOption &&*/ cx.cmp_master_slave().is_lt() => {
-                    cx.advance_master();
+                    cx.advance_master()?;
                 }
 
                 //
@@ -173,7 +173,7 @@ impl<'a> DatasetDiffAnalyzer<'a> {
                 //
 
                 ((Some(mm), Some(sm)), InProgress(Conflict { .. })) if !matches(mm, sm)? => {
-                    cx.advance_both();
+                    cx.advance_both()?;
                 }
 
                 //
@@ -324,20 +324,20 @@ impl AnalysContext<'_> {
         (self.mm_stream.peek(), self.sm_stream.peek())
     }
 
-    fn advance_both(&mut self) -> (MasterMessage, SlaveMessage) {
-        (self.advance_master(), self.advance_slave())
+    fn advance_both(&mut self) -> Result<(MasterMessage, SlaveMessage)> {
+        Ok((self.advance_master()?, self.advance_slave()?))
     }
 
-    fn advance_master(&mut self) -> MasterMessage {
-        let next = self.mm_stream.next().expect("Empty master stream advanced! This should've been checked");
+    fn advance_master(&mut self) -> Result<MasterMessage> {
+        let next = self.mm_stream.next().expect("Empty master stream advanced! This should've been checked")?;
         assert!(next.internal_id != *NO_INTERNAL_ID);
-        next
+        Ok(next)
     }
 
-    fn advance_slave(&mut self) -> SlaveMessage {
-        let next = self.sm_stream.next().expect("Empty slave stream advanced! This should've been checked");
+    fn advance_slave(&mut self) -> Result<SlaveMessage> {
+        let next = self.sm_stream.next().expect("Empty slave stream advanced! This should've been checked")?;
         assert!(next.internal_id != *NO_INTERNAL_ID);
-        next
+        Ok(next)
     }
 }
 
@@ -379,7 +379,7 @@ impl<'a, T: WithTypedId> BatchedMessageIterator<'a, T> {
 }
 
 impl<'a, T: WithTypedId> Iterator for BatchedMessageIterator<'a, T> {
-    type Item = T; // TODO: Should it be Result<T>?
+    type Item = Result<T>;
 
     fn next(&mut self) -> Option<Self::Item> {
         let current = self.next_option.take();
@@ -391,14 +391,19 @@ impl<'a, T: WithTypedId> Iterator for BatchedMessageIterator<'a, T> {
                 }
                 None => {
                     // Iterator exhausted, time to preload next batch.
-                    self.saved_batch = self.dao.messages_after(self.chat, (self.unwrap_id)(current), BATCH_SIZE + 1)
-                        .expect("Iterator errored out!").into_iter();
-                    self.next_option = self.saved_batch.next().map(self.wrap);
+                    let msgs = self.dao.messages_after(self.chat, (self.unwrap_id)(current), BATCH_SIZE + 1);
+                    match msgs {
+                        Ok(msgs) => {
+                            self.saved_batch = msgs.into_iter();
+                            self.next_option = self.saved_batch.next().map(self.wrap);
+                        }
+                        Err(e) => return Some(Err(e))
+                    }
                 }
             }
         } // Otherwise iterator ended, no more elements.
         self.last_id_option = current.as_ref().map(|m| m.typed_id());
-        current
+        current.map(|c| Ok(c))
     }
 }
 

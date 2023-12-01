@@ -35,8 +35,7 @@ impl MergeService for Arc<Mutex<ChatHistoryManagerServer>> {
                 let s_cwd = s_dao.chat_option(s_ds_uuid, chat_id)?
                     .with_context(|| format!("Source chat {} not found!", chat_id))?;
                 let analyzed =
-                    analyzer.analyze(&m_cwd, &s_cwd,
-                                     &name_or_unnamed(&s_cwd.chat.name_option))?;
+                    analyzer.analyze(&m_cwd, &s_cwd, &s_cwd.chat.qualified_name())?;
                 let sections = analyzed.into_iter().map(|a| {
                     let mut res = AnalysisSection {
                         tpe: 0,
