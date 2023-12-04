@@ -155,6 +155,8 @@ pub trait MutableChatHistoryDao: ChatHistoryDao {
 
     fn insert_dataset(&mut self, ds: Dataset) -> Result<Dataset>;
 
+    fn update_dataset(&mut self, ds: Dataset) -> Result<Dataset>;
+
     fn insert_user(&mut self, user: User, is_myself: bool) -> Result<User>;
 
     fn update_user(&mut self, user: User) -> Result<User>;

@@ -302,6 +302,19 @@ fn inserts() -> EmptyRes {
 }
 
 #[test]
+fn update_dataset() -> EmptyRes {
+    let (mut dao, _tmp_dir) = create_sqlite_dao();
+
+    let ds = dao.insert_dataset(Dataset { uuid: Some(ZERO_PB_UUID.clone()), alias: "My Dataset".to_owned() })?;
+    dao.insert_user(create_user(&ZERO_PB_UUID, 1), true)?;
+
+    let ds = dao.as_mutable()?.update_dataset(Dataset { uuid: ds.uuid.clone(), alias: "Renamed Dataset".to_owned() })?;
+    assert_eq!(dao.datasets()?.remove(0), ds);
+
+    Ok(())
+}
+
+#[test]
 fn update_user() -> EmptyRes {
     use message_service::SealedValueOptional::*;
 

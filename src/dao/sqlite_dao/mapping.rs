@@ -134,7 +134,7 @@ pub mod schema {
 // Entities
 //
 
-#[derive(Debug, PartialEq, Selectable, Queryable, Insertable)]
+#[derive(Debug, PartialEq, Selectable, Queryable, Insertable, AsChangeset)]
 #[diesel(table_name = schema::dataset)]
 #[diesel(check_for_backend(diesel::sqlite::Sqlite))]
 pub struct RawDataset {

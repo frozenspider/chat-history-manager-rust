@@ -562,6 +562,26 @@ impl MutableChatHistoryDao for SqliteDao {
         Ok(ds)
     }
 
+    fn update_dataset(&mut self, ds: Dataset) -> Result<Dataset> {
+        self.invalidate_cache()?;
+        let mut conn = self.conn.borrow_mut();
+        let conn = conn.deref_mut();
+
+        let raw_ds = utils::dataset::serialize(&ds);
+
+        let ds_uuid = ds.uuid.clone().unwrap();
+        let uuid = Uuid::parse_str(&ds_uuid.value).expect("Invalid UUID!");
+
+        use schema::*;
+        let updated_rows = update(dataset::dsl::dataset)
+            .filter(dataset::columns::uuid.eq(uuid.as_ref()))
+            .set(raw_ds)
+            .execute(conn)?;
+        require!(updated_rows == 1, "{updated_rows} rows changed when updaing dataset {:?}", ds);
+
+        Ok(ds)
+    }
+
     fn insert_user(&mut self, user: User, is_myself: bool) -> Result<User> {
         self.invalidate_cache()?;
         let mut conn = self.conn.borrow_mut();

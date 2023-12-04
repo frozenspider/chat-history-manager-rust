@@ -468,6 +468,7 @@ service HistoryDaoService {
   //
 
   rpc Backup(BackupRequest) returns (Empty) {}
+  rpc UpdateDataset(UpdateDatasetRequest) returns (UpdateDatasetResponse) {}
   rpc UpdateUser(UpdateUserRequest) returns (UpdateUserResponse) {}
 }
 
@@ -630,6 +631,14 @@ message UpdateUserRequest {
 }
 message UpdateUserResponse {
   User user = 1 [(scalapb.field).no_box = true];
+}
+
+message UpdateDatasetRequest {
+  string key = 1;
+  Dataset dataset = 2 [(scalapb.field).no_box = true];
+}
+message UpdateDatasetResponse {
+  Dataset dataset = 1 [(scalapb.field).no_box = true];
 }
 
 //

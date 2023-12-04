@@ -202,4 +202,12 @@ impl HistoryDaoService for Arc<Mutex<ChatHistoryManagerServer>> {
             Ok(UpdateUserResponse { user: Some(user) })
         })
     }
+
+    async fn update_dataset(&self, req: Request<UpdateDatasetRequest>) -> TonicResult<UpdateDatasetResponse> {
+        with_dao_by_key!(self, req, dao, {
+            let ds = req.dataset.as_ref().context("User was empty!")?.clone();
+            let ds = dao.as_mutable()?.update_dataset(ds)?;
+            Ok(UpdateDatasetResponse { dataset: Some(ds) })
+        })
+    }
 }
