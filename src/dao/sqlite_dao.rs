@@ -452,7 +452,7 @@ impl ChatHistoryDao for SqliteDao {
 }
 
 impl MutableChatHistoryDao for SqliteDao {
-    fn backup(&mut self) -> EmptyRes {
+    fn backup(&mut self) -> Result<JoinHandle<()>> {
         // Diesel does not expose backup API, so we use rusqlite for that.
         use rusqlite::*;
         use std::io::Write;
@@ -479,7 +479,8 @@ impl MutableChatHistoryDao for SqliteDao {
                 backup.run_to_completion(PAGES_PER_STEP, PAUSE_BETWEEN_PAGES, None)?;
             }
 
-            let list_backups = || Ok::<_, anyhow::Error>(list_all_files(&backup_dir, false)?
+            let backup_dir_clone = backup_dir.clone();
+            let list_backups = move || Ok::<_, anyhow::Error>(list_all_files(&backup_dir_clone, false)?
                 .into_iter()
                 .filter(|f| {
                     let name = path_file_name(f).unwrap();
@@ -506,34 +507,44 @@ impl MutableChatHistoryDao for SqliteDao {
                 }
             };
 
-            // TODO: This is (relatively) slow, Deflated-compression of ~170 MB DB takes ~6 sec on my machine
-            //       in release mode. Can we do better?
-            {
-                let backup_bytes = fs::read(&backup_file)?;
-                let mut archive = fs::OpenOptions::new()
-                    .write(true)
-                    .create_new(true)
-                    .open(backup_dir.join(archive_name))?;
-                let mut zip = zip::ZipWriter::new(&mut archive);
+            let zip_jh = std::thread::spawn(move || {
+                // Wrapping logic in a closure to allow using ? operator
+                let inner = || -> EmptyRes {
+                    // TODO: This is (relatively) slow, Deflated-compression of ~170 MB DB takes ~6 sec on my machine
+                    //       in release mode. Can we do better?
+                    {
+                        let backup_bytes = fs::read(&backup_file)?;
+                        let mut archive = fs::OpenOptions::new()
+                            .write(true)
+                            .create_new(true)
+                            .open(backup_dir.join(archive_name))?;
+                        let mut zip = zip::ZipWriter::new(&mut archive);
 
-                let options = zip::write::FileOptions::default().compression_method(zip::CompressionMethod::Deflated);
-                zip.start_file(path_file_name(&backup_file)?, options)?;
-                let mut buf = backup_bytes.as_slice();
-                while !buf.is_empty() {
-                    let res = zip.write(buf)?;
-                    require!(res != 0, "Failed writing a backup, zip file no longer accepts source bytes!");
-                    buf = &buf[res..]
-                }
-                zip.finish()?;
-            }
+                        let options = zip::write::FileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+                        zip.start_file(path_file_name(&backup_file)?, options)?;
+                        let mut buf = backup_bytes.as_slice();
+                        while !buf.is_empty() {
+                            let res = zip.write(buf)?;
+                            require!(res != 0, "Failed writing a backup, zip file no longer accepts source bytes!");
+                            buf = &buf[res..]
+                        }
+                        zip.finish()?;
+                    }
 
-            fs::remove_file(&backup_file)?;
+                    fs::remove_file(&backup_file)?;
 
-            for f in list_backups()?.iter().rev().skip(MAX_BACKUPS) {
-                fs::remove_file(f)?;
-            }
+                    for f in list_backups()?.iter().rev().skip(MAX_BACKUPS) {
+                        fs::remove_file(f)?;
+                    }
+                    Ok(())
+                };
+                measure(|| {
+                    // Panic in case something bad happens
+                    inner().expect("Backup compression failed!");
+                }, |_, t| log::info!("Backup compressed in {t} ms"))
+            });
 
-            Ok(())
+            Ok(zip_jh)
         }, |_, t| log::info!("Backup done in {t} ms"))
     }
 

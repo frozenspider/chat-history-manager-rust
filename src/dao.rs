@@ -1,6 +1,7 @@
 use std::cell::{Ref, RefCell};
 use std::collections::HashMap;
 use std::path::Path;
+use std::thread::JoinHandle;
 use deepsize::DeepSizeOf;
 
 use crate::*;
@@ -150,7 +151,7 @@ pub trait ChatHistoryDao: WithCache + Send {
 }
 
 pub trait MutableChatHistoryDao: ChatHistoryDao {
-    fn backup(&mut self) -> EmptyRes;
+    fn backup(&mut self) -> Result<JoinHandle<()>>;
 
     fn insert_dataset(&mut self, ds: Dataset) -> Result<Dataset>;
 

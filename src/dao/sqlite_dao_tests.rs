@@ -579,7 +579,7 @@ fn backups() -> EmptyRes {
     let list_backups = || list_all_files(&backups_dir, true).unwrap().into_iter().sorted().collect_vec();
 
     // First backup
-    dst_dao.backup()?;
+    dst_dao.backup()?.join().unwrap();
     assert_eq!(backups_dir.exists(), true);
     let backups_1 = list_backups();
     assert_eq!(backups_1.len(), 1);
@@ -597,14 +597,14 @@ fn backups() -> EmptyRes {
     }
 
     // Second backup
-    dst_dao.backup()?;
+    dst_dao.backup()?.join().unwrap();
     let backups_2 = list_backups();
     assert_eq!(backups_2.len(), 2);
     assert_eq!(backups_2[0], backups_1[0]);
     assert!(backups_2[0].metadata()?.len() < backups_2[1].metadata()?.len());
 
     // Third backup
-    dst_dao.backup()?;
+    dst_dao.backup()?.join().unwrap();
     let backups_3 = list_backups();
     assert_eq!(backups_3.len(), 3);
     assert_eq!(backups_3[0], backups_2[0]);
@@ -613,7 +613,7 @@ fn backups() -> EmptyRes {
     assert_eq!(backups_3[1].metadata()?.len(), backups_3[2].metadata()?.len());
 
     // Fourth backup, first one is deleted
-    dst_dao.backup()?;
+    dst_dao.backup()?.join().unwrap();
     let backups_4 = list_backups();
     assert_eq!(backups_4.len(), 3);
     assert_eq!(backups_4[0], backups_3[1]);
