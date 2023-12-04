@@ -1,6 +1,4 @@
 use std::collections::HashSet;
-use std::fs::File;
-use std::io::{BufReader, Read};
 use crate::protobuf::history::*;
 
 use super::*;
@@ -163,34 +161,7 @@ impl<'a> PracticalEq for Tup<'a, Content> {
 /// (Cannot use newtype idiom - there's nobody to own the value)
 impl<'a> PracticalEq for Tup<'a, String> {
     fn practically_equals(&self, other: &Self) -> Result<bool> {
-        let path1 = self.ds_root.0.join(self.v);
-        let path2 = other.ds_root.0.join(other.v);
-        match (path1.exists(), path2.exists()) {
-            (true, true) => {
-                let f1 = File::open(path1)?;
-                let f2 = File::open(path2)?;
-
-                // Check if file sizes are different
-                if f1.metadata().unwrap().len() != f2.metadata().unwrap().len() {
-                    return Ok(false);
-                }
-
-                // Use buf readers since they are much faster
-                let f1 = BufReader::with_capacity(FILE_BUF_CAPACITY, f1);
-                let f2 = BufReader::with_capacity(FILE_BUF_CAPACITY, f2);
-
-                // Do a byte to byte comparison of the two files
-                for (b1, b2) in f1.bytes().zip(f2.bytes()) {
-                    if b1.unwrap() != b2.unwrap() {
-                        return Ok(false);
-                    }
-                }
-
-                Ok(true)
-            }
-            (false, false) => Ok(true),
-            _ => Ok(false),
-        }
+        files_are_equal(&self.ds_root.0.join(self.v), &other.ds_root.0.join(other.v))
     }
 }
 

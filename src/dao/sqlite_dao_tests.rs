@@ -1,6 +1,6 @@
 #![allow(unused_imports)]
 
-use std::cmp::max;
+use std::cmp;
 use std::fs::File;
 
 use itertools::Itertools;
@@ -179,19 +179,19 @@ fn fetching() -> EmptyRes {
         let (src_msgs_count, dst_msgs_count) =
             count(&|dao, cwd, all| dao.messages_slice_len(
                 &cwd.chat, all[0].internal_id(), all.last().unwrap().internal_id()))?;
-        assert_eq!(dst_msgs_count, max(all_dst_msgs.len() as i32, 0) as usize);
+        assert_eq!(dst_msgs_count, cmp::max(all_dst_msgs.len() as i32, 0) as usize);
         assert_eq!(src_msgs_count, dst_msgs_count);
 
         let (src_msgs_count, dst_msgs_count) =
             count(&|dao, cwd, all| dao.messages_slice_len(
                 &cwd.chat, all[1].internal_id(), all.last().unwrap().internal_id()))?;
-        assert_eq!(dst_msgs_count, max(all_dst_msgs.len() as i32 - 1, 0) as usize);
+        assert_eq!(dst_msgs_count, cmp::max(all_dst_msgs.len() as i32 - 1, 0) as usize);
         assert_eq!(src_msgs_count, dst_msgs_count);
 
         let (src_msgs_count, dst_msgs_count) =
             count(&|dao, cwd, all| dao.messages_slice_len(
                 &cwd.chat, all[0].internal_id(), all.smart_slice(..-1).last().unwrap().internal_id()))?;
-        assert_eq!(dst_msgs_count, max(all_dst_msgs.len() as i32 - 1, 0) as usize);
+        assert_eq!(dst_msgs_count, cmp::max(all_dst_msgs.len() as i32 - 1, 0) as usize);
         assert_eq!(src_msgs_count, dst_msgs_count);
     }
 
@@ -306,13 +306,51 @@ fn update_dataset() -> EmptyRes {
     let (mut dao, _tmp_dir) = create_sqlite_dao();
 
     let ds = dao.insert_dataset(Dataset { uuid: Some(ZERO_PB_UUID.clone()), alias: "My Dataset".to_owned() })?;
-    dao.insert_user(create_user(&ZERO_PB_UUID, 1), true)?;
+    dao.insert_user(create_user(ds.uuid(), 1), true)?;
 
     let ds = dao.as_mutable()?.update_dataset(Dataset { uuid: ds.uuid.clone(), alias: "Renamed Dataset".to_owned() })?;
     assert_eq!(dao.datasets()?.remove(0), ds);
 
     Ok(())
 }
+
+#[test]
+fn delete_dataset() -> EmptyRes {
+    let daos = init();
+    let mut dao = daos.dst_dao;
+
+    let dst_files = dataset_files(&dao, &daos.ds_uuid);
+    for f in dst_files.iter() {
+        assert!(f.exists());
+    }
+    let other_ds = dao.insert_dataset(Dataset { uuid: Some(ZERO_PB_UUID.clone()), alias: "My Dataset".to_owned() })?;
+    let other_user = dao.insert_user(create_user(other_ds.uuid(), 1), true)?;
+    assert_eq!(dao.datasets()?.len(), 2);
+
+    dao.delete_dataset(daos.ds_uuid.clone())?;
+
+    // Files must be moved to backup dir
+    let specific_backup_paths: Vec<_> =
+        dao.backup_path().read_dir()?.into_iter().map(|e| e.map(|e| e.path())).try_collect()?;
+    assert_eq!(specific_backup_paths.len(), 1);
+    let specific_backup_path = &specific_backup_paths[0];
+    assert!(path_file_name(specific_backup_path)?.starts_with(BACKUP_NAME_PREFIX));
+    assert!(specific_backup_path.is_dir());
+    let storage_path_str = path_to_str(dao.storage_path())?;
+    for f in dst_files.iter() {
+        assert!(!f.exists());
+        let moved_f = Path::new(&path_to_str(&f)?
+            .replace(storage_path_str, path_to_str(specific_backup_path)?)).to_path_buf();
+        assert!(moved_f.exists());
+    }
+
+    // Other dataset remain unaffected
+    assert_eq!(dao.datasets()?.len(), 1);
+    assert_eq!(dao.users(other_ds.uuid())?, vec![other_user]);
+
+    Ok(())
+}
+
 
 #[test]
 fn update_user() -> EmptyRes {
@@ -435,34 +473,67 @@ fn update_user() -> EmptyRes {
     Ok(())
 }
 
-#[ignore]
 #[test]
 fn delete_chat() -> EmptyRes {
+    let daos = init();
+    let mut dao = daos.dst_dao;
+
+    let dst_files = dataset_files(&dao, &daos.ds_uuid);
+    for f in dst_files.iter() {
+        assert!(f.exists());
+    }
+    assert_eq!(dao.datasets()?.len(), 1);
+    let dst_ds = dao.datasets()?.remove(0);
+    assert_eq!(dao.users(&daos.ds_uuid)?.len(), 9);
+
+    assert_eq!(dao.chats(dst_ds.uuid())?.len(), 4);
+    let cwd = dao.chats(dst_ds.uuid())?.into_iter()
+        .find(|cwd| cwd.chat.tpe == ChatType::PrivateGroup as i32).unwrap();
+    let files = dao.first_messages(&cwd.chat, usize::MAX)?.iter()
+        .flat_map(|m| m.files(&daos.dst_ds_root)).collect_vec();
+    assert!(files.len() > 0);
+
+    dao.delete_chat(cwd.chat)?;
+    assert_eq!(dao.chats(dst_ds.uuid())?.len(), 3);
+
+    // Files must be moved to backup dir
+    let specific_backup_paths: Vec<_> =
+        dao.backup_path().read_dir()?.into_iter().map(|e| e.map(|e| e.path())).try_collect()?;
+    assert_eq!(specific_backup_paths.len(), 1);
+    let specific_backup_path = &specific_backup_paths[0];
+    assert!(path_file_name(specific_backup_path)?.starts_with(BACKUP_NAME_PREFIX));
+    assert!(specific_backup_path.is_dir());
+    let storage_path_str = path_to_str(dao.storage_path())?;
+    for f in files.iter() {
+        assert!(!f.exists());
+        let moved_f = Path::new(&path_to_str(&f)?
+            .replace(storage_path_str, path_to_str(specific_backup_path)?)).to_path_buf();
+        assert!(moved_f.exists());
+    }
+
+
+    // Other chats must remain unaffected
+    for ChatWithDetails { chat, .. } in dao.chats(&daos.ds_uuid)? {
+        assert_eq!(chat.tpe, ChatType::Personal as i32);
+        assert!(chat.msg_count > 0);
+        assert_eq!(chat.msg_count as usize, dao.first_messages(&chat, usize::MAX)?.len());
+        for f in dao.first_messages(&chat, usize::MAX)?.iter()
+            .flat_map(|m| m.files(&daos.dst_ds_root)) {
+            assert!(f.exists());
+        }
+    }
+
+    // 3 users were participating in other chats, so they remain. Other should be removed.
+    let members = dao.chats(&daos.ds_uuid)?.into_iter()
+        .flat_map(|cwd| cwd.members)
+        .sorted_by_key(|u| u.id)
+        .dedup()
+        .collect_vec();
+    assert_eq!(members.len(), 4);
+    assert_eq!(dao.users(&daos.ds_uuid)?.into_iter().sorted_by_key(|u| u.id).collect_vec(), members);
+
     Ok(())
 }
-
-/*test("delete chat") {
-  val chats = h2dao.chats(dsUuid).map(_.chat)
-  val users = h2dao.users(dsUuid)
-
-  {
-    // User is not deleted because it participates in another chat
-    val chatToDelete = chats.find(c => c.tpe == ChatType.Personal && c.id == 9777777777L).get
-    h2dao.deleteChat(chatToDelete)
-    assert(h2dao.chats(dsUuid).size === chats.size - 1)
-    assert(h2dao.users(dsUuid).size === users.size)
-    assert(h2dao.firstMessages(chatToDelete, 10).isEmpty)
-  }
-
-  {
-    // User is deleted
-    val chatToDelete = chats.find(c => c.tpe == ChatType.Personal && c.id == 4321012345L).get
-    h2dao.deleteChat(chatToDelete)
-    assert(h2dao.chats(dsUuid).size === chats.size - 2)
-    assert(h2dao.users(dsUuid).size === users.size - 1)
-    assert(h2dao.firstMessages(chatToDelete, 10).isEmpty)
-  }
-} */
 
 #[ignore]
 #[test]
@@ -521,23 +592,6 @@ test("merge (absorb) user") {
     }).sortBy(_.timestamp)
   assert(h2dao.firstMessages(chatsAfter.find(_.chat.id == baseUserPc.id).get.chat, 99999) === expectedMessages)
 }*/
-
-#[ignore]
-#[test]
-fn delete_dataset() -> EmptyRes {
-    Ok(())
-}
-
-/*
-test("delete dataset") {
-  h2dao.deleteDataset(dsUuid)
-  assert(h2dao.datasets.isEmpty)
-
-  // Dataset files has been moved to a backup dir
-  assert(!h2dao.datasetRoot(dsUuid).exists())
-  assert(new File(h2dao.getBackupPath(), dsUuid.value).exists())
-}
-*/
 
 #[ignore]
 #[test]

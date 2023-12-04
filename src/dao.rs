@@ -153,12 +153,17 @@ pub trait ChatHistoryDao: WithCache + Send {
 pub trait MutableChatHistoryDao: ChatHistoryDao {
     fn backup(&mut self) -> Result<JoinHandle<()>>;
 
+    // Inserts dataset as-is, with the UUID already set.
     fn insert_dataset(&mut self, ds: Dataset) -> Result<Dataset>;
 
     fn update_dataset(&mut self, ds: Dataset) -> Result<Dataset>;
 
+    /// Delete a dataset with all the related entities. Deleted dataset root will be moved to backup folder.
+    fn delete_dataset(&mut self, uuid: PbUuid) -> EmptyRes;
+
     fn insert_user(&mut self, user: User, is_myself: bool) -> Result<User>;
 
+    /// Update a user, renaming relevant personal chats and updating messages mentioning that user in plaintext.
     fn update_user(&mut self, user: User) -> Result<User>;
 
     /// Copies image (if any) from dataset root.
@@ -166,6 +171,9 @@ pub trait MutableChatHistoryDao: ChatHistoryDao {
 
     /// Note that chat members and image won't be changed!
     fn update_chat(&mut self, chat: Chat) -> Result<Chat>;
+
+    /// Delete a chat, as well as orphan users. Deleted files will be moved to backup folder.
+    fn delete_chat(&mut self, chat: Chat) -> EmptyRes;
 
     /// Insert a new message for the given chat.
     /// Internal ID will be ignored.

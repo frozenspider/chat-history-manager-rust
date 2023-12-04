@@ -138,7 +138,7 @@ pub mod chat {
                 ) AS last_message_internal_id
             FROM chat c"#;
     const DS_IS: &str = "c.ds_uuid = ?";
-    const ID_IS: &str = "c.id = :chat_id";
+    const ID_IS: &str = "c.id = ?";
     const ORDER: &str = "ORDER BY c.id ASC";
 
     const SELECT_BY_DS_SQL: &str = concatcp!(SELECT, " WHERE ", DS_IS, " ", ORDER);

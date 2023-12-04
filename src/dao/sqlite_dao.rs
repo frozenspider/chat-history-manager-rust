@@ -5,7 +5,7 @@ use std::ops::{DerefMut};
 use std::path::{Path, PathBuf};
 use chrono::Local;
 
-use diesel::{insert_into, update};
+use diesel::{delete, insert_into, sql_query, sql_types, update};
 use diesel::migration::MigrationSource;
 use diesel::prelude::*;
 use diesel::sqlite::Sqlite;
@@ -82,6 +82,28 @@ impl SqliteDao {
             conn,
             cache: DaoCache::new(),
         })
+    }
+
+    pub fn backup_path(&self) -> PathBuf {
+        self.storage_path().join(BACKUPS_DIR_NAME)
+    }
+
+    fn choose_final_backup_path(&self, ext_suffix: &str) -> Result<PathBuf> {
+        let backup_path = self.backup_path();
+        let now_str = Local::now().format("%Y-%m-%d_%H-%M-%S");
+        let name = format!("{BACKUP_NAME_PREFIX}{now_str}{ext_suffix}");
+        let result = backup_path.join(&name);
+        if !result.exists() {
+            Ok(result)
+        } else {
+            let mut suffix = 2;
+            loop {
+                let name = format!("{BACKUP_NAME_PREFIX}{now_str}_{suffix}{ext_suffix}");
+                let result = backup_path.join(&name);
+                if !result.exists() { break Ok(result); }
+                suffix += 1;
+            }
+        }
     }
 
     pub fn copy_all_from(&self, src: &dyn ChatHistoryDao) -> EmptyRes {
@@ -460,16 +482,15 @@ impl MutableChatHistoryDao for SqliteDao {
         const PAGES_PER_STEP: std::ffi::c_int = 1024;
         const PAUSE_BETWEEN_PAGES: std::time::Duration = std::time::Duration::ZERO;
         const MAX_BACKUPS: usize = 3;
-        const BACKUP_NAME_PREFIX: &str = "backup_";
 
         measure(|| {
-            let backup_dir = self.storage_path().join(BACKUPS_DIR_NAME);
-            if !backup_dir.exists() {
-                fs::create_dir(&backup_dir)?;
+            let backup_path = self.backup_path();
+            if !backup_path.exists() {
+                fs::create_dir(&backup_path)?;
             }
 
             let filename = path_file_name(&self.db_file)?;
-            let backup_file = backup_dir.join(filename);
+            let backup_file = backup_path.join(filename);
             require!(!backup_file.exists(), "File {filename} already exists in the backups dir, last backup was incomplete?");
 
             {
@@ -479,8 +500,7 @@ impl MutableChatHistoryDao for SqliteDao {
                 backup.run_to_completion(PAGES_PER_STEP, PAUSE_BETWEEN_PAGES, None)?;
             }
 
-            let backup_dir_clone = backup_dir.clone();
-            let list_backups = move || Ok::<_, anyhow::Error>(list_all_files(&backup_dir_clone, false)?
+            let list_backups = move || Ok::<_, anyhow::Error>(list_all_files(&backup_path, false)?
                 .into_iter()
                 .filter(|f| {
                     let name = path_file_name(f).unwrap();
@@ -489,23 +509,7 @@ impl MutableChatHistoryDao for SqliteDao {
                 .sorted()
                 .collect_vec());
 
-            let archive_name: String = {
-                let backup_names = list_backups()?.iter()
-                    .map(|f| path_file_name(f).unwrap().to_owned())
-                    .collect_vec();
-                let now_str = Local::now().format("%Y-%m-%d_%H-%M-%S");
-                let name = format!("{BACKUP_NAME_PREFIX}{now_str}.zip");
-                if !backup_names.contains(&name) {
-                    name
-                } else {
-                    let mut suffix = 2;
-                    loop {
-                        let name = format!("{BACKUP_NAME_PREFIX}{now_str}_{suffix}.zip");
-                        if !backup_names.contains(&name) { break name; }
-                        suffix += 1;
-                    }
-                }
-            };
+            let archive_path = self.choose_final_backup_path(".zip")?;
 
             let zip_jh = std::thread::spawn(move || {
                 // Wrapping logic in a closure to allow using ? operator
@@ -517,7 +521,7 @@ impl MutableChatHistoryDao for SqliteDao {
                         let mut archive = fs::OpenOptions::new()
                             .write(true)
                             .create_new(true)
-                            .open(backup_dir.join(archive_name))?;
+                            .open(archive_path)?;
                         let mut zip = zip::ZipWriter::new(&mut archive);
 
                         let options = zip::write::FileOptions::default().compression_method(zip::CompressionMethod::Deflated);
@@ -582,6 +586,72 @@ impl MutableChatHistoryDao for SqliteDao {
         Ok(ds)
     }
 
+    fn delete_dataset(&mut self, ds_uuid: PbUuid) -> EmptyRes {
+        self.invalidate_cache()?;
+        let mut conn = self.conn.borrow_mut();
+        let conn = conn.deref_mut();
+
+        let uuid = Uuid::parse_str(&ds_uuid.value).expect("Invalid UUID!");
+        let ds_root = self.dataset_root(&ds_uuid)?;
+
+        use schema::*;
+
+        conn.transaction(|conn| {
+            let mut delete_by_ds_uuid = |sql: &str| -> QueryResult<usize> {
+                sql_query(sql)
+                    .bind::<sql_types::Binary, _>(uuid.as_ref())
+                    .execute(conn)
+            };
+
+            // Messages
+            delete_by_ds_uuid(r"
+                DELETE FROM message_content
+                WHERE message_internal_id IN (
+                    SELECT internal_id FROM message
+                    WHERE ds_uuid = ?
+                )
+            ")?;
+            delete_by_ds_uuid(r"
+                DELETE FROM message_text_element
+                WHERE message_internal_id IN (
+                    SELECT internal_id FROM message
+                    WHERE ds_uuid = ?
+                )
+            ")?;
+            delete(message::dsl::message)
+                .filter(message::columns::ds_uuid.eq(uuid.as_ref()))
+                .execute(conn)?;
+
+            // Chats
+            delete(chat_member::dsl::chat_member)
+                .filter(chat_member::columns::ds_uuid.eq(uuid.as_ref()))
+                .execute(conn)?;
+            delete(chat::dsl::chat)
+                .filter(chat::columns::ds_uuid.eq(uuid.as_ref()))
+                .execute(conn)?;
+
+            // Users
+            delete(user::dsl::user)
+                .filter(user::columns::ds_uuid.eq(uuid.as_ref()))
+                .execute(conn)?;
+
+            // Finally, dataset itself
+            let deleted_rows = delete(dataset::dsl::dataset)
+                .filter(dataset::columns::uuid.eq(uuid.as_ref()))
+                .execute(conn)?;
+            require!(deleted_rows == 1, "{deleted_rows} rows changed when deleting dataset with UUID {:?}", ds_uuid);
+
+            // Moving all dataset files to backup directory
+            if ds_root.0.exists() {
+                let target = self.choose_final_backup_path("")?.join(path_file_name(&ds_root.0)?);
+                fs::create_dir_all(&target)?;
+                fs::rename(&ds_root.0, &target)?;
+            }
+
+            Ok(())
+        })
+    }
+
     fn insert_user(&mut self, user: User, is_myself: bool) -> Result<User> {
         self.invalidate_cache()?;
         let mut conn = self.conn.borrow_mut();
@@ -610,13 +680,13 @@ impl MutableChatHistoryDao for SqliteDao {
         let uuid = Uuid::parse_str(&ds_uuid.value).expect("Invalid UUID!");
         let raw_user = utils::user::serialize(&user, is_myself, &Vec::from(uuid.as_ref()));
 
-        conn.transaction(|txn| {
+        conn.transaction(|conn| {
             use schema::*;
             let updated_rows = update(user::dsl::user)
                 .filter(user::columns::ds_uuid.eq(uuid.as_ref()))
                 .filter(user::columns::id.eq(user.id))
                 .set(raw_user)
-                .execute(txn)?;
+                .execute(conn)?;
             require!(updated_rows == 1, "{updated_rows} rows changed when updaing user {:?}", user);
 
             // After changing user, rename private chat(s) with him accordingly. If user is self, do nothing.
@@ -625,7 +695,7 @@ impl MutableChatHistoryDao for SqliteDao {
                     .filter(chat_member::columns::ds_uuid.eq(uuid.as_ref()))
                     .filter(chat_member::columns::user_id.eq(user.id))
                     .select(chat_member::columns::chat_id)
-                    .load(txn)?;
+                    .load(conn)?;
 
                 use utils::EnumSerialization;
                 update(chat::dsl::chat)
@@ -633,7 +703,7 @@ impl MutableChatHistoryDao for SqliteDao {
                     .filter(chat::columns::id.eq_any(chat_ids))
                     .filter(chat::columns::tpe.eq(ChatType::serialize(ChatType::Personal as i32)?))
                     .set(chat::columns::name.eq(user.pretty_name_option()))
-                    .execute(txn)?;
+                    .execute(conn)?;
             }
 
             // Update user name in "members" string field
@@ -653,7 +723,7 @@ impl MutableChatHistoryDao for SqliteDao {
                     .filter(chat_member::columns::user_id.eq(user.id))
                     .filter(message_content::columns::members.like(format!("%{old_name}%")))
                     .select((message_content::columns::id, message_content::columns::members))
-                    .load(txn)?;
+                    .load(conn)?;
 
                 for (id, members_string) in old_mc_members {
                     let new_members_string = utils::serialize_arr(&utils::deserialize_arr(members_string.unwrap())
@@ -664,7 +734,7 @@ impl MutableChatHistoryDao for SqliteDao {
                     update(message_content::table)
                         .filter(message_content::columns::id.eq(id))
                         .set(message_content::columns::members.eq(new_members_string))
-                        .execute(txn)?;
+                        .execute(conn)?;
                 }
             }
 
@@ -728,6 +798,100 @@ impl MutableChatHistoryDao for SqliteDao {
         Ok(chat)
     }
 
+    fn delete_chat(&mut self, chat: Chat) -> EmptyRes {
+        self.invalidate_cache()?;
+        let mut conn = self.conn.borrow_mut();
+        let conn = conn.deref_mut();
+
+        let ds_uuid = chat.ds_uuid.clone().unwrap();
+        let uuid = Uuid::parse_str(&ds_uuid.value).expect("Invalid UUID!");
+        let ds_root = self.dataset_root(&ds_uuid)?;
+
+        use schema::*;
+
+        conn.transaction(|conn| {
+            let delete_by_ds_and_chat = |sql: &str, conn: &mut SqliteConnection| -> QueryResult<usize> {
+                sql_query(sql)
+                    .bind::<sql_types::Binary, _>(uuid.as_ref())
+                    .bind::<sql_types::BigInt, _>(chat.id)
+                    .execute(conn)
+            };
+
+            // Selecting all paths in advance
+            let mut relative_paths = sql_query(r"
+                SELECT mc.path, mc.thumbnail_path FROM message_content mc
+                WHERE mc.message_internal_id IN (
+                    SELECT internal_id FROM message
+                    WHERE ds_uuid = ? AND chat_id = ?
+                )
+            ")
+                .bind::<sql_types::Binary, _>(uuid.as_ref())
+                .bind::<sql_types::BigInt, _>(chat.id)
+                .load::<PathsWrapper>(conn)?
+                .into_iter()
+                .flat_map(|p| vec![p.path, p.thumbnail_path])
+                .filter_map(|p| p)
+                .collect_vec();
+
+            if let Some(ref img_path) = chat.img_path_option {
+                relative_paths.push(img_path.clone());
+            }
+
+            // Messages
+            delete_by_ds_and_chat(r"
+                DELETE FROM message_content
+                WHERE message_internal_id IN (
+                    SELECT internal_id FROM message
+                    WHERE ds_uuid = ? AND chat_id = ?
+                )
+            ", conn)?;
+            delete_by_ds_and_chat(r"
+                DELETE FROM message_text_element
+                WHERE message_internal_id IN (
+                    SELECT internal_id FROM message
+                    WHERE ds_uuid = ? AND chat_id = ?
+                )
+            ", conn)?;
+            delete(message::dsl::message)
+                .filter(message::columns::ds_uuid.eq(uuid.as_ref()))
+                .filter(message::columns::chat_id.eq(chat.id))
+                .execute(conn)?;
+
+            // Chat
+            delete(chat_member::dsl::chat_member)
+                .filter(chat_member::columns::ds_uuid.eq(uuid.as_ref()))
+                .filter(chat_member::columns::chat_id.eq(chat.id))
+                .execute(conn)?;
+            let deleted_rows = delete(chat::dsl::chat)
+                .filter(chat::columns::ds_uuid.eq(uuid.as_ref()))
+                .filter(chat::columns::id.eq(chat.id))
+                .execute(conn)?;
+            require!(deleted_rows == 1, "{deleted_rows} rows changed when deleting chat {:?}", chat);
+
+            // Orphan users
+            sql_query(r"
+                DELETE FROM user
+                WHERE ds_uuid = ? AND id NOT IN (
+                    SELECT cm.user_id FROM chat_member cm
+                    WHERE cm.ds_uuid = user.ds_uuid
+                )
+            ").bind::<sql_types::Binary, _>(uuid.as_ref()).execute(conn)?;
+
+            // Moving all dataset files to backup directory
+            let backup_ds_root = self.choose_final_backup_path("")?.join(path_file_name(&ds_root.0)?);
+            for relative in relative_paths {
+                let src = ds_root.to_absolute(&relative);
+                if src.exists() {
+                    let dst = backup_ds_root.join(&relative);
+                    fs::create_dir_all(dst.parent().unwrap())?;
+                    fs::rename(src, dst)?;
+                }
+            }
+
+            Ok(())
+        })
+    }
+
     fn insert_messages(&mut self, msgs: Vec<Message>, chat: &Chat, src_ds_root: &DatasetRoot) -> EmptyRes {
         let mut conn = self.conn.borrow_mut();
         let conn = conn.deref_mut();
@@ -748,6 +912,7 @@ impl MutableChatHistoryDao for SqliteDao {
 //
 
 const BACKUPS_DIR_NAME: &str = "_backups";
+const BACKUP_NAME_PREFIX: &str = "backup_";
 
 fn chat_root_rel_path(chat_id: i64) -> String {
     format!("chat_{chat_id}")
@@ -813,7 +978,7 @@ fn copy_file(src_rel_path: &str,
 
         if dst_file.exists() {
             // Assume hash collisions don't exist
-            require!(subpath.use_hashing || fs::read(&src_file)? == fs::read(&dst_file)?,
+            require!(subpath.use_hashing || files_are_equal(&src_file, &dst_file)?,
                      "File already exists: {}, and it doesn't match source {}",
                      path_to_str(&dst_file)?, src_absolute_path)
         } else {

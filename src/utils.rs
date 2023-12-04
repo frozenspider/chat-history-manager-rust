@@ -135,6 +135,33 @@ pub fn list_all_files(p: &Path, recurse: bool) -> Result<Vec<PathBuf>> {
     Ok(res)
 }
 
+/// Files are equal if they are equal byte-by-byte, or if they both don't exist
+pub fn files_are_equal(f1: &Path, f2: &Path) -> Result<bool> {
+    if !f1.exists() { return Ok(!f2.exists()) }
+    if !f2.exists() { return Ok(!f1.exists()) }
+
+    let f1 = File::open(f1)?;
+    let f2 = File::open(f2)?;
+
+    // Check if file sizes are different
+    if f1.metadata().unwrap().len() != f2.metadata().unwrap().len() {
+        return Ok(false);
+    }
+
+    // Use buf readers since they are much faster
+    let f1 = BufReader::with_capacity(FILE_BUF_CAPACITY, f1);
+    let f2 = BufReader::with_capacity(FILE_BUF_CAPACITY, f2);
+
+    // Do a byte to byte comparison of the two files
+    for (b1, b2) in f1.bytes().zip(f2.bytes()) {
+        if b1.unwrap() != b2.unwrap() {
+            return Ok(false);
+        }
+    }
+
+    Ok(true)
+}
+
 //
 // Error handling
 //

@@ -260,6 +260,15 @@ pub struct RawMessageContent {
     pub is_blocked: Option<i32>,
 }
 
+/// Needed specifically for selecting paths through sql_query.
+#[derive(Debug, PartialEq, QueryableByName)]
+#[diesel(table_name = schema::message_content)]
+#[diesel(check_for_backend(diesel::sqlite::Sqlite))]
+pub struct PathsWrapper {
+    pub path: Option<String>,
+    pub thumbnail_path: Option<String>,
+}
+
 #[derive(Debug, PartialEq, Identifiable, Selectable, Queryable, Insertable, Associations)]
 #[diesel(belongs_to(RawMessage, foreign_key = message_internal_id))]
 #[diesel(table_name = schema::message_text_element)]
