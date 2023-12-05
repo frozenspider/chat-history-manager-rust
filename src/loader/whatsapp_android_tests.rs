@@ -119,6 +119,7 @@ fn loading_2023_10() -> EmptyRes {
             img_path_option: Some("files/Avatars/100000000000000001@g.us.j".to_owned()),
             member_ids: vec![myself.id, member.id],
             msg_count: 2,
+            main_chat_id: None,
         });
 
         let msgs = dao.first_messages(&chat, 99999)?;
@@ -173,6 +174,7 @@ fn loading_2023_10() -> EmptyRes {
             img_path_option: Some("files/Avatars/11111@s.whatsapp.net.j".to_owned()),
             member_ids: vec![myself.id, member.id],
             msg_count: 2,
+            main_chat_id: None,
         });
 
         let msgs = dao.first_messages(&chat, 99999)?;

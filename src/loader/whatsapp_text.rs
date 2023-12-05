@@ -65,6 +65,7 @@ fn parse_whatsapp_text_file(path: &Path, ds: Dataset) -> Result<Box<InMemoryDao>
             img_path_option: None,
             member_ids: vec![myself.id, other.id],
             msg_count: messages.len() as i32,
+            main_chat_id: None,
         }),
         messages
     }];

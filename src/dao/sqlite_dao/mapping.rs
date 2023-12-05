@@ -169,7 +169,6 @@ pub struct RawChat {
     pub tpe: String,
     pub img_path: Option<String>,
     pub msg_count: i32,
-    // Unused for now
     pub main_chat_id: Option<i64>,
 }
 

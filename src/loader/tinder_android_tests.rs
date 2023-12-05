@@ -68,6 +68,7 @@ fn loading_2023_11() -> EmptyRes {
             img_path_option: None,
             member_ids: vec![myself.id, member.id],
             msg_count: 2,
+            main_chat_id: None,
         });
 
         let msgs = dao.first_messages(&chat, 99999)?;

@@ -93,6 +93,8 @@ message Chat {
   // Members must be in some fixed order.
   repeated int64 member_ids = 6;
   int32 msg_count = 7;
+
+  optional int64 main_chat_id = 9;
 }
 
 enum SourceType {
