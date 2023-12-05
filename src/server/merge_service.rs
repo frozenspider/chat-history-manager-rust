@@ -145,12 +145,6 @@ impl MergeService for Arc<Mutex<ChatHistoryManagerServer>> {
             })
         })
     }
-
-    async fn compare(&self, req: Request<CompareRequest>) -> TonicResult<CompareResponse> {
-        self.process_merge_service_request(&req, |_req, m_dao, m_ds, s_dao, s_ds| {
-            dao::ensure_datasets_are_equal(&**s_dao, &**m_dao, s_ds.uuid(), m_ds.uuid())
-        }, |_, _| { Ok(CompareResponse {}) })
-    }
 }
 
 trait MergeServiceHelper {
@@ -220,4 +214,3 @@ macro_rules! merge_req_impl {
 }
 merge_req_impl!(AnalyzeRequest);
 merge_req_impl!(MergeRequest);
-merge_req_impl!(CompareRequest);

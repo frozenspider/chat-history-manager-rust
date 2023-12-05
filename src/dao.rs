@@ -227,74 +227,76 @@ impl DaoCache {
 
 const BATCH_SIZE: usize = 5_000;
 
-pub fn ensure_datasets_are_equal(src: &dyn ChatHistoryDao,
-                                 dst: &dyn ChatHistoryDao,
-                                 src_ds_uuid: &PbUuid,
-                                 dst_ds_uuid: &PbUuid) -> EmptyRes {
+pub fn ensure_datasets_are_equal(master_dao: &dyn ChatHistoryDao,
+                                 master_ds_uuid: &PbUuid,
+                                 slave_dao: &dyn ChatHistoryDao,
+                                 slave_ds_uuid: &PbUuid) -> EmptyRes {
     measure(|| {
-        let src_ds = src.datasets()?.into_iter().find(|ds| ds.uuid() == src_ds_uuid)
-            .with_context(|| format!("Dataset {} not found in source DAO!", src_ds_uuid.value))?;
-        let mut dst_ds = src.datasets()?.into_iter().find(|ds| ds.uuid() == dst_ds_uuid)
-            .with_context(|| format!("Dataset {} not found in destination DAO!", dst_ds_uuid.value))?;
-        dst_ds.uuid = Some(src_ds_uuid.clone());
-        require!(src_ds == dst_ds, "Destination dataset is not the same as original");
-        let src_ds_root = src.dataset_root(src_ds_uuid)?;
-        let dst_ds_root = dst.dataset_root(dst_ds_uuid)?;
-        require!(*src_ds_root != *dst_ds_root, "Source and destination dataset root paths are the same!");
+        let master_ds = master_dao.datasets()?.into_iter().find(|ds| ds.uuid() == master_ds_uuid)
+            .with_context(|| format!("Dataset {} not found in master DAO!", master_ds_uuid.value))?;
+        let mut slave_ds = slave_dao.datasets()?.into_iter().find(|ds| ds.uuid() == slave_ds_uuid)
+            .with_context(|| format!("Dataset {} not found in slave DAO!", slave_ds_uuid.value))?;
+        slave_ds.uuid = Some(master_ds_uuid.clone());
+        require!(master_ds == slave_ds,
+                 "Dataset differs:\nWas    {:?}\nBecame {:?}",
+                 master_ds, slave_ds);
+        let master_ds_root = master_dao.dataset_root(master_ds_uuid)?;
+        let slave_ds_root = slave_dao.dataset_root(slave_ds_uuid)?;
+        require!(*master_ds_root != *slave_ds_root, "Master and slave dataset root paths are the same!");
 
         measure(|| {
-            let src_users = src.users(src_ds_uuid)?;
-            let dst_users = dst.users(dst_ds_uuid)?;
-            require!(src_users.len() == dst_users.len(),
+            let master_users = master_dao.users(master_ds_uuid)?;
+            let slave_users = slave_dao.users(slave_ds_uuid)?;
+            require!(master_users.len() == slave_users.len(),
                      "User count differs:\nWas    {} ({:?})\nBecame {} ({:?})",
-                     src_users.len(), src_users, dst_users.len(), dst_users);
-            for (i, (src_user, mut dst_user)) in src_users.iter().zip(dst_users.into_iter()).enumerate() {
-                dst_user.ds_uuid = Some(src_ds_uuid.clone());
-                require!(*src_user == dst_user,
-                         "User #{i} differs:\nWas    {:?}\nBecame {:?}", src_user, dst_user);
+                     master_users.len(), master_users, slave_users.len(), slave_users);
+            for (i, (master_user, mut slave_user)) in master_users.iter().zip(slave_users.into_iter()).enumerate() {
+                slave_user.ds_uuid = Some(master_ds_uuid.clone());
+                require!(*master_user == slave_user,
+                         "User #{i} differs:\nWas    {:?}\nBecame {:?}", master_user, slave_user);
             }
             Ok(())
         }, |_, t| log::info!("Users checked in {t} ms"))?;
 
-        let src_chats = src.chats(src_ds_uuid)?;
-        let dst_chats = dst.chats(dst_ds_uuid)?;
-        require!(src_chats.len() == dst_chats.len(),
-                 "Chat count differs:\nWas    {}\nBecame {}", src_chats.len(), dst_chats.len());
+        let master_chats = master_dao.chats(master_ds_uuid)?;
+        let slave_chats = slave_dao.chats(slave_ds_uuid)?;
+        require!(master_chats.len() == slave_chats.len(),
+                 "Chat count differs:\nWas    {}\nBecame {}", master_chats.len(), slave_chats.len());
 
-        for (i, (src_cwd, dst_cwd)) in src_chats.iter().zip(dst_chats.iter()).enumerate() {
+        for (i, (master_cwd, slave_cwd)) in master_chats.iter().zip(slave_chats.iter()).enumerate() {
             measure(|| {
-                let mut dst_cwd = dst_cwd.clone();
-                dst_cwd.chat.ds_uuid = Some(src_ds_uuid.clone());
+                let mut slave_cwd = slave_cwd.clone();
+                slave_cwd.chat.ds_uuid = Some(master_ds_uuid.clone());
 
-                require!(PracticalEqTuple::new(&src_cwd.chat, &src_ds_root, src_cwd).practically_equals(
-                        &PracticalEqTuple::new(&dst_cwd.chat, &dst_ds_root, &dst_cwd))?,
-                         "Chat #{i} differs:\nWas    {:?}\nBecame {:?}", src_cwd.chat, dst_cwd.chat);
+                require!(PracticalEqTuple::new(&master_cwd.chat, &master_ds_root, master_cwd).practically_equals(
+                        &PracticalEqTuple::new(&slave_cwd.chat, &slave_ds_root, &slave_cwd))?,
+                         "Chat #{i} differs:\nWas    {:?}\nBecame {:?}", master_cwd.chat, slave_cwd.chat);
 
-                let msg_count = src_cwd.chat.msg_count as usize;
+                let msg_count = master_cwd.chat.msg_count as usize;
                 let mut offset: usize = 0;
                 while offset < msg_count {
-                    let src_messages = src.scroll_messages(&src_cwd.chat, offset, BATCH_SIZE)?;
-                    let dst_messages = dst.scroll_messages(&dst_cwd.chat, offset, BATCH_SIZE)?;
-                    require!(!src_messages.is_empty() && !dst_messages.is_empty(),
-                             "Empty messages batch returned, either flawed batching logic or incorrect src_chat.msgCount");
-                    require!(src_messages.len() == dst_messages.len(),
+                    let master_messages = master_dao.scroll_messages(&master_cwd.chat, offset, BATCH_SIZE)?;
+                    let slave_messages = slave_dao.scroll_messages(&slave_cwd.chat, offset, BATCH_SIZE)?;
+                    require!(!master_messages.is_empty() && !slave_messages.is_empty(),
+                             "Empty messages batch returned, either flawed batching logic or incorrect master_chat.msgCount");
+                    require!(master_messages.len() == slave_messages.len(),
                              "Messages size for chat {} differs:\nWas    {}\nBecame {}",
-                             src_cwd.chat.qualified_name(), src_chats.len(), dst_chats.len());
+                             master_cwd.chat.qualified_name(), master_chats.len(), slave_chats.len());
 
-                    for (j, (src_msg, dst_msg)) in src_messages.iter().zip(dst_messages.iter()).enumerate() {
-                        let src_pet = PracticalEqTuple::new(src_msg, &src_ds_root, src_cwd);
-                        let dst_pet = PracticalEqTuple::new(dst_msg, &dst_ds_root, &dst_cwd);
-                        require!(src_pet.practically_equals(&dst_pet)?,
+                    for (j, (master_msg, slave_msg)) in master_messages.iter().zip(slave_messages.iter()).enumerate() {
+                        let master_pet = PracticalEqTuple::new(master_msg, &master_ds_root, master_cwd);
+                        let slave_pet = PracticalEqTuple::new(slave_msg, &slave_ds_root, &slave_cwd);
+                        require!(master_pet.practically_equals(&slave_pet)?,
                                  "Message #{j} for chat {} differs:\nWas    {:?}\nBecame {:?}",
-                                 src_cwd.chat.qualified_name(), src_msg, dst_msg);
+                                 master_cwd.chat.qualified_name(), master_msg, slave_msg);
                     }
-                    offset += src_messages.len();
+                    offset += master_messages.len();
                 }
                 Ok(())
-            }, |_, t| log::info!("Chat {} ({} messages) checked in {t} ms", dst_cwd.chat.qualified_name(),
-                                                                            dst_cwd.chat.msg_count))?;
+            }, |_, t| log::info!("Chat {} ({} messages) checked in {t} ms", slave_cwd.chat.qualified_name(),
+                                                                            slave_cwd.chat.msg_count))?;
         }
 
         Ok(())
-    }, |_, t| log::info!("Dataset '{}' checked in {t} ms", src_ds_uuid.value))
+    }, |_, t| log::info!("Dataset equality checked in {t} ms"))
 }

@@ -710,7 +710,7 @@ fn backups() -> EmptyRes {
 
     let loaded_dao = SqliteDao::load(&unzip_path)?;
 
-    ensure_datasets_are_equal(&dst_dao, &loaded_dao, ds_uuid, ds_uuid)?;
+    ensure_datasets_are_equal(&dst_dao, ds_uuid, &loaded_dao, ds_uuid)?;
 
     Ok(())
 }
