@@ -117,11 +117,8 @@ pub async fn start_server<H: HttpClient>(port: u16, http_client: &'static H) -> 
     let remote_port = port + 1;
     let runtime_handle = Handle::current();
     let lazy_channel = Endpoint::new(format!("http://127.0.0.1:{remote_port}"))?.connect_lazy();
-    let myself_chooser = Box::new(MyselfChooserImpl {
-        runtime_handle: runtime_handle.clone(),
-        channel: lazy_channel.clone(),
-    });
-    let loader = Loader::new(http_client, myself_chooser, Some(runtime_handle), Some(lazy_channel));
+    let myself_chooser = Box::new(MyselfChooserImpl { runtime_handle, channel: lazy_channel });
+    let loader = Loader::new(http_client, myself_chooser);
 
     let chm_server = Arc::new(Mutex::new(ChatHistoryManagerServer {
         loader,

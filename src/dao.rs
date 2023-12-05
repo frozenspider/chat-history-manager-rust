@@ -9,7 +9,6 @@ use crate::protobuf::history::*;
 
 pub mod in_memory_dao;
 pub mod sqlite_dao;
-pub mod grpc_remote_dao;
 
 pub trait WithCache {
     /// For internal use

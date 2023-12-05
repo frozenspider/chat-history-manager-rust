@@ -19,7 +19,7 @@ use super::*;
 const TELEGRAM_DIR: &str = "telegram_2020-01";
 
 thread_local! {
-    static LOADER: Loader = Loader::new::<MockHttpClient>(&HTTP_CLIENT, Box::new(NoChooser), None, None);
+    static LOADER: Loader = Loader::new::<MockHttpClient>(&HTTP_CLIENT, Box::new(NoChooser));
 }
 
 type Tup<'a, T> = PracticalEqTuple<'a, T>;
