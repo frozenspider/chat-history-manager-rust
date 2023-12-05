@@ -436,7 +436,7 @@ service HistoryLoaderService {
   // Parse/open a history file and return its DAO handle
   rpc Load(LoadRequest) returns (LoadResponse) {}
   rpc GetLoadedFiles(Empty) returns (GetLoadedFilesResponse) {}
-  rpc Close(CloseRequest) returns (CloseResponse) {}
+  rpc Close(CloseRequest) returns (Empty) {}
 }
 
 service HistoryDaoService {
@@ -620,9 +620,6 @@ message IsLoadedResponse {
 
 message CloseRequest {
   string key = 1;
-}
-message CloseResponse {
-  bool success = 1;
 }
 
 message BackupRequest {

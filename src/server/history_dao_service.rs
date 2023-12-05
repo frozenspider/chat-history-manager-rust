@@ -26,12 +26,12 @@ impl HistoryDaoService for Arc<Mutex<ChatHistoryManagerServer>> {
             let new_storage_path =
                 dao.storage_path().parent().map(|p| p.join(&req.new_folder_name)).context("Cannot resolve new folder")?;
             if !new_storage_path.exists() {
-                bail!("Path does not exist!")
+                fs::create_dir(&new_storage_path)?;
             }
             for entry in fs::read_dir(&new_storage_path)? {
                 let file_name = path_file_name(&entry?.path())?.to_owned();
                 if !file_name.starts_with('.') {
-                    bail!("Directory is not empty! Found {file_name} there")
+                    bail!("Directory {} is not empty! Found {file_name} there", path_to_str(&new_storage_path)?)
                 }
             }
             let new_db_file = new_storage_path.join(SqliteDao::FILENAME);
