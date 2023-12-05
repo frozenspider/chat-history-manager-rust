@@ -22,6 +22,10 @@ lazy_static! {
     static ref PHONE_JID_REGEX: Regex = Regex::new(r"^([\d]{5,})@s.whatsapp.net$").unwrap();
 }
 
+/// Some notes about the implementation:
+/// 1. msgstore.db and wa.db file should lie in either in the data root folder, or in ./databases subfolder
+/// 2. Media is resolved using <data_root>/Media
+/// 3. User avatars are looked up in <data_root>/files/Avatars
 pub struct WhatsAppAndroidDataLoader;
 
 android_sqlite_loader!(WhatsAppAndroidDataLoader, WhatsappDb, "WhatsApp", "msgstore.db");
@@ -187,6 +191,7 @@ enum MessageType {
     Document = 9,
     MissedCall = 10,
     WaitingForMessage = 11,
+    AnimatedGif = 13,
     /// Original message key is preserved in `message_revoked`.
     Deleted = 15,
     LiveLocation = 16,
@@ -322,14 +327,14 @@ fn parse_chats(conn: &Connection, ds_uuid: &PbUuid, users: &mut Users) -> Result
             }
         };
 
-        cwms_map.insert(jid, ChatWithMessages {
+        cwms_map.insert(jid.clone(), ChatWithMessages {
             chat: Some(Chat {
                 ds_uuid: Some(ds_uuid.clone()),
                 id,
                 name_option,
                 source_type: SourceType::WhatsappDb as i32,
                 tpe: tpe as i32,
-                img_path_option: None,
+                img_path_option: Some(format!("files/Avatars/{jid}.j")),
                 member_ids: vec![],
                 msg_count: 0, // Some messages might be filtered out later, so at this point we're leaving it unset
             }),
@@ -706,7 +711,7 @@ fn parse_regular_message(
                 mime_type: row.get(columns::message_media::MIME_TYPE)?,
                 duration_sec_option: get_zero_as_null(row, columns::message_media::DURATION)?,
             })),
-        MessageType::Video => {
+        MessageType::Video | MessageType::AnimatedGif => {
             text_column = None;
             Some(VideoMsg(ContentVideoMsg {
                 path_option: row.get(columns::message_media::FILE_PATH)?, // TODO: One-time videos
@@ -793,12 +798,13 @@ fn parse_regular_message(
     let forward_from_name_option = row.get::<_, Option<i64>>("forward_score")?
         .map(|_| SOMEONE.to_owned());
 
-    // Note: We could *technically* restore deleted message content when replying to the original!
-    //       Not doing that now though.
+    // Note 1: We could *technically* restore deleted message content when replying to the original!
+    //         Not doing that now though.
+    // Note 2: Original message might be missing for some reason, e.g. it happens if the reply itself was edited.
+    //         WA simply doesn't show it as a reply in such case, so do we.
     let reply_to_message_id_option =
         row.get::<_, Option<MessageKey>>(columns::PARENT_KEY_ID)?
-            .map(|key_id| msg_key_to_source_id.get(&key_id)
-                .unwrap_or_else(|| panic!("No parent message with key {key_id}!")))
+            .and_then(|key_id| msg_key_to_source_id.get(&key_id))
             .copied();
 
     let is_deleted = msg_tpe == MessageType::Deleted;

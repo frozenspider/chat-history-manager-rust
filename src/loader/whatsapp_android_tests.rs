@@ -116,7 +116,7 @@ fn loading_2023_10() -> EmptyRes {
             name_option: Some("My Group".to_owned()),
             source_type: SourceType::WhatsappDb as i32,
             tpe: ChatType::PrivateGroup as i32,
-            img_path_option: None,
+            img_path_option: Some("files/Avatars/100000000000000001@g.us.j".to_owned()),
             member_ids: vec![myself.id, member.id],
             msg_count: 2,
         });
@@ -170,7 +170,7 @@ fn loading_2023_10() -> EmptyRes {
             name_option: Some("+11111".to_owned()),
             source_type: SourceType::WhatsappDb as i32,
             tpe: ChatType::Personal as i32,
-            img_path_option: None,
+            img_path_option: Some("files/Avatars/11111@s.whatsapp.net.j".to_owned()),
             member_ids: vec![myself.id, member.id],
             msg_count: 2,
         });
