@@ -39,13 +39,13 @@ impl SqliteDao {
     const MIGRATIONS: EmbeddedMigrations = embed_migrations!("./resources/main/migrations");
 
     pub fn create(db_file: &Path) -> Result<Self> {
-        require!(!db_file.exists(), "File {} already exists!", path_to_str(&db_file)?);
+        require!(!db_file.exists(), "File {} already exists!", path_to_str(db_file)?);
         Self::create_load_inner(db_file)
     }
 
     #[allow(unused)]
     pub fn load(db_file: &Path) -> Result<Self> {
-        require!(db_file.exists(), "File {} does not exist!", path_to_str(&db_file)?);
+        require!(db_file.exists(), "File {} does not exist!", path_to_str(db_file)?);
         Self::create_load_inner(db_file)
     }
 
@@ -58,8 +58,8 @@ impl SqliteDao {
     }
 
     fn create_load_inner(db_file: &Path) -> Result<Self> {
-        Self::check_db_file_path(&db_file)?;
-        let absolute_path = fs::canonicalize(db_file.parent().unwrap())?.join(path_file_name(&db_file)?);
+        Self::check_db_file_path(db_file)?;
+        let absolute_path = fs::canonicalize(db_file.parent().unwrap())?.join(path_file_name(db_file)?);
         let absolute_path = absolute_path.to_str().expect("Cannot get absolute DB path!");
         let conn = RefCell::new(SqliteConnection::establish(absolute_path)?);
 
@@ -77,7 +77,7 @@ impl SqliteDao {
         }
 
         Ok(SqliteDao {
-            name: format!("{} database", path_file_name(&db_file.parent().unwrap())?),
+            name: format!("{} database", path_file_name(db_file.parent().unwrap())?),
             db_file: db_file.to_path_buf(),
             conn,
             cache: DaoCache::new(),
@@ -142,7 +142,7 @@ impl SqliteDao {
                             let mut raw_chat = utils::chat::serialize(&src_cwd.chat, &raw_ds.uuid)?;
                             if let Some(ref img) = src_cwd.chat.img_path_option {
                                 raw_chat.img_path =
-                                    copy_file(&img, &None, &subpaths::ROOT,
+                                    copy_file(img, &None, &subpaths::ROOT,
                                               src_cwd.chat.id, &src_ds_root, &dst_ds_root)?;
                             }
                             insert_into(chat::table).values(raw_chat).execute(txn)?;
@@ -203,11 +203,11 @@ impl SqliteDao {
                      conn: &mut SqliteConnection,
                      src_msgs: &[Message],
                      chat_id: i64,
-                     raw_uuid: &Vec<u8>,
+                     raw_uuid: &[u8],
                      src_ds_root: &DatasetRoot,
                      dst_ds_root: &DatasetRoot) -> EmptyRes {
         let full_raw_msgs: Vec<FullRawMessage> = src_msgs.iter()
-            .map(|m| utils::message::serialize_and_copy_files(m, chat_id, &raw_uuid, &src_ds_root, &dst_ds_root))
+            .map(|m| utils::message::serialize_and_copy_files(m, chat_id, raw_uuid, src_ds_root, dst_ds_root))
             .try_collect()?;
 
         // Don't see a way around cloning here.
@@ -270,7 +270,7 @@ impl WithCache for SqliteDao {
             let (mut myselves, mut users): (Vec<_>, Vec<_>) =
                 rows.into_iter().partition_map(|(users, is_myself)|
                     if is_myself { Either::Left(users) } else { Either::Right(users) });
-            require!(myselves.len() > 0, "Myself not found!");
+            require!(!myselves.is_empty(), "Myself not found!");
             require!(myselves.len() < 2, "More than one myself found!");
             let myself = myselves.remove(0);
             users.insert(0, myself.clone());
@@ -306,7 +306,7 @@ impl ChatHistoryDao for SqliteDao {
         let rows: Vec<ChatWithDetails> =
             utils::chat::select_by_ds(&uuid, conn)?
                 .into_iter()
-                .map(|raw: RawChatQ| utils::chat::deserialize(raw, conn, ds_uuid, &*cache))
+                .map(|raw: RawChatQ| utils::chat::deserialize(raw, conn, ds_uuid, &cache))
                 .try_collect()?;
 
         Ok(rows)
@@ -321,7 +321,7 @@ impl ChatHistoryDao for SqliteDao {
         let mut rows: Vec<ChatWithDetails> =
             utils::chat::select_by_ds_and_id(&uuid, id, conn)?
                 .into_iter()
-                .map(|raw: RawChatQ| utils::chat::deserialize(raw, conn, ds_uuid, &*cache))
+                .map(|raw: RawChatQ| utils::chat::deserialize(raw, conn, ds_uuid, &cache))
                 .try_collect()?;
 
         if rows.is_empty() { Ok(None) } else { Ok(Some(rows.remove(0))) }
@@ -747,8 +747,8 @@ impl MutableChatHistoryDao for SqliteDao {
     fn insert_chat(&mut self, mut chat: Chat, src_ds_root: &DatasetRoot) -> Result<Chat> {
         if let Some(ref img) = chat.img_path_option {
             let dst_ds_root = self.dataset_root(chat.ds_uuid())?;
-            chat.img_path_option = copy_file(&img, &None, &subpaths::ROOT,
-                                             chat.id, &src_ds_root, &dst_ds_root)?;
+            chat.img_path_option = copy_file(img, &None, &subpaths::ROOT,
+                                             chat.id, src_ds_root, &dst_ds_root)?;
         }
 
         let uuid = Uuid::parse_str(&chat.ds_uuid.as_ref().unwrap().value).expect("Invalid UUID!");
@@ -830,7 +830,7 @@ impl MutableChatHistoryDao for SqliteDao {
                 .load::<PathsWrapper>(conn)?
                 .into_iter()
                 .flat_map(|p| vec![p.path, p.thumbnail_path])
-                .filter_map(|p| p)
+                .flatten()
                 .collect_vec();
 
             if let Some(ref img_path) = chat.img_path_option {
@@ -901,7 +901,7 @@ impl MutableChatHistoryDao for SqliteDao {
         let uuid_bytes = Vec::from(uuid.as_ref());
 
         self.copy_messages(conn, &msgs, chat.id,
-                           &uuid_bytes, &src_ds_root, &dst_ds_root)?;
+                           &uuid_bytes, src_ds_root, &dst_ds_root)?;
 
         Ok(())
     }

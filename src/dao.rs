@@ -21,9 +21,9 @@ pub trait WithCache {
     /// For internal use: lazily initialize the cache, and return a reference to immutable inner cache
     fn get_cache(&self) -> Result<Ref<DaoCacheInner>> {
         let cache = self.get_cache_unchecked();
-        if cache.inner.borrow().initialized == false {
+        if !cache.inner.borrow().initialized {
             let mut inner_mut = cache.inner.borrow_mut();
-            self.init_cache(&mut *inner_mut)?;
+            self.init_cache(&mut inner_mut)?;
             inner_mut.initialized = true;
             drop(inner_mut);
         }
@@ -274,7 +274,7 @@ pub fn ensure_datasets_are_equal(src: &dyn ChatHistoryDao,
                              src_cwd.chat.qualified_name(), src_chats.len(), dst_chats.len());
 
                     for (j, (src_msg, dst_msg)) in src_messages.iter().zip(dst_messages.iter()).enumerate() {
-                        let src_pet = PracticalEqTuple::new(src_msg, &src_ds_root, &src_cwd);
+                        let src_pet = PracticalEqTuple::new(src_msg, &src_ds_root, src_cwd);
                         let dst_pet = PracticalEqTuple::new(dst_msg, &dst_ds_root, &dst_cwd);
                         require!(src_pet.practically_equals(&dst_pet)?,
                                  "Message #{j} for chat {} differs:\nWas    {:?}\nBecame {:?}",

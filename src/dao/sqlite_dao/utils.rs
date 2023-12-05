@@ -105,9 +105,9 @@ pub mod user {
         }, deserialize_bool(raw.is_myself)))
     }
 
-    pub fn serialize(user: &User, is_myself: bool, raw_uuid: &Vec<u8>) -> RawUser {
+    pub fn serialize(user: &User, is_myself: bool, raw_uuid: &[u8]) -> RawUser {
         RawUser {
-            ds_uuid: raw_uuid.clone(),
+            ds_uuid: raw_uuid.to_vec(),
             id: user.id,
             first_name: user.first_name_option.clone(),
             last_name: user.last_name_option.clone(),
@@ -160,9 +160,9 @@ pub mod chat {
             .load::<RawChatQ>(conn)?)
     }
 
-    pub fn serialize(chat: &Chat, raw_uuid: &Vec<u8>) -> Result<RawChat> {
+    pub fn serialize(chat: &Chat, raw_uuid: &[u8]) -> Result<RawChat> {
         Ok(RawChat {
-            ds_uuid: raw_uuid.clone(),
+            ds_uuid: raw_uuid.to_vec(),
             id: chat.id,
             name: chat.name_option.clone(),
             source_type: SourceType::serialize(chat.source_type)?,
@@ -198,7 +198,7 @@ pub mod chat {
                 member_ids: raw.member_ids
                     .map(|s| s.split(',').map(|s| s.parse::<i64>()).try_collect())
                     .unwrap_or(Ok(vec![]))?,
-                msg_count: raw.chat.msg_count as i32,
+                msg_count: raw.chat.msg_count,
             },
             last_msg_option,
             members: vec![] /* Will be set right next */,
@@ -249,9 +249,6 @@ pub mod message {
         }
 
         let messages: Vec<Message> = grouped.into_iter()
-            .map(|rm| {
-                rm
-            })
             .zip(raw_messages_with_content)
             .map(|(rtes, (m, mc))| FullRawMessage { m, mc, rtes })
             .map(deserialize)
@@ -275,10 +272,10 @@ pub mod message {
                     ("regular",
                      None,
                      content,
-                     mr.edit_timestamp_option.clone(),
+                     mr.edit_timestamp_option,
                      serialize_bool(mr.is_deleted),
                      mr.forward_from_name_option.clone(),
-                     mr.reply_to_message_id_option.clone())
+                     mr.reply_to_message_id_option)
                 }
                 Typed::Service(MessageService { sealed_value_optional: ms }) => {
                     let (subtype, mc) = serialize_service_and_copy_files(ms.as_ref().unwrap(),
@@ -291,7 +288,7 @@ pub mod message {
                 internal_id: None, // Discarded
                 ds_uuid: Vec::from(raw_uuid),
                 chat_id,
-                source_id: m.source_id_option.clone(),
+                source_id: m.source_id_option,
                 tpe: tpe.to_owned(),
                 subtype: subtype.map(|s| s.to_owned()),
                 time_sent: m.timestamp,
@@ -407,7 +404,7 @@ pub mod message {
                 address: v.address_option.clone(),
                 lat: Some(v.lat_str.clone()),
                 lon: Some(v.lon_str.clone()),
-                duration_sec: v.duration_sec_option.clone(),
+                duration_sec: v.duration_sec_option,
                 ..Default::default()
             },
             Poll(v) => RawMessageContent {
@@ -434,7 +431,7 @@ pub mod message {
                                       src_ds_root: &DatasetRoot,
                                       dst_ds_root: &DatasetRoot) -> Result<RawMessageContent> {
         let path = photo.path_option.as_ref().map(|path|
-            copy_file(&path, &None, &subpaths::PHOTOS,
+            copy_file(path, &None, &subpaths::PHOTOS,
                       chat_id, src_ds_root, dst_ds_root)
         ).transpose()?.flatten();
         Ok(RawMessageContent {
@@ -726,7 +723,7 @@ pub mod message {
                 let raw = raw_or_bail!();
                 GroupCreate(MessageServiceGroupCreate {
                     title: get_or_bail!(raw.title),
-                    members: raw.members.map(|s| deserialize_arr(s)).unwrap_or_default(),
+                    members: raw.members.map(deserialize_arr).unwrap_or_default(),
                 })
             }
             "group_edit_title" => {

@@ -91,7 +91,7 @@ impl MergeService for Arc<Mutex<ChatHistoryManagerServer>> {
                     ChatMergeType::Merge => {
                         use MessageMergeType as MMT;
                         use MessagesMergeDecision as MMD;
-                        let message_merges = Box::new(cm.message_merges.iter().map(|mm| {
+                        let message_merges = cm.message_merges.iter().map(|mm| {
                             let range = mm.range.as_ref().context("Messages range not supplied!")?;
                             Ok::<_, anyhow::Error>(match MessageMergeType::try_from(mm.tpe)? {
                                 MMT::Match => MMD::Match(MergeAnalysisSectionMatch {
@@ -125,7 +125,7 @@ impl MergeService for Arc<Mutex<ChatHistoryManagerServer>> {
                                     last_slave_msg_id: SlaveInternalId(range.last_slave_msg_id),
                                 }),
                             })
-                        }).try_collect()?);
+                        }).try_collect()?;
                         ChatMergeDecision::Merge { chat_id: ChatId(cm.chat_id), message_merges }
                     }
                 })
@@ -181,7 +181,7 @@ impl MergeServiceHelper for Arc<Mutex<ChatHistoryManagerServer>> {
                   Ref<Box<dyn ChatHistoryDao>>, Dataset,
               ) -> Result<R1>,
               Finalize: FnMut(R1, &mut ChmLock<'_>) -> Result<R2> {
-        self.process_request(&req, move |req, self_lock| {
+        self.process_request(req, move |req, self_lock| {
             let m_dao = self_lock.loaded_daos.get(req.master_dao_key()).context("Master DAO not found")?;
             let s_dao = self_lock.loaded_daos.get(req.slave_dao_key()).context("Slave DAO not found")?;
 

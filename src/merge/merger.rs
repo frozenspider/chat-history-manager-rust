@@ -34,26 +34,26 @@ pub fn merge_datasets(
         let (slave_users, slave_cwds) = get_users_and_cwds(slave_dao, slave_ds.uuid())?;
 
         // Input validity check: users
-        let master_user_id_merges = user_merges.iter().map(|m| m.master_user_id_option()).flatten().collect_vec();
+        let master_user_id_merges = user_merges.iter().filter_map(|m| m.master_user_id_option()).collect_vec();
         for uid in master_users.keys() {
             require!(master_user_id_merges.contains(uid), "Master user {} wasn't mentioned in merges", uid.0);
         }
         require!(master_users.len() == master_user_id_merges.len(), "User merges contained more master users than actually exist?");
 
-        let slave_user_id_merges = user_merges.iter().map(|m| m.slave_user_id_option()).flatten().collect_vec();
+        let slave_user_id_merges = user_merges.iter().filter_map(|m| m.slave_user_id_option()).collect_vec();
         for uid in slave_users.keys() {
             require!(slave_user_id_merges.contains(uid), "Slave user {} wasn't mentioned in merges", uid.0);
         }
         require!(slave_users.len() == slave_user_id_merges.len(), "User merges contained more slave users than actually exist?");
 
         // Input validity check: chats
-        let master_chat_id_merges = chat_merges.iter().map(|m| m.master_chat_id_option()).flatten().collect_vec();
+        let master_chat_id_merges = chat_merges.iter().filter_map(|m| m.master_chat_id_option()).collect_vec();
         for cid in master_cwds.keys() {
             require!(master_chat_id_merges.contains(cid), "Master chat {} wasn't mentioned in merges", cid.0);
         }
         require!(master_cwds.len() == master_chat_id_merges.len(), "Chat merges contained more master chats than actually exist?");
 
-        let slave_chat_id_merges = chat_merges.iter().map(|m| m.slave_chat_id_option()).flatten().collect_vec();
+        let slave_chat_id_merges = chat_merges.iter().filter_map(|m| m.slave_chat_id_option()).collect_vec();
         for cid in slave_cwds.keys() {
             require!(slave_chat_id_merges.contains(cid), "Slave chat {} wasn't mentioned in merges", cid.0);
         }
@@ -107,7 +107,7 @@ fn merge_inner(
 
     // Users
     let selected_chat_members: HashSet<i64> =
-        chat_inserts.iter().map(|(cwd, _, _)| cwd.chat.member_ids.clone()).flatten().collect();
+        chat_inserts.iter().flat_map(|(cwd, _, _)| cwd.chat.member_ids.clone()).collect();
     let master_self = master_dao.myself(master_ds.uuid())?;
     let slave_self = slave_dao.myself(slave_ds.uuid())?;
     require!(master_self.id == slave_self.id, "Myself of merged datasets doesn't match!");
@@ -158,11 +158,11 @@ fn merge_inner(
         let mut msg_count = 0;
         match cm {
             ChatMergeDecision::Retain { .. } =>
-                msg_count += copy_all_messages(master_dao, &master_cwd!(),
+                msg_count += copy_all_messages(master_dao, master_cwd!(),
                                                &master_ds_root, new_dao, &new_chat,
                                                &final_users)?,
             ChatMergeDecision::Add { .. } =>
-                msg_count += copy_all_messages(slave_dao, &slave_cwd!(),
+                msg_count += copy_all_messages(slave_dao, slave_cwd!(),
                                                &slave_ds_root, new_dao, &new_chat,
                                                &final_users)?,
             ChatMergeDecision::DontAdd { .. } =>
@@ -174,7 +174,7 @@ fn merge_inner(
                 #[derive(Clone, Copy, PartialEq)]
                 enum Source { Master, Slave }
 
-                for merge_decision in message_merges.as_ref() {
+                for merge_decision in message_merges {
                     let inserts: Vec<(Source, Vec<Message>)> = match merge_decision {
                         MessagesMergeDecision::Match(v) => {
                             // We might be loading too much into memory at once!
@@ -289,9 +289,9 @@ fn copy_all_messages(
         if batch.is_empty() { break; }
         msg_count += batch.len();
         for m in batch.iter_mut() {
-            fixup_members(m, &final_users, src_cwd)?;
+            fixup_members(m, final_users, src_cwd)?;
         }
-        dst_dao.insert_messages(batch, &dst_chat, src_ds_root)?;
+        dst_dao.insert_messages(batch, dst_chat, src_ds_root)?;
         offset += BATCH_SIZE;
     }
     Ok(msg_count)
@@ -387,7 +387,7 @@ pub enum ChatMergeDecision {
     /// Only in slave, do not add
     DontAdd { slave_chat_id: ChatId },
     /// Exists in both, act according to message merge decisions
-    Merge { chat_id: ChatId, message_merges: Box<Vec<MessagesMergeDecision>> },
+    Merge { chat_id: ChatId, message_merges: Vec<MessagesMergeDecision> },
 }
 
 impl ChatMergeDecision {

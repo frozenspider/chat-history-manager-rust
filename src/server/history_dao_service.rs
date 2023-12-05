@@ -30,7 +30,7 @@ impl HistoryDaoService for Arc<Mutex<ChatHistoryManagerServer>> {
             }
             for entry in fs::read_dir(&new_storage_path)? {
                 let file_name = path_file_name(&entry?.path())?.to_owned();
-                if !file_name.starts_with(".") {
+                if !file_name.starts_with('.') {
                     bail!("Directory is not empty! Found {file_name} there")
                 }
             }
@@ -179,7 +179,7 @@ impl HistoryDaoService for Arc<Mutex<ChatHistoryManagerServer>> {
     async fn is_loaded(&self, req: Request<IsLoadedRequest>) -> TonicResult<IsLoadedResponse> {
         with_dao_by_key!(self, req, dao, {
             Ok(IsLoadedResponse {
-                is_loaded: dao.is_loaded(&Path::new(&req.storage_path))
+                is_loaded: dao.is_loaded(Path::new(&req.storage_path))
             })
         })
     }

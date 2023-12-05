@@ -27,7 +27,7 @@ fn main() {
         let backtrace = backtrace.to_string();
         if backtrace.contains('\n') {
             eprintln!();
-            eprintln!("Stack trace:\n{}", e.backtrace().to_string());
+            eprintln!("Stack trace:\n{}", e.backtrace());
         }
         process::exit(1);
     }
@@ -42,7 +42,7 @@ fn execute_command(command: Option<String>, args: Vec<String>) -> EmptyRes {
         }
         Some("parse") => {
             let path = args.get(0).context("Parse path wasn't given")?;
-            let parsed = parse_file(&path).context("Parsing failed!")?;
+            let parsed = parse_file(path).context("Parsing failed!")?;
             let size: usize = parsed.deep_size_of();
             log::info!("Size of parsed in-memory DB: {} MB ({} B)", size / 1024 / 1024, size);
         }

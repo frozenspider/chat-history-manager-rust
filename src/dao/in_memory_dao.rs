@@ -49,7 +49,7 @@ impl InMemoryDao {
     }
 
     pub fn in_mem_dataset(&self) -> Dataset {
-        self.get_cache().unwrap().datasets.iter().next().unwrap().clone()
+        self.get_cache().unwrap().datasets.first().unwrap().clone()
     }
 
     pub fn in_mem_myself(&self) -> User {

@@ -453,8 +453,8 @@ fn equals_with_no_mismatching_content(mm_eq: PracticalEqTuple<MasterMessage>,
 
     match (mm_eq.v.0.typed(), sm_eq.v.0.typed()) {
         (Regular(mm_regular), Regular(sm_regular)) => {
-            let mm_copy = regular_msg_to_comparable(&mm_eq.v.0, &mm_regular);
-            let sm_copy = regular_msg_to_comparable(&sm_eq.v.0, &sm_regular);
+            let mm_copy = regular_msg_to_comparable(&mm_eq.v.0, mm_regular);
+            let sm_copy = regular_msg_to_comparable(&sm_eq.v.0, sm_regular);
 
             if !mm_eq.with(&mm_copy).practically_equals(&sm_eq.with(&sm_copy))? {
                 return Ok(false);

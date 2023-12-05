@@ -42,7 +42,7 @@ fn merge_users() -> EmptyRes {
         ],
         vec![ChatMergeDecision::Merge {
             chat_id: ChatId(1),
-            message_merges: Box::new(vec![]),
+            message_merges: vec![],
         }],
     );
 
@@ -98,7 +98,7 @@ fn merge_users_updating_chat_name() -> EmptyRes {
         users.iter().map(|u| UserMergeDecision::Replace(u.id())).collect_vec(),
         cwms.iter().map(|cwm| ChatMergeDecision::Merge {
             chat_id: ChatId(cwm.chat.as_ref().unwrap().id),
-            message_merges: Box::new(vec![]),
+            message_merges: vec![],
         }).collect_vec(),
     );
 
@@ -131,14 +131,14 @@ fn merge_chats_keep_single_message() -> EmptyRes {
         dont_replace_both_users(),
         vec![ChatMergeDecision::Merge {
             chat_id: ChatId(1),
-            message_merges: Box::new(vec![
+            message_merges: vec![
                 MessagesMergeDecision::DontReplace(MergeAnalysisSectionConflict {
                     first_master_msg_id: first_id(&helper.m.msgs),
                     last_master_msg_id: first_id(&helper.m.msgs),
                     first_slave_msg_id: first_id(&helper.s.msgs),
                     last_slave_msg_id: first_id(&helper.s.msgs),
                 })
-            ]),
+            ],
         }],
     );
 
@@ -168,54 +168,54 @@ fn merge_chats_keep_single_video() -> EmptyRes {
     merge_files_helper(NoSlaveMessages, |helper| vec![
         ChatMergeDecision::Merge {
             chat_id: helper.m.cwd().id(),
-            message_merges: Box::new(vec![
+            message_merges: vec![
                 MessagesMergeDecision::Retain(MergeAnalysisSectionRetention {
                     first_master_msg_id: first_id(&helper.m.msgs),
                     last_master_msg_id: last_id(&helper.m.msgs),
                 })
-            ]),
+            ],
         }
     ])?;
 
     merge_files_helper(AmendMasterMessagesOnly, |helper| vec![
         ChatMergeDecision::Merge {
             chat_id: helper.m.cwd().id(),
-            message_merges: Box::new(vec![
+            message_merges: vec![
                 MessagesMergeDecision::DontReplace(MergeAnalysisSectionConflict {
                     first_master_msg_id: first_id(&helper.m.msgs),
                     last_master_msg_id: last_id(&helper.m.msgs),
                     first_slave_msg_id: first_id(&helper.s.msgs),
                     last_slave_msg_id: last_id(&helper.s.msgs),
                 })
-            ]),
+            ],
         }
     ])?;
 
     merge_files_helper(AmendAllMessages, |helper| vec![
         ChatMergeDecision::Merge {
             chat_id: helper.m.cwd().id(),
-            message_merges: Box::new(vec![
+            message_merges: vec![
                 MessagesMergeDecision::DontReplace(MergeAnalysisSectionConflict {
                     first_master_msg_id: first_id(&helper.m.msgs),
                     last_master_msg_id: last_id(&helper.m.msgs),
                     first_slave_msg_id: first_id(&helper.s.msgs),
                     last_slave_msg_id: last_id(&helper.s.msgs),
                 })
-            ]),
+            ],
         }
     ])?;
 
     merge_files_helper(AmendMasterMessagesOnly, |helper| vec![
         ChatMergeDecision::Merge {
             chat_id: helper.m.cwd().id(),
-            message_merges: Box::new(vec![
+            message_merges: vec![
                 MessagesMergeDecision::Match(MergeAnalysisSectionMatch {
                     first_master_msg_id: first_id(&helper.m.msgs),
                     last_master_msg_id: last_id(&helper.m.msgs),
                     first_slave_msg_id: first_id(&helper.s.msgs),
                     last_slave_msg_id: last_id(&helper.s.msgs),
                 })
-            ]),
+            ],
         }
     ])?;
 
@@ -223,14 +223,14 @@ fn merge_chats_keep_single_video() -> EmptyRes {
     merge_files_helper(AmendAllMessages, |helper| vec![
         ChatMergeDecision::Merge {
             chat_id: helper.m.cwd().id(),
-            message_merges: Box::new(vec![
+            message_merges: vec![
                 MessagesMergeDecision::Match(MergeAnalysisSectionMatch {
                     first_master_msg_id: first_id(&helper.m.msgs),
                     last_master_msg_id: last_id(&helper.m.msgs),
                     first_slave_msg_id: first_id(&helper.s.msgs),
                     last_slave_msg_id: last_id(&helper.s.msgs),
                 })
-            ]),
+            ],
         }
     ])?;
 
@@ -325,14 +325,14 @@ fn merge_chats_replace_single_message() -> EmptyRes {
     let chat_merges = vec![
         ChatMergeDecision::Merge {
             chat_id: helper.m.cwd().id(),
-            message_merges: Box::new(vec![
+            message_merges: vec![
                 MessagesMergeDecision::Replace(MergeAnalysisSectionConflict {
                     first_master_msg_id: helper.m.msgs[&src_id(1)].typed_id(),
                     last_master_msg_id: helper.m.msgs[&src_id(1)].typed_id(),
                     first_slave_msg_id: helper.s.msgs[&src_id(1)].typed_id(),
                     last_slave_msg_id: helper.s.msgs[&src_id(1)].typed_id(),
                 })
-            ]),
+            ],
         }
     ];
     let (new_dao, new_ds, _tmpdir) =
@@ -363,14 +363,14 @@ fn merge_chats_keep_two_messages() -> EmptyRes {
     let chat_merges = vec![
         ChatMergeDecision::Merge {
             chat_id: helper.m.cwd().id(),
-            message_merges: Box::new(vec![
+            message_merges: vec![
                 MessagesMergeDecision::DontReplace(MergeAnalysisSectionConflict {
                     first_master_msg_id: first_id(&helper.m.msgs),
                     last_master_msg_id: last_id(&helper.m.msgs),
                     first_slave_msg_id: first_id(&helper.s.msgs),
                     last_slave_msg_id: last_id(&helper.s.msgs),
                 })
-            ]),
+            ],
         }
     ];
     let (new_dao, new_ds, _tmpdir) =
@@ -402,14 +402,14 @@ fn merge_chats_replace_two_messages() -> EmptyRes {
     let chat_merges = vec![
         ChatMergeDecision::Merge {
             chat_id: helper.m.cwd().id(),
-            message_merges: Box::new(vec![
+            message_merges: vec![
                 MessagesMergeDecision::Replace(MergeAnalysisSectionConflict {
                     first_master_msg_id: first_id(&helper.m.msgs),
                     last_master_msg_id: last_id(&helper.m.msgs),
                     first_slave_msg_id: first_id(&helper.s.msgs),
                     last_slave_msg_id: last_id(&helper.s.msgs),
                 })
-            ]),
+            ],
         }
     ];
     let (new_dao, new_ds, _tmpdir) =
@@ -455,7 +455,7 @@ fn merge_chats_match_replace_keep() -> EmptyRes {
     let chat_merges = vec![
         ChatMergeDecision::Merge {
             chat_id: helper.m.cwd().id(),
-            message_merges: Box::new(vec![
+            message_merges: vec![
                 MessagesMergeDecision::Match(MergeAnalysisSectionMatch {
                     first_master_msg_id: helper.m.msgs[&src_id(1)].typed_id(),
                     last_master_msg_id: helper.m.msgs[&src_id(2)].typed_id(),
@@ -474,7 +474,7 @@ fn merge_chats_match_replace_keep() -> EmptyRes {
                     first_slave_msg_id: helper.s.msgs[&src_id(5)].typed_id(),
                     last_slave_msg_id: helper.s.msgs[&src_id(6)].typed_id(),
                 }),
-            ]),
+            ],
         }
     ];
     let (new_dao, new_ds, _tmpdir) =
@@ -533,7 +533,7 @@ fn merge_chats_merge_all_modes() -> EmptyRes {
     let chat_merges = vec![
         ChatMergeDecision::Merge {
             chat_id: helper.m.cwd().id(),
-            message_merges: Box::new(vec![
+            message_merges: vec![
                 MessagesMergeDecision::Retain(MergeAnalysisSectionRetention {
                     first_master_msg_id: helper.m.msgs[&src_id(1)].typed_id(),
                     last_master_msg_id: helper.m.msgs[&src_id(1)].typed_id(),
@@ -564,7 +564,7 @@ fn merge_chats_merge_all_modes() -> EmptyRes {
                     first_slave_msg_id: helper.s.msgs[&src_id(6)].typed_id(),
                     last_slave_msg_id: helper.s.msgs[&src_id(6)].typed_id(),
                 }),
-            ]),
+            ],
         }
     ];
     let (new_dao, new_ds, _tmpdir) =
@@ -617,7 +617,7 @@ fn merge_chats_merge_a_lot_of_messages() -> EmptyRes {
     let chat_merges = vec![
         ChatMergeDecision::Merge {
             chat_id: helper.m.cwd().id(),
-            message_merges: Box::new(vec![
+            message_merges: vec![
                 MessagesMergeDecision::Replace(MergeAnalysisSectionConflict {
                     first_master_msg_id: first_id(&helper.m.msgs),
                     last_master_msg_id: helper.m.msgs[&src_id(half - 1)].typed_id(),
@@ -630,7 +630,7 @@ fn merge_chats_merge_a_lot_of_messages() -> EmptyRes {
                     first_slave_msg_id: helper.s.msgs[&src_id(half)].typed_id(),
                     last_slave_msg_id: last_id(&helper.s.msgs),
                 }),
-            ]),
+            ],
         }
     ];
     let (new_dao, new_ds, _tmpdir) =
@@ -671,14 +671,14 @@ fn merge_chats_group_messages_with_members_should_adapt_to_renames() -> EmptyRes
         |helper| vec![
             ChatMergeDecision::Merge {
                 chat_id: helper.m.cwd().id(),
-                message_merges: Box::new(vec![
+                message_merges: vec![
                     MessagesMergeDecision::Replace(MergeAnalysisSectionConflict {
                         first_master_msg_id: first_id(&helper.m.msgs),
                         last_master_msg_id: last_id(&helper.m.msgs),
                         first_slave_msg_id: first_id(&helper.s.msgs),
                         last_slave_msg_id: last_id(&helper.s.msgs),
                     })
-                ]),
+                ],
             }
         ],
     )?;
@@ -690,14 +690,14 @@ fn merge_chats_group_messages_with_members_should_adapt_to_renames() -> EmptyRes
         |helper| vec![
             ChatMergeDecision::Merge {
                 chat_id: helper.m.cwd().id(),
-                message_merges: Box::new(vec![
+                message_merges: vec![
                     MessagesMergeDecision::DontReplace(MergeAnalysisSectionConflict {
                         first_master_msg_id: first_id(&helper.m.msgs),
                         last_master_msg_id: last_id(&helper.m.msgs),
                         first_slave_msg_id: first_id(&helper.s.msgs),
                         last_slave_msg_id: last_id(&helper.s.msgs),
                     })
-                ]),
+                ],
             }
         ],
     )?;
@@ -709,14 +709,14 @@ fn merge_chats_group_messages_with_members_should_adapt_to_renames() -> EmptyRes
         |helper| vec![
             ChatMergeDecision::Merge {
                 chat_id: helper.m.cwd().id(),
-                message_merges: Box::new(vec![
+                message_merges: vec![
                     MessagesMergeDecision::Match(MergeAnalysisSectionMatch {
                         first_master_msg_id: first_id(&helper.m.msgs),
                         last_master_msg_id: last_id(&helper.m.msgs),
                         first_slave_msg_id: first_id(&helper.s.msgs),
                         last_slave_msg_id: last_id(&helper.s.msgs),
                     })
-                ]),
+                ],
             }
         ],
     )?;
@@ -728,12 +728,12 @@ fn merge_chats_group_messages_with_members_should_adapt_to_renames() -> EmptyRes
         |helper| vec![
             ChatMergeDecision::Merge {
                 chat_id: helper.m.cwd().id(),
-                message_merges: Box::new(vec![
+                message_merges: vec![
                     MessagesMergeDecision::Add(MergeAnalysisSectionAddition {
                         first_slave_msg_id: first_id(&helper.s.msgs),
                         last_slave_msg_id: last_id(&helper.s.msgs),
                     })
-                ]),
+                ],
             }
         ],
     )?;
@@ -745,12 +745,12 @@ fn merge_chats_group_messages_with_members_should_adapt_to_renames() -> EmptyRes
         |helper| vec![
             ChatMergeDecision::Merge {
                 chat_id: helper.m.cwd().id(),
-                message_merges: Box::new(vec![
+                message_merges: vec![
                     MessagesMergeDecision::Retain(MergeAnalysisSectionRetention {
                         first_master_msg_id: first_id(&helper.m.msgs),
                         last_master_msg_id: last_id(&helper.m.msgs),
                     })
-                ]),
+                ],
             }
         ],
     )?;
@@ -921,7 +921,7 @@ fn merge_chats_content_preserved_on_match_and_keep() -> EmptyRes {
     let chat_merges = vec![
         ChatMergeDecision::Merge {
             chat_id: helper.m.cwd().id(),
-            message_merges: Box::new(vec![
+            message_merges: vec![
                 MessagesMergeDecision::Match(MergeAnalysisSectionMatch {
                     first_master_msg_id: helper.m.msgs[&src_id(1)].typed_id(),
                     last_master_msg_id: helper.m.msgs[&src_id(2)].typed_id(),
@@ -934,7 +934,7 @@ fn merge_chats_content_preserved_on_match_and_keep() -> EmptyRes {
                     first_slave_msg_id: helper.s.msgs[&src_id(3)].typed_id(),
                     last_slave_msg_id: helper.s.msgs[&src_id(4)].typed_id(),
                 }),
-            ]),
+            ],
         }
     ];
     let (new_dao, new_ds, _tmpdir) =
@@ -979,14 +979,14 @@ fn merge_chats_content_appended_on_match() -> EmptyRes {
     let chat_merges = vec![
         ChatMergeDecision::Merge {
             chat_id: helper.m.cwd().id(),
-            message_merges: Box::new(vec![
+            message_merges: vec![
                 MessagesMergeDecision::Match(MergeAnalysisSectionMatch {
                     first_master_msg_id: first_id(&helper.m.msgs),
                     last_master_msg_id: last_id(&helper.m.msgs),
                     first_slave_msg_id: first_id(&helper.s.msgs),
                     last_slave_msg_id: last_id(&helper.s.msgs),
                 }),
-            ]),
+            ],
         }
     ];
     let (new_dao, new_ds, _tmpdir) =

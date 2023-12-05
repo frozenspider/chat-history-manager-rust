@@ -28,7 +28,7 @@ impl MyselfChooser for MyselfChooserImpl {
             };
 
             let spawned = handle.spawn(choose_myself_future);
-            let response = handle.block_on(spawned).map(|b| b)?;
+            let response = handle.block_on(spawned)?;
             log::info!("Got response: {:?}", response);
 
             let response = response?.get_ref().picked_option;
