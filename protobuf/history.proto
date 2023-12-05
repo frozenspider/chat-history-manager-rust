@@ -470,6 +470,8 @@ service HistoryDaoService {
   rpc Backup(BackupRequest) returns (Empty) {}
   rpc UpdateDataset(UpdateDatasetRequest) returns (UpdateDatasetResponse) {}
   rpc DeleteDataset(DeleteDatasetRequest) returns (Empty) {}
+  // Shift time of all timestamps in the dataset to accommodate timezone differences
+  rpc ShiftDatasetTime(ShiftDatasetTimeRequest) returns (Empty) {}
   rpc UpdateUser(UpdateUserRequest) returns (UpdateUserResponse) {}
   rpc DeleteChat(DeleteChatRequest) returns (Empty) {}
 }
@@ -638,6 +640,12 @@ message UpdateDatasetResponse {
 message DeleteDatasetRequest {
   string key = 1;
   PbUuid uuid = 2 [(scalapb.field).no_box = true];
+}
+
+message ShiftDatasetTimeRequest {
+  string key = 1;
+  PbUuid uuid = 2 [(scalapb.field).no_box = true];
+  int32 hours_shift = 3;
 }
 
 message UpdateUserRequest {

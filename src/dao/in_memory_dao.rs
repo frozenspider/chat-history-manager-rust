@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 use deepsize::DeepSizeOf;
 
 use crate::*;
+use crate::protobuf::history::message::Typed;
 
 use super::*;
 
@@ -199,6 +200,28 @@ impl ChatHistoryDao for InMemoryDao {
 
     fn as_mutable(&mut self) -> Result<&mut dyn MutableChatHistoryDao> {
         err!("InMemoryDao does not implement MutableChatHistoryDao")
+    }
+
+    fn as_shiftable(&mut self) -> Result<&mut dyn ShiftableChatHistoryDao> {
+        Ok(self)
+    }
+}
+
+impl ShiftableChatHistoryDao for InMemoryDao {
+    fn shift_dataset_time(&mut self, uuid: PbUuid, hours_shift: i32) -> EmptyRes {
+        require!(uuid == self.ds_uuid, "Wrong dataset UUID!");
+        let timestamp_shift: i64 = (hours_shift * 60 * 60).into();
+        for cwm in self.cwms.iter_mut() {
+            for m in cwm.messages.iter_mut() {
+                m.timestamp = m.timestamp + timestamp_shift;
+                match m.typed_mut() {
+                    Typed::Regular(mr) =>
+                        mr.edit_timestamp_option.iter_mut().for_each(|ts| *ts = *ts + timestamp_shift),
+                    Typed::Service(_) => { /* NOOP */ }
+                }
+            }
+        }
+        Ok(())
     }
 }
 

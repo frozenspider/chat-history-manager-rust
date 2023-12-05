@@ -190,7 +190,10 @@ impl HistoryDaoService for Arc<Mutex<ChatHistoryManagerServer>> {
 
     async fn backup(&self, req: Request<BackupRequest>) -> TonicResult<Empty> {
         with_dao_by_key!(self, req, dao, {
-            dao.as_mutable()?.backup()?;
+            // If DAO does not support backups, silently ignore the call
+            if let Ok(dao_m) = dao.as_mutable() {
+                dao_m.backup()?;
+            }
             Ok(Empty {})
         })
     }
@@ -207,6 +210,14 @@ impl HistoryDaoService for Arc<Mutex<ChatHistoryManagerServer>> {
         with_dao_by_key!(self, req, dao, {
             let uuid = req.uuid.as_ref().context("Dataset was empty!")?.clone();
             dao.as_mutable()?.delete_dataset(uuid)?;
+            Ok(Empty {})
+        })
+    }
+
+    async fn shift_dataset_time(&self, req: Request<ShiftDatasetTimeRequest>) -> TonicResult<Empty> {
+        with_dao_by_key!(self, req, dao, {
+            let uuid = req.uuid.as_ref().context("Dataset was empty!")?.clone();
+            dao.as_shiftable()?.shift_dataset_time(uuid, req.hours_shift)?;
             Ok(Empty {})
         })
     }

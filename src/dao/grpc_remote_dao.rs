@@ -275,4 +275,8 @@ impl ChatHistoryDao for GrpcRemoteDao {
     fn as_mutable(&mut self) -> Result<&mut dyn MutableChatHistoryDao> {
         err!("GrpcRemoteDao does not implement MutableChatHistoryDao")
     }
+
+    fn as_shiftable(&mut self) -> Result<&mut dyn ShiftableChatHistoryDao> {
+        err!("Dataset time cannot be shifted for a remote DB")
+    }
 }

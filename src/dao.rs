@@ -148,6 +148,9 @@ pub trait ChatHistoryDao: WithCache + Send {
 
     /// Return self as mutable if applicable, otherwise error out
     fn as_mutable(&mut self) -> Result<&mut dyn MutableChatHistoryDao>;
+
+    /// Return self as shiftable if applicable, otherwise error out
+    fn as_shiftable(&mut self) -> Result<&mut dyn ShiftableChatHistoryDao>;
 }
 
 pub trait MutableChatHistoryDao: ChatHistoryDao {
@@ -179,6 +182,11 @@ pub trait MutableChatHistoryDao: ChatHistoryDao {
     /// Internal ID will be ignored.
     /// Content will be resolved based on the given dataset root and copied accordingly.
     fn insert_messages(&mut self, msgs: Vec<Message>, chat: &Chat, src_ds_root: &DatasetRoot) -> EmptyRes;
+}
+
+pub trait ShiftableChatHistoryDao: ChatHistoryDao {
+    /// Shift time of all timestamps in the dataset to accommodate timezone differences.
+    fn shift_dataset_time(&mut self, uuid: PbUuid, hours_shift: i32) -> EmptyRes;
 }
 
 type UserCache = HashMap<PbUuid, UserCacheForDataset>;

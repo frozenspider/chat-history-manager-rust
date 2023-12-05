@@ -471,6 +471,15 @@ impl ChatHistoryDao for SqliteDao {
     fn as_mutable(&mut self) -> Result<&mut dyn MutableChatHistoryDao> {
         Ok(self)
     }
+
+    fn as_shiftable(&mut self) -> Result<&mut dyn ShiftableChatHistoryDao> {
+        // H2 query:
+        // UPDATE messages SET
+        //   time      = DATEADD(HOUR, $hrs, time),
+        //   edit_time = DATEADD(HOUR, $hrs, edit_time)
+        // WHERE ds_uuid = ${dsUuid}
+        err!("Dataset time cannot be shifted for a persistent DB")
+    }
 }
 
 impl MutableChatHistoryDao for SqliteDao {
