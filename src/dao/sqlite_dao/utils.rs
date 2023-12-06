@@ -297,6 +297,7 @@ pub mod message {
                 from_id: m.from_id,
                 forward_from_name,
                 reply_to_message_id,
+                searchable_string: m.searchable_string.clone(),
             },
             mc,
             rtes: m.text.iter().map(serialize_rte).try_collect()?,

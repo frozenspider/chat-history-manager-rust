@@ -59,6 +59,7 @@ pub mod schema {
             from_id -> BigInt,
             forward_from_name -> Nullable<Text>,
             reply_to_message_id -> Nullable<BigInt>,
+            searchable_string -> Text,
         }
     }
 
@@ -222,6 +223,7 @@ pub struct RawMessage {
     pub from_id: i64,
     pub forward_from_name: Option<String>,
     pub reply_to_message_id: Option<i64>,
+    pub searchable_string: String,
 }
 
 #[derive(Debug, PartialEq, Default, Identifiable, Selectable, Queryable, Insertable, Associations)]
