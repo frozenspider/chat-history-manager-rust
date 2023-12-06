@@ -237,4 +237,13 @@ impl HistoryDaoService for Arc<Mutex<ChatHistoryManagerServer>> {
             Ok(Empty {})
         })
     }
+
+    async fn combine_chats(&self, req: Request<CombineChatsRequest>) -> TonicResult<Empty> {
+        with_dao_by_key!(self, req, dao, {
+            let master_chat = req.master_chat.as_ref().context("Master chat was empty!")?.clone();
+            let slave_chat = req.slave_chat.as_ref().context("Master chat was empty!")?.clone();
+            dao.as_mutable()?.combine_chats(master_chat, slave_chat)?;
+            Ok(Empty {})
+        })
+    }
 }

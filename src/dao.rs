@@ -177,6 +177,9 @@ pub trait MutableChatHistoryDao: ChatHistoryDao {
     /// Delete a chat, as well as orphan users. Deleted files will be moved to backup folder.
     fn delete_chat(&mut self, chat: Chat) -> EmptyRes;
 
+    /// Set master chat as a main chat for slave. Both chats have to be main.
+    fn combine_chats(&mut self, master_chat: Chat, slave_chat: Chat) -> EmptyRes;
+
     /// Insert a new message for the given chat.
     /// Internal ID will be ignored.
     /// Content will be resolved based on the given dataset root and copied accordingly.

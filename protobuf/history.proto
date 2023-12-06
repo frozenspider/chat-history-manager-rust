@@ -477,6 +477,7 @@ service HistoryDaoService {
   rpc ShiftDatasetTime(ShiftDatasetTimeRequest) returns (Empty) {}
   rpc UpdateUser(UpdateUserRequest) returns (UpdateUserResponse) {}
   rpc DeleteChat(DeleteChatRequest) returns (Empty) {}
+  rpc CombineChats(CombineChatsRequest) returns (Empty) {}
 }
 
 message LoadRequest {
@@ -667,6 +668,12 @@ message UpdateUserResponse {
 message DeleteChatRequest {
   string key = 1;
   Chat chat = 2 [(scalapb.field).no_box = true];
+}
+
+message CombineChatsRequest {
+  string key = 1;
+  Chat master_chat = 2 [(scalapb.field).no_box = true];
+  Chat slave_chat = 3 [(scalapb.field).no_box = true];
 }
 
 //
