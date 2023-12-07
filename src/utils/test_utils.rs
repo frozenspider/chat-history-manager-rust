@@ -273,6 +273,7 @@ pub fn create_personal_chat(ds_uuid: &PbUuid, idx: i32, user: &User, member_ids:
         img_path_option: None,
         member_ids,
         msg_count: msg_count as i32,
+        main_chat_id: None,
     }
 }
 
@@ -287,6 +288,7 @@ pub fn create_group_chat(ds_uuid: &PbUuid, id: i64, name_suffix: &str, member_id
         img_path_option: None,
         member_ids: member_ids,
         msg_count: msg_count as i32,
+        main_chat_id: None,
     }
 }
 

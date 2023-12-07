@@ -94,6 +94,7 @@ fn loading_2020_01() -> EmptyRes {
             img_path_option: None,
             member_ids: vec![myself.id, *member.id],
             msg_count: 5,
+            main_chat_id: None,
         });
 
         let msgs = dao.first_messages(&chat, 99999)?;
@@ -174,6 +175,7 @@ fn loading_2021_05() -> EmptyRes {
             img_path_option: None,
             member_ids: vec![myself.id, service_member.id, member1.id, member2.id],
             msg_count: 3,
+            main_chat_id: None,
         });
 
         let msgs = dao.first_messages(&chat, 99999)?;
@@ -235,6 +237,7 @@ fn loading_2021_06_supergroup() -> EmptyRes {
             img_path_option: None,
             member_ids: vec![myself.id, u222222222.id, u333333333.id, u444444444.id],
             msg_count: 4,
+            main_chat_id: None,
         });
 
         let msgs = dao.first_messages(&chat, 99999)?;
@@ -362,6 +365,7 @@ fn loading_2021_07() -> EmptyRes {
             img_path_option: None,
             member_ids: vec![myself.id, member.id],
             msg_count: 2,
+            main_chat_id: None,
         });
 
         let msgs = dao.first_messages(&chat, 99999)?;
@@ -449,6 +453,7 @@ fn loading_2023_01() -> EmptyRes {
             img_path_option: None,
             member_ids: vec![myself.id, member.id, channel_user.id],
             msg_count: 6,
+            main_chat_id: None,
         });
 
         let msgs = dao.first_messages(&chat, 99999)?;
@@ -603,6 +608,7 @@ fn loading_2023_08() -> EmptyRes {
             img_path_option: None,
             member_ids: vec![myself.id, unnamed_user.id],
             msg_count: 2,
+            main_chat_id: None,
         });
 
         let msgs: &Vec<Message> = &cwm.messages;
@@ -689,6 +695,7 @@ fn loading_2023_10_audio_video() -> EmptyRes {
             img_path_option: None,
             member_ids: vec![myself.id, unnamed_user.id],
             msg_count: 4,
+            main_chat_id: None,
         });
 
         let msgs: &Vec<Message> = &cwm.messages;

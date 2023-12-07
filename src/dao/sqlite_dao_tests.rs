@@ -535,63 +535,47 @@ fn delete_chat() -> EmptyRes {
     Ok(())
 }
 
-#[ignore]
 #[test]
-fn absorb_user() -> EmptyRes {
+fn combine_chats() -> EmptyRes {
+    let daos = init();
+    let mut dao = daos.dst_dao;
+
+    let dst_files = dataset_files(&dao, &daos.ds_uuid);
+    for f in dst_files.iter() {
+        assert!(f.exists());
+    }
+    assert_eq!(dao.datasets()?.len(), 1);
+    assert_eq!(dao.users(&daos.ds_uuid)?.len(), 9);
+
+    let old_chats = dao.chats(&daos.ds_uuid)?;
+    let old_master_cwd = old_chats.iter().find(|cwd| cwd.chat.id == 9777777777).cloned().unwrap();
+    let old_slave_cwd = old_chats.iter().find(|cwd| cwd.chat.id == 9333333333).cloned().unwrap();
+    assert_eq!(old_master_cwd.chat.main_chat_id, None);
+    assert_eq!(old_slave_cwd.chat.main_chat_id, None);
+
+    let old_master_messages = dao.first_messages(&old_master_cwd.chat, usize::MAX)?;
+    let old_slave_messages = dao.first_messages(&old_slave_cwd.chat, usize::MAX)?;
+
+    // Both chats should remain unchanged, except for the main_chat_id on slave
+    dao.combine_chats(old_master_cwd.chat.clone(), old_slave_cwd.chat.clone())?;
+
+    let new_chats = dao.chats(&daos.ds_uuid)?;
+    let new_master_cwd = new_chats.iter().find(|cwd| cwd.chat.id == 9777777777).cloned().unwrap();
+    let new_slave_cwd = new_chats.iter().find(|cwd| cwd.chat.id == 9333333333).cloned().unwrap();
+    assert_eq!(new_master_cwd, old_master_cwd);
+    assert_eq!(new_slave_cwd, ChatWithDetails {
+        chat: Chat {
+            main_chat_id: Some(*new_master_cwd.id()),
+            ..old_slave_cwd.chat
+        },
+        ..old_slave_cwd
+    });
+
+    assert_eq!(old_master_messages, dao.first_messages(&new_master_cwd.chat, usize::MAX)?);
+    assert_eq!(old_slave_messages, dao.first_messages(&new_slave_cwd.chat, usize::MAX)?);
+
     Ok(())
 }
-
-/*
-test("merge (absorb) user") {
-  def fetchPersonalChat(u: User): Chat = {
-    h2dao.chats(dsUuid).map(_.chat).find(c => c.tpe == ChatType.Personal && c.memberIds.contains(u.id)) getOrElse {
-      fail(s"Chat for user $u not found!")
-    }
-  }
-
-  val usersBefore = h2dao.users(dsUuid)
-  val chatsBefore = h2dao.chats(dsUuid)
-
-  val baseUser     = usersBefore.find(_.id == 777777777L).get
-  val absorbedUser = usersBefore.find(_.id == 32507588L).get
-
-  val baseUserPc     = fetchPersonalChat(baseUser)
-  val absorbedUserPc = fetchPersonalChat(absorbedUser)
-
-  val baseUserPcMsgs     = h2dao.firstMessages(baseUserPc, 99999)
-  val absorbedUserPcMsgs = h2dao.firstMessages(absorbedUserPc, 99999)
-
-  val newPhoneNumber = "+123 456 789"
-  h2dao.mergeUsers(baseUser, absorbedUser.copy(phoneNumberOption = Some(newPhoneNumber)))
-
-  val chatsAfter = h2dao.chats(dsUuid)
-  val usersAfter = h2dao.users(dsUuid)
-
-  // Verify users
-  assert(usersAfter.size === usersBefore.size - 1)
-  val expectedUser = baseUser.copy(phoneNumberOption = Some(baseUser.phoneNumberOption.get + "," + newPhoneNumber))
-  assert(usersAfter.find(_.id == baseUser.id) === Some(expectedUser))
-  assert(!usersAfter.exists(_.id == absorbedUser.id))
-
-  // Verify chats
-  assert(chatsAfter.size === chatsBefore.size - 1)
-  val expectedChat = baseUserPc.copy(
-    nameOption = expectedUser.firstNameOption,
-    msgCount   = baseUserPcMsgs.size + absorbedUserPcMsgs.size
-  )
-  assert(chatsAfter.find(_.chat.id == baseUserPc.id).map(_.chat) === Some(expectedChat))
-  assert(!chatsAfter.exists(_.chat.id == absorbedUserPc.id))
-
-  // Verify messages
-  val expectedMessages =
-    (baseUserPcMsgs ++ absorbedUserPcMsgs.map { m =>
-      m.copy(
-        sourceIdOption = None,
-        fromId         = baseUser.id,
-      )
-    }).sortBy(_.timestamp)
-  assert(h2dao.firstMessages(chatsAfter.find(_.chat.id == baseUserPc.id).get.chat, 99999) === expectedMessages)
-}*/
 
 #[ignore]
 #[test]

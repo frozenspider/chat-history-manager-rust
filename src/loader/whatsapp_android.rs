@@ -337,6 +337,7 @@ fn parse_chats(conn: &Connection, ds_uuid: &PbUuid, users: &mut Users) -> Result
                 img_path_option: Some(format!("files/Avatars/{jid}.j")),
                 member_ids: vec![],
                 msg_count: 0, // Some messages might be filtered out later, so at this point we're leaving it unset
+                main_chat_id: None,
             }),
             messages: Vec::with_capacity(row.get::<_, usize>("msgs_count")?),
         });

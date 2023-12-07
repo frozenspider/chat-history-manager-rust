@@ -199,6 +199,7 @@ pub mod chat {
                     .map(|s| s.split(',').map(|s| s.parse::<i64>()).try_collect())
                     .unwrap_or(Ok(vec![]))?,
                 msg_count: raw.chat.msg_count,
+                main_chat_id: raw.chat.main_chat_id,
             },
             last_msg_option,
             members: vec![] /* Will be set right next */,

@@ -186,6 +186,7 @@ pub fn create_specific_dao() -> InMemoryDaoHolder {
                 img_path_option: None,
                 member_ids: users.iter().map(|u| u.id).collect_vec(),
                 msg_count: messages.len() as i32,
+                main_chat_id: None,
             }),
             messages,
         }

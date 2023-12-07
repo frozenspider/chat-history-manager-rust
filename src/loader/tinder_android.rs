@@ -160,6 +160,7 @@ impl<H: HttpClient + 'static> TinderAndroidDataLoader<H> {
                     img_path_option: None,
                     member_ids: vec![*MYSELF_ID, user.id],
                     msg_count: messages.len() as i32,
+                    main_chat_id: None,
                 }),
                 messages,
             });
