@@ -507,20 +507,6 @@ impl ChatHistoryDao for SqliteDao {
         }).map(|mut v| v.pop())
     }
 
-    fn message_option_by_internal_id(&self, chat: &Chat, internal_id: MessageInternalId) -> Result<Option<Message>> {
-        let mut vec = self.fetch_messages(|conn| {
-            use schema::*;
-            Ok(message::table
-                .filter(message::columns::chat_id.eq(chat.id))
-                .filter(message::columns::internal_id.eq(*internal_id))
-                .left_join(message_content::table)
-                .limit(1)
-                .select((RawMessage::as_select(), Option::<RawMessageContent>::as_select()))
-                .load(conn)?)
-        })?;
-        if vec.is_empty() { Ok(None) } else { Ok(vec.drain(..).next()) }
-    }
-
     fn as_mutable(&mut self) -> Result<&mut dyn MutableChatHistoryDao> {
         Ok(self)
     }

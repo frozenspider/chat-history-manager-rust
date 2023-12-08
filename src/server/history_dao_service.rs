@@ -180,14 +180,6 @@ impl HistoryDaoService for Arc<Mutex<ChatHistoryManagerServer>> {
         })
     }
 
-    async fn message_option_by_internal_id(&self, req: Request<MessageOptionByInternalIdRequest>) -> TonicResult<MessageOptionResponse> {
-        with_dao_by_key!(self, req, dao, {
-            Ok(MessageOptionResponse {
-                message: dao.message_option_by_internal_id(chat_from_req!(req), MessageInternalId(req.internal_id))?
-            })
-        })
-    }
-
     async fn is_loaded(&self, req: Request<IsLoadedRequest>) -> TonicResult<IsLoadedResponse> {
         with_dao_by_key!(self, req, dao, {
             Ok(IsLoadedResponse {

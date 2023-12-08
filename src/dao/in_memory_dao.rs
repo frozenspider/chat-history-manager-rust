@@ -218,11 +218,6 @@ impl ChatHistoryDao for InMemoryDao {
             .iter().find(|m| m.source_id_option.iter().contains(&*source_id)).cloned())
     }
 
-    fn message_option_by_internal_id(&self, chat: &Chat, internal_id: MessageInternalId) -> Result<Option<Message>> {
-        Ok(self.messages_option(chat.id).unwrap()
-            .iter().find(|m| m.internal_id == *internal_id).cloned())
-    }
-
     fn as_mutable(&mut self) -> Result<&mut dyn MutableChatHistoryDao> {
         err!("InMemoryDao does not implement MutableChatHistoryDao")
     }

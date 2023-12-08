@@ -159,8 +159,6 @@ pub trait ChatHistoryDao: WithCache + Send {
 
     fn message_option(&self, chat: &Chat, source_id: MessageSourceId) -> Result<Option<Message>>;
 
-    fn message_option_by_internal_id(&self, chat: &Chat, internal_id: MessageInternalId) -> Result<Option<Message>>;
-
     /** Whether given data path is the one loaded in this DAO */
     fn is_loaded(&self, storage_path: &Path) -> bool {
         self.storage_path() == storage_path
