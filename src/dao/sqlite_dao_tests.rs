@@ -547,32 +547,55 @@ fn combine_chats() -> EmptyRes {
     assert_eq!(dao.datasets()?.len(), 1);
     assert_eq!(dao.users(&daos.ds_uuid)?.len(), 9);
 
-    let old_chats = dao.chats(&daos.ds_uuid)?;
-    let old_master_cwd = old_chats.iter().find(|cwd| cwd.chat.id == 9777777777).cloned().unwrap();
-    let old_slave_cwd = old_chats.iter().find(|cwd| cwd.chat.id == 9333333333).cloned().unwrap();
-    assert_eq!(old_master_cwd.chat.main_chat_id, None);
-    assert_eq!(old_slave_cwd.chat.main_chat_id, None);
+    let mut combine_chats_and_check = |master_chat_id: i64, slave_chat_id: i64| -> EmptyRes {
+        let old_chats = dao.chats(&daos.ds_uuid)?;
+        let old_master_cwd = old_chats.iter()
+            .find(|cwd| cwd.chat.id == master_chat_id).cloned().unwrap();
+        let old_slave_cwd = old_chats.iter()
+            .find(|cwd| cwd.chat.id == slave_chat_id).cloned().unwrap();
+        let old_slave_cwds = old_chats.iter()
+            .filter(|cwd| cwd.chat.id == slave_chat_id || cwd.chat.main_chat_id == Some(slave_chat_id))
+            .cloned().sorted_by_key(|cwd| cwd.chat.id).collect_vec();
+        assert_eq!(old_master_cwd.chat.main_chat_id, None);
+        assert_eq!(old_slave_cwd.chat.main_chat_id, None);
 
-    let old_master_messages = dao.first_messages(&old_master_cwd.chat, usize::MAX)?;
-    let old_slave_messages = dao.first_messages(&old_slave_cwd.chat, usize::MAX)?;
+        let old_master_messages = dao.first_messages(&old_master_cwd.chat, usize::MAX)?;
+        let old_slave_messages = dao.first_messages(&old_slave_cwd.chat, usize::MAX)?;
 
-    // Both chats should remain unchanged, except for the main_chat_id on slave
-    dao.combine_chats(old_master_cwd.chat.clone(), old_slave_cwd.chat.clone())?;
+        // Both chats should remain unchanged, except for the main_chat_id on slave
+        dao.combine_chats(old_master_cwd.chat.clone(), old_slave_cwd.chat.clone())?;
 
-    let new_chats = dao.chats(&daos.ds_uuid)?;
-    let new_master_cwd = new_chats.iter().find(|cwd| cwd.chat.id == 9777777777).cloned().unwrap();
-    let new_slave_cwd = new_chats.iter().find(|cwd| cwd.chat.id == 9333333333).cloned().unwrap();
-    assert_eq!(new_master_cwd, old_master_cwd);
-    assert_eq!(new_slave_cwd, ChatWithDetails {
-        chat: Chat {
-            main_chat_id: Some(*new_master_cwd.id()),
-            ..old_slave_cwd.chat
-        },
-        ..old_slave_cwd
-    });
+        let new_chats = dao.chats(&daos.ds_uuid)?;
+        let new_master_cwd = new_chats.iter()
+            .find(|cwd| cwd.chat.id == master_chat_id).cloned().unwrap();
+        let new_slave_cwd = new_chats.iter()
+            .find(|cwd| cwd.chat.id == slave_chat_id).cloned().unwrap();
+        let new_slave_cwds = new_chats.iter()
+            .filter(|cwd| cwd.chat.main_chat_id == Some(master_chat_id))
+            .cloned().sorted_by_key(|cwd| cwd.chat.id).collect_vec();
+        assert_eq!(new_master_cwd, old_master_cwd);
+        assert_eq!(new_slave_cwds.len(), old_slave_cwds.len());
+        for (old, new) in old_slave_cwds.into_iter().zip(new_slave_cwds.into_iter()) {
+            assert_eq!(new, ChatWithDetails {
+                chat: Chat {
+                    main_chat_id: Some(*new_master_cwd.id()),
+                    ..old.chat
+                },
+                ..old
+            });
+        }
 
-    assert_eq!(old_master_messages, dao.first_messages(&new_master_cwd.chat, usize::MAX)?);
-    assert_eq!(old_slave_messages, dao.first_messages(&new_slave_cwd.chat, usize::MAX)?);
+        // No more slave slaves
+        assert_eq!(new_chats.iter().filter(|cwd| cwd.chat.main_chat_id == Some(slave_chat_id)).count(), 0);
+
+        assert_eq!(old_master_messages, dao.first_messages(&new_master_cwd.chat, usize::MAX)?);
+        assert_eq!(old_slave_messages, dao.first_messages(&new_slave_cwd.chat, usize::MAX)?);
+        Ok(())
+    };
+
+    combine_chats_and_check(9777777777, 9333333333)?;
+    combine_chats_and_check(4321012345, 9777777777)?;
+
 
     Ok(())
 }

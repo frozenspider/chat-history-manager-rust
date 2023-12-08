@@ -903,7 +903,6 @@ impl MutableChatHistoryDao for SqliteDao {
 
     fn combine_chats(&mut self, master_chat: Chat, slave_chat: Chat) -> EmptyRes {
         require!(master_chat.main_chat_id.is_none(), "Master chat wasn't main!");
-        require!(slave_chat.main_chat_id.is_none(), "Slave chat wasn't main!");
 
         let mut conn = self.conn.borrow_mut();
         let conn = conn.deref_mut();
@@ -913,10 +912,11 @@ impl MutableChatHistoryDao for SqliteDao {
         use schema::*;
         let updated_rows = update(chat::dsl::chat)
             .filter(chat::columns::ds_uuid.eq(uuid.as_ref()))
-            .filter(chat::columns::id.eq(slave_chat.id))
+            .filter(chat::columns::id.eq(slave_chat.id)
+                .or(chat::columns::main_chat_id.eq(slave_chat.id)))
             .set(chat::columns::main_chat_id.eq(master_chat.id))
             .execute(conn)?;
-        require!(updated_rows == 1, "{updated_rows} rows changed when updaing chat {}", slave_chat.qualified_name());
+        require!(updated_rows >= 1, "{updated_rows} rows changed when updaing chat {}", slave_chat.qualified_name());
 
         Ok(())
     }
