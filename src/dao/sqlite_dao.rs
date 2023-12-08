@@ -1,4 +1,5 @@
 use std::cell::{RefCell};
+use std::collections::HashSet;
 use std::default::Default;
 use std::fs;
 use std::ops::{DerefMut};
@@ -927,12 +928,29 @@ impl MutableChatHistoryDao for SqliteDao {
 
             // Moving all dataset files to backup directory
             let backup_ds_root = self.choose_final_backup_path("")?.join(path_file_name(&ds_root.0)?);
-            for relative in relative_paths {
-                let src = ds_root.to_absolute(&relative);
+            for relative in relative_paths.iter() {
+                let src = ds_root.to_absolute(relative);
                 if src.exists() {
-                    let dst = backup_ds_root.join(&relative);
+                    let dst = backup_ds_root.join(relative);
                     fs::create_dir_all(dst.parent().unwrap())?;
                     fs::rename(src, dst)?;
+                }
+            }
+
+            let src_paths_parents: HashSet<_> = relative_paths.iter()
+                .filter_map(|relative| ds_root.to_absolute(&relative).parent().map(|p| p.to_path_buf()))
+                .collect();
+
+            // Remove all empty parent directories
+            for dir in src_paths_parents {
+                let mut parent_holder = Some(dir.as_path());
+                while let Some(dir) = parent_holder {
+                    if fs::read_dir(dir)?.next().is_some() {
+                        // Directory not empty
+                        break;
+                    }
+                    fs::remove_dir(dir)?;
+                    parent_holder = dir.parent()
                 }
             }
 
