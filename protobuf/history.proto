@@ -461,6 +461,7 @@ service HistoryDaoService {
   rpc MessagesSlice(MessagesSliceRequest) returns (MessagesResponse) {}
   // Count messages between the given ones (inclusive). Messages must be present.
   rpc MessagesSliceLen(MessagesSliceRequest) returns (CountMessagesResponse) {}
+  rpc MessagesAbbreviatedSlice(MessagesAbbreviatedSliceRequest) returns (MessagesAbbreviatedSliceResponse) {}
   rpc MessageOption(MessageOptionRequest) returns (MessageOptionResponse) {}
   rpc MessageOptionByInternalId(MessageOptionByInternalIdRequest) returns (MessageOptionResponse) {}
   // Whether given data path is the one loaded in this DAO.
@@ -592,12 +593,30 @@ message MessagesSliceRequest {
   int64 message_internal_id_1 = 3;
   int64 message_internal_id_2 = 4;
 }
+message MessagesAbbreviatedSliceRequest {
+  string key = 1;
+  Chat chat = 2 [(scalapb.field).no_box = true];
+  int64 message_internal_id_1 = 3;
+  int64 message_internal_id_2 = 4;
+
+  // Maximum number of messages to be returned as a single slice
+  int32 combined_limit = 5;
+  // Maximum number of messages to be returned from each side when abbreviated
+  int32 abbreviated_limit = 6;
+}
 
 message MessagesResponse {
   repeated Message messages = 1;
 }
 message CountMessagesResponse {
   int32 messages_count = 1;
+}
+message MessagesAbbreviatedSliceResponse {
+  repeated Message left_messages = 1;
+  // If messages count was within the combined_limit, this will be zero
+  int32 in_between = 2;
+  // If messages count was within the combined_limit, this will be empty
+  repeated Message right_messages = 3;
 }
 
 message MessageOptionRequest {

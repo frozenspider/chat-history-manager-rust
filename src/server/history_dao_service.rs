@@ -150,6 +150,18 @@ impl HistoryDaoService for Arc<Mutex<ChatHistoryManagerServer>> {
         })
     }
 
+    async fn messages_abbreviated_slice(&self, req: Request<MessagesAbbreviatedSliceRequest>) -> TonicResult<MessagesAbbreviatedSliceResponse> {
+        with_dao_by_key!(self, req, dao, {
+            let (left_messages, in_between, right_messages) =
+                dao.messages_abbreviated_slice(chat_from_req!(req),
+                                               MessageInternalId(req.message_internal_id_1),
+                                               MessageInternalId(req.message_internal_id_2),
+                                               req.combined_limit as usize,
+                                               req.abbreviated_limit as usize)?;
+            Ok(MessagesAbbreviatedSliceResponse { left_messages, in_between: in_between as i32, right_messages })
+        })
+    }
+
     async fn messages_slice_len(&self, req: Request<MessagesSliceRequest>) -> TonicResult<CountMessagesResponse> {
         with_dao_by_key!(self, req, dao, {
             Ok(CountMessagesResponse {

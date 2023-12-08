@@ -328,9 +328,11 @@ impl ChatHistoryDao for SqliteDao {
     }
 
     fn scroll_messages(&self, chat: &Chat, offset: usize, limit: usize) -> Result<Vec<Message>> {
+        let uuid = Uuid::parse_str(&chat.ds_uuid().value)?;
         self.fetch_messages(|conn| {
             use schema::*;
             Ok(message::table
+                .filter(message::columns::ds_uuid.eq(uuid.as_ref()))
                 .filter(message::columns::chat_id.eq(chat.id))
                 .order_by(message::columns::internal_id.asc())
                 .left_join(message_content::table)
@@ -342,9 +344,11 @@ impl ChatHistoryDao for SqliteDao {
     }
 
     fn last_messages(&self, chat: &Chat, limit: usize) -> Result<Vec<Message>> {
+        let uuid = Uuid::parse_str(&chat.ds_uuid().value)?;
         let mut msgs = self.fetch_messages(|conn| {
             use schema::*;
             Ok(message::table
+                .filter(message::columns::ds_uuid.eq(uuid.as_ref()))
                 .filter(message::columns::chat_id.eq(chat.id))
                 .order_by(message::columns::internal_id.desc())
                 .left_join(message_content::table)
@@ -357,9 +361,11 @@ impl ChatHistoryDao for SqliteDao {
     }
 
     fn messages_before_impl(&self, chat: &Chat, msg_id: MessageInternalId, limit: usize) -> Result<Vec<Message>> {
+        let uuid = Uuid::parse_str(&chat.ds_uuid().value)?;
         let mut msgs = self.fetch_messages(|conn| {
             use schema::*;
             Ok(message::table
+                .filter(message::columns::ds_uuid.eq(uuid.as_ref()))
                 .filter(message::columns::chat_id.eq(chat.id))
                 .filter(message::columns::internal_id.lt(*msg_id))
                 .order_by(message::columns::internal_id.desc())
@@ -373,9 +379,11 @@ impl ChatHistoryDao for SqliteDao {
     }
 
     fn messages_after_impl(&self, chat: &Chat, msg_id: MessageInternalId, limit: usize) -> Result<Vec<Message>> {
+        let uuid = Uuid::parse_str(&chat.ds_uuid().value)?;
         self.fetch_messages(|conn| {
             use schema::*;
             Ok(message::table
+                .filter(message::columns::ds_uuid.eq(uuid.as_ref()))
                 .filter(message::columns::chat_id.eq(chat.id))
                 .filter(message::columns::internal_id.gt(*msg_id))
                 .order_by(message::columns::internal_id.asc())
@@ -393,10 +401,12 @@ impl ChatHistoryDao for SqliteDao {
         // To avoid getting an entire huge slice, do this in batches
         const BATCH_SIZE: usize = 5_000;
         let mut result = Vec::with_capacity((*msg2_id - *msg1_id) as usize);
+        let uuid = Uuid::parse_str(&chat.ds_uuid().value)?;
         let fetch_batch = |first_id: MessageInternalId| {
             self.fetch_messages(|conn| {
                 use schema::*;
                 Ok(message::table
+                    .filter(message::columns::ds_uuid.eq(uuid.as_ref()))
                     .filter(message::columns::chat_id.eq(chat.id))
                     .filter(message::columns::internal_id.ge(*first_id))
                     .filter(message::columns::internal_id.le(*msg2_id))
@@ -415,6 +425,49 @@ impl ChatHistoryDao for SqliteDao {
             result.extend(fetch_batch(last_id)?.into_iter().skip(1));
         }
         Ok(result)
+    }
+
+    fn messages_abbreviated_slice_inner(&self, chat: &Chat,
+                                        msg1_id: MessageInternalId,
+                                        msg2_id: MessageInternalId,
+                                        combined_limit: usize,
+                                        abbreviated_limit: usize) -> Result<(Vec<Message>, usize, Vec<Message>)> {
+        if *msg1_id > *msg2_id {
+            return Ok((vec![], 0, vec![]));
+        }
+        let uuid = Uuid::parse_str(&chat.ds_uuid().value)?;
+        macro_rules! fetch {
+            ($cond:expr, $limit:ident, $order:ident) => {
+                self.fetch_messages(|conn| {
+                    use schema::*;
+                    Ok(message::table
+                        .filter(message::columns::ds_uuid.eq(uuid.as_ref()))
+                        .filter(message::columns::chat_id.eq(chat.id))
+                        .filter($cond)
+                        .order_by(message::columns::internal_id.$order())
+                        .left_join(message_content::table)
+                        .limit($limit as i64)
+                        .select((RawMessage::as_select(), Option::<RawMessageContent>::as_select()))
+                        .load(conn)?)
+                })
+            };
+        }
+        let left_batch = fetch!(message::columns::internal_id.ge(*msg1_id), combined_limit, asc)?;
+        match left_batch.iter().position(|m| m.internal_id == *msg2_id) {
+            Some(end_idx) =>
+                Ok((left_batch[..=end_idx].to_vec(), 0, vec![])),
+            None => {
+                let left_batch = left_batch.into_iter().take(abbreviated_limit).collect_vec();
+                let mut right_batch = fetch!(message::columns::internal_id.le(*msg2_id), abbreviated_limit, desc)?;
+                right_batch.reverse();
+                let in_between = self.messages_slice_len(
+                    chat,
+                    left_batch.last().unwrap().internal_id(),
+                    right_batch[0].internal_id(),
+                )? - 2;
+                Ok((left_batch, in_between, right_batch))
+            }
+        }
     }
 
     fn messages_slice_len(&self, chat: &Chat, msg1_id: MessageInternalId, msg2_id: MessageInternalId) -> Result<usize> {

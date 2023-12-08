@@ -166,6 +166,31 @@ impl ChatHistoryDao for InMemoryDao {
         }
     }
 
+    fn messages_abbreviated_slice_inner(&self,
+                                        chat: &Chat,
+                                        msg1_id: MessageInternalId,
+                                        msg2_id: MessageInternalId,
+                                        combined_limit: usize,
+                                        abbreviated_limit: usize) -> Result<(Vec<Message>, usize, Vec<Message>)> {
+        let msgs = self.messages_option(chat.id).unwrap();
+        let idx1 = msgs.iter().position(|m| m.internal_id == *msg1_id);
+        let idx2 = msgs.iter().rposition(|m| m.internal_id == *msg2_id);
+        match (idx1, idx2) {
+            (None, _) => err!("Message 1 not found!"),
+            (_, None) => err!("Message 2 not found!"),
+            (Some(idx1), Some(idx2)) if idx1 > idx2 =>
+                Ok((vec![], 0, vec![])),
+            (Some(idx1), Some(idx2)) if idx2 - idx1 < combined_limit =>
+                Ok((msgs[idx1..=idx2].to_vec(), 0, vec![])),
+            (Some(idx1), Some(idx2)) => {
+                let left_msgs = msgs[idx1..(idx1 + abbreviated_limit)].to_vec();
+                let right_msgs = msgs[(idx2 - abbreviated_limit + 1)..=idx2].to_vec();
+                let in_between = idx2 - idx1 + 1 - 2 * abbreviated_limit;
+                Ok((left_msgs, in_between, right_msgs))
+            }
+        }
+    }
+
     fn messages_slice_len(&self, chat: &Chat, msg1_id: MessageInternalId, msg2_id: MessageInternalId) -> Result<usize> {
         // Inefficient!
         self.messages_slice(chat, msg1_id, msg2_id).map(|msgs| msgs.len())

@@ -1,3 +1,5 @@
+use pretty_assertions::assert_eq;
+
 use crate::*;
 
 use super::*;
@@ -97,6 +99,23 @@ fn messages_befoer_after_slice() -> EmptyRes {
     assert_eq!(dao.messages_slice_len(&chat, msgs[len - 1].internal_id(), msgs[len - 1].internal_id())?, 1);
     assert_eq!(dao.messages_slice_len(&chat, msgs[len - 2].internal_id(), msgs[len - 1].internal_id())?, 2);
     assert_eq!(dao.messages_slice_len(&chat, msgs[len - 3].internal_id(), msgs[len - 1].internal_id())?, 3);
+
+    assert_eq!(dao.messages_abbreviated_slice(&chat, msgs[0].internal_id(), msgs[0].internal_id(), 100500, 50)?,
+               (msgs[0..=0].to_vec(), 0, vec![]));
+    assert_eq!(dao.messages_abbreviated_slice(&chat, msgs[0].internal_id(), msgs[0].internal_id(), 2, 1)?,
+               (msgs[0..=0].to_vec(), 0, vec![]));
+    assert_eq!(dao.messages_abbreviated_slice(&chat, msgs[0].internal_id(), msgs[1].internal_id(), 2, 1)?,
+               (msgs[0..=1].to_vec(), 0, vec![]));
+    assert_eq!(dao.messages_abbreviated_slice(&chat, msgs[0].internal_id(), msgs[2].internal_id(), 3, 1)?,
+               (msgs[0..=2].to_vec(), 0, vec![]));
+    assert_eq!(dao.messages_abbreviated_slice(&chat, msgs[0].internal_id(), msgs[3].internal_id(), 4, 1)?,
+               (msgs[0..=3].to_vec(), 0, vec![]));
+    assert_eq!(dao.messages_abbreviated_slice(&chat, msgs[0].internal_id(), msgs[3].internal_id(), 3, 1)?,
+               (msgs[0..=0].to_vec(), 2, msgs[3..=3].to_vec()));
+    assert_eq!(dao.messages_abbreviated_slice(&chat, msgs[0].internal_id(), msgs[4].internal_id(), 5, 2)?,
+               (msgs[0..=4].to_vec(), 0, vec![]));
+    assert_eq!(dao.messages_abbreviated_slice(&chat, msgs[0].internal_id(), msgs[4].internal_id(), 4, 2)?,
+               (msgs[0..=1].to_vec(), 1, msgs[3..=4].to_vec()));
 
     Ok(())
 }

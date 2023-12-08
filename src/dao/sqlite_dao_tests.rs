@@ -77,6 +77,12 @@ fn fetching() -> EmptyRes {
             Tup::new(src_msgs, &daos.src_ds_root, &src_cwd)
                 .practically_equals(&Tup::new(dst_msgs, &daos.dst_ds_root, &dst_cwd))
         };
+        let practically_eq_abbrev = |src: &(Vec<Message>, usize, Vec<Message>), dst: &(Vec<Message>, usize, Vec<Message>)| {
+            let left_eq = practically_eq(&src.0, &dst.0)?;
+            let between_eq = src.1 == dst.1;
+            let right_eq = practically_eq(&src.2, &dst.2)?;
+            Ok::<_, anyhow::Error>(left_eq && between_eq && right_eq)
+        };
 
         assert_eq!(src_cwd.chat, dst_cwd.chat);
 
@@ -84,11 +90,17 @@ fn fetching() -> EmptyRes {
         let all_dst_msgs = daos.dst_dao.last_messages(&dst_cwd.chat, dst_cwd.chat.msg_count as usize)?;
         assert_eq!(all_dst_msgs.len(), dst_cwd.chat.msg_count as usize);
         assert!(practically_eq(&all_src_msgs, &all_dst_msgs)?);
+        let last_idx = all_src_msgs.len() - 1;
 
         let fetch = |f: &dyn Fn(&dyn ChatHistoryDao, &ChatWithDetails, &[Message]) -> Result<Vec<Message>>| {
             let src_msgs = f(daos.src_dao.as_ref(), &src_cwd, &all_src_msgs)?;
             let dst_msgs = f(&daos.dst_dao, &dst_cwd, &all_dst_msgs)?;
             Ok::<_, anyhow::Error>((src_msgs, dst_msgs))
+        };
+        let fetch_abbrev = |f: &dyn Fn(&dyn ChatHistoryDao, &ChatWithDetails, &[Message]) -> Result<(Vec<Message>, usize, Vec<Message>)>| {
+            let src_res = f(daos.src_dao.as_ref(), &src_cwd, &all_src_msgs)?;
+            let dst_res = f(&daos.dst_dao, &dst_cwd, &all_dst_msgs)?;
+            Ok::<_, anyhow::Error>((src_res, dst_res))
         };
 
         // An unfortunate shortcoming of Rust not supporting generics for closures
@@ -98,12 +110,19 @@ fn fetching() -> EmptyRes {
             Ok::<_, anyhow::Error>((src_msgs, dst_msgs))
         };
 
+        macro_rules! assert_correct {
+            ($src:ident, $dst:ident, $practically_eq:ident, $dst_expected:expr) => {
+                assert_eq!($dst, $dst_expected);
+                assert!($practically_eq(&$src, &$dst)?);
+            };
+        }
+
         // first_messages
 
         let (src_msgs, dst_msgs) =
             fetch(&|dao, cwd, _| dao.first_messages(&cwd.chat, NUM_MSGS_TO_TAKE))?;
-        assert_eq!(&dst_msgs, all_dst_msgs.smart_slice(0..(NUM_MSGS_TO_TAKE as i32)));
-        assert!(practically_eq(&src_msgs, &dst_msgs)?);
+        assert_correct!(src_msgs, dst_msgs, practically_eq,
+            all_dst_msgs.smart_slice(0..(NUM_MSGS_TO_TAKE as i32)));
 
         let (_, dst_msgs) =
             fetch(&|dao, cwd, _| dao.first_messages(&cwd.chat, cwd.chat.msg_count as usize))?;
@@ -113,8 +132,8 @@ fn fetching() -> EmptyRes {
 
         let (src_msgs, dst_msgs) =
             fetch(&|dao, cwd, _| dao.last_messages(&cwd.chat, NUM_MSGS_TO_TAKE))?;
-        assert_eq!(&dst_msgs, all_dst_msgs.smart_slice(-(NUM_MSGS_TO_TAKE as i32)..));
-        assert!(practically_eq(&src_msgs, &dst_msgs)?);
+        assert_correct!(src_msgs, dst_msgs, practically_eq,
+            all_dst_msgs.smart_slice(-(NUM_MSGS_TO_TAKE as i32)..));
 
         let (_, dst_msgs) =
             fetch(&|dao, cwd, _| dao.last_messages(&cwd.chat, cwd.chat.msg_count as usize))?;
@@ -124,67 +143,67 @@ fn fetching() -> EmptyRes {
 
         let (src_msgs, dst_msgs) =
             fetch(&|dao, cwd, _| dao.scroll_messages(&cwd.chat, 0, cwd.chat.msg_count as usize))?;
-        assert_eq!(dst_msgs, all_dst_msgs);
-        assert!(practically_eq(&src_msgs, &dst_msgs)?);
+        assert_correct!(src_msgs, dst_msgs, practically_eq,
+            all_dst_msgs);
 
         let (src_msgs, dst_msgs) =
             fetch(&|dao, cwd, _| dao.scroll_messages(&cwd.chat, 1, cwd.chat.msg_count as usize - 1))?;
-        assert_eq!(&dst_msgs, &all_dst_msgs[1..]);
-        assert!(practically_eq(&src_msgs, &dst_msgs)?);
+        assert_correct!(src_msgs, dst_msgs, practically_eq,
+            &all_dst_msgs[1..]);
 
         // messages_before
 
         let (src_msgs, dst_msgs) =
             fetch(&|dao, cwd, all| dao.messages_before(
-                &cwd.chat, all.last().unwrap().internal_id(), NUM_MSGS_TO_TAKE))?;
-        assert_eq!(&dst_msgs, all_dst_msgs.smart_slice(-(NUM_MSGS_TO_TAKE as i32 + 1)..-1));
-        assert!(practically_eq(&src_msgs, &dst_msgs)?);
+                &cwd.chat, all[last_idx].internal_id(), NUM_MSGS_TO_TAKE))?;
+        assert_correct!(src_msgs, dst_msgs, practically_eq,
+            all_dst_msgs.smart_slice(-(NUM_MSGS_TO_TAKE as i32 + 1)..-1));
 
         let (src_msgs, dst_msgs) =
             fetch(&|dao, cwd, all| dao.messages_before(
                 &cwd.chat, all.smart_slice(..-1).last().unwrap().internal_id(), NUM_MSGS_TO_TAKE))?;
-        assert_eq!(&dst_msgs, all_dst_msgs.smart_slice(-(NUM_MSGS_TO_TAKE as i32 + 2)..-2));
-        assert!(practically_eq(&src_msgs, &dst_msgs)?);
+        assert_correct!(src_msgs, dst_msgs, practically_eq,
+            all_dst_msgs.smart_slice(-(NUM_MSGS_TO_TAKE as i32 + 2)..-2));
 
         // messages_after
 
         let (src_msgs, dst_msgs) =
             fetch(&|dao, cwd, all| dao.messages_after(
                 &cwd.chat, all[0].internal_id(), NUM_MSGS_TO_TAKE))?;
-        assert_eq!(&dst_msgs, all_dst_msgs.smart_slice(1..(NUM_MSGS_TO_TAKE as i32 + 1)));
-        assert!(practically_eq(&src_msgs, &dst_msgs)?);
+        assert_correct!(src_msgs, dst_msgs, practically_eq,
+            all_dst_msgs.smart_slice(1..(NUM_MSGS_TO_TAKE as i32 + 1)));
 
         let (src_msgs, dst_msgs) =
             fetch(&|dao, cwd, all| dao.messages_after(
                 &cwd.chat, all[1].internal_id(), NUM_MSGS_TO_TAKE))?;
-        assert_eq!(&dst_msgs, all_dst_msgs.smart_slice(2..(NUM_MSGS_TO_TAKE as i32 + 2)));
-        assert!(practically_eq(&src_msgs, &dst_msgs)?);
+        assert_correct!(src_msgs, dst_msgs, practically_eq,
+            all_dst_msgs.smart_slice(2..(NUM_MSGS_TO_TAKE as i32 + 2)));
 
-        // messages_between
+        // messages_slice
 
         let (src_msgs, dst_msgs) =
             fetch(&|dao, cwd, all| dao.messages_slice(
-                &cwd.chat, all[0].internal_id(), all.last().unwrap().internal_id()))?;
-        assert_eq!(&dst_msgs, &all_dst_msgs);
-        assert!(practically_eq(&src_msgs, &dst_msgs)?);
+                &cwd.chat, all[0].internal_id(), all[last_idx].internal_id()))?;
+        assert_correct!(src_msgs, dst_msgs, practically_eq,
+            all_dst_msgs);
 
         let (src_msgs, dst_msgs) =
             fetch(&|dao, cwd, all| dao.messages_slice(
                 &cwd.chat, all[1].internal_id(), all.smart_slice(..-1).last().unwrap().internal_id()))?;
-        assert_eq!(&dst_msgs, all_dst_msgs.smart_slice(1..-1));
-        assert!(practically_eq(&src_msgs, &dst_msgs)?);
+        assert_correct!(src_msgs, dst_msgs, practically_eq,
+            all_dst_msgs.smart_slice(1..-1));
 
         // count_messages_between
 
         let (src_msgs_count, dst_msgs_count) =
             count(&|dao, cwd, all| dao.messages_slice_len(
-                &cwd.chat, all[0].internal_id(), all.last().unwrap().internal_id()))?;
+                &cwd.chat, all[0].internal_id(), all[last_idx].internal_id()))?;
         assert_eq!(dst_msgs_count, cmp::max(all_dst_msgs.len() as i32, 0) as usize);
         assert_eq!(src_msgs_count, dst_msgs_count);
 
         let (src_msgs_count, dst_msgs_count) =
             count(&|dao, cwd, all| dao.messages_slice_len(
-                &cwd.chat, all[1].internal_id(), all.last().unwrap().internal_id()))?;
+                &cwd.chat, all[1].internal_id(), all[last_idx].internal_id()))?;
         assert_eq!(dst_msgs_count, cmp::max(all_dst_msgs.len() as i32 - 1, 0) as usize);
         assert_eq!(src_msgs_count, dst_msgs_count);
 
@@ -193,6 +212,47 @@ fn fetching() -> EmptyRes {
                 &cwd.chat, all[0].internal_id(), all.smart_slice(..-1).last().unwrap().internal_id()))?;
         assert_eq!(dst_msgs_count, cmp::max(all_dst_msgs.len() as i32 - 1, 0) as usize);
         assert_eq!(src_msgs_count, dst_msgs_count);
+
+        // messages_abbreviated_slice
+
+        macro_rules! assert_messages_abbreviated_slice {
+            ($idx1:expr, $idx2:expr; $combined_limit:expr, $abbreviated_limit:expr; $expected:expr) => {
+                let (src_abbrev_msgs, dst_abbrev_msgs) =
+                    fetch_abbrev(&|dao, cwd, all| dao.messages_abbreviated_slice(
+                        &cwd.chat, all[$idx1].internal_id(), all[$idx2].internal_id(), $combined_limit, $abbreviated_limit))?;
+                assert_correct!(src_abbrev_msgs, dst_abbrev_msgs, practically_eq_abbrev,
+                    $expected);
+            };
+        }
+
+        assert_messages_abbreviated_slice!(0, last_idx; 100500, 50;
+            (all_dst_msgs.clone(), 0, vec![]));
+
+        assert_messages_abbreviated_slice!(0, 0; 100500, 50;
+            (all_dst_msgs[0..=0].to_vec(), 0, vec![]));
+
+        assert_messages_abbreviated_slice!(0, 0; 2, 1;
+            (all_dst_msgs[0..=0].to_vec(), 0, vec![]));
+
+        assert_messages_abbreviated_slice!(0, 1; 2, 1;
+            (all_dst_msgs[0..=1].to_vec(), 0, vec![]));
+
+        if all_dst_msgs.len() >= 5 {
+            assert_messages_abbreviated_slice!(0, 2; 3, 1;
+                (all_dst_msgs[0..=2].to_vec(), 0, vec![]));
+
+            assert_messages_abbreviated_slice!(0, 3; 4, 1;
+                (all_dst_msgs[0..=3].to_vec(), 0, vec![]));
+
+            assert_messages_abbreviated_slice!(0, 3; 3, 1;
+                (all_dst_msgs[0..=0].to_vec(), 2, all_dst_msgs[3..=3].to_vec()));
+
+            assert_messages_abbreviated_slice!(0, 4; 5, 2;
+                (all_dst_msgs[0..=4].to_vec(), 0, vec![]));
+
+            assert_messages_abbreviated_slice!(0, 4; 4, 2;
+                (all_dst_msgs[0..=1].to_vec(), 1, all_dst_msgs[3..=4].to_vec()));
+        }
     }
 
     Ok(())

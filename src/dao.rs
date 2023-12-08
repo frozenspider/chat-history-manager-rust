@@ -130,6 +130,27 @@ pub trait ChatHistoryDao: WithCache + Send {
     /// Note: this might need rework in future, as the returned slice is unbounded.
     fn messages_slice(&self, chat: &Chat, msg1_id: MessageInternalId, msg2_id: MessageInternalId) -> Result<Vec<Message>>;
 
+    /// Return N messages between the given ones (inclusive). Messages must be present.
+    /// If total number of messages is within `combined_limit`, it will be in the first vector, the rest will be
+    /// zero/empty.
+    /// Otherwise return `abbreviated_limit` messages from both sides, specifying number of messages in-between.
+    fn messages_abbreviated_slice(&self, chat: &Chat,
+                                  msg1_id: MessageInternalId,
+                                  msg2_id: MessageInternalId,
+                                  combined_limit: usize,
+                                  abbreviated_limit: usize) -> Result<(Vec<Message>, usize, Vec<Message>)> {
+        require!(combined_limit >= 2);
+        require!(abbreviated_limit >= 1);
+        require!(combined_limit >= 2 * abbreviated_limit);
+        self.messages_abbreviated_slice_inner(chat, msg1_id, msg2_id, combined_limit, abbreviated_limit)
+    }
+
+    fn messages_abbreviated_slice_inner(&self, chat: &Chat,
+                                        msg1_id: MessageInternalId,
+                                        msg2_id: MessageInternalId,
+                                        combined_limit: usize,
+                                        abbreviated_limit: usize) -> Result<(Vec<Message>, usize, Vec<Message>)>;
+
     /// Count messages between the given ones (inclusive). Messages must be present.
     fn messages_slice_len(&self, chat: &Chat, msg1_id: MessageInternalId, msg2_id: MessageInternalId) -> Result<usize>;
 
