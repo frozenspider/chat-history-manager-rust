@@ -692,13 +692,17 @@ message AnalyzeRequest {
   string slave_dao_key = 3;
   PbUuid slave_ds_uuid = 4 [(scalapb.field).no_box = true];
 
-  repeated int64 chat_ids = 5;
+  repeated ChatIdPair chat_id_pairs = 5;
+}
+message ChatIdPair {
+  int64 master_chat_id = 1;
+  int64 slave_chat_id = 2;
 }
 message AnalyzeResponse {
   repeated ChatAnalysis analysis = 1;
 }
 message ChatAnalysis {
-  int64 chat_id = 1;
+  ChatIdPair chat_ids = 1 [(scalapb.field).no_box = true];
   repeated AnalysisSection sections = 2;
 }
 // This has internal IDs, those not corresponding to the type are unused

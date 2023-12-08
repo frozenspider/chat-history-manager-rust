@@ -16,13 +16,12 @@ impl MergeService for Arc<Mutex<ChatHistoryManagerServer>> {
     async fn analyze(&self, req: Request<AnalyzeRequest>) -> TonicResult<AnalyzeResponse> {
         self.process_merge_service_request(&req, |req, m_dao, m_ds, s_dao, s_ds| {
             let analyzer = DatasetDiffAnalyzer::create(m_dao.as_ref(), &m_ds, s_dao.as_ref(), &s_ds)?;
-            let mut analysis = Vec::with_capacity(req.chat_ids.len());
-            for chat_id in req.chat_ids.iter() {
-                let chat_id = *chat_id;
-                let m_cwd = m_dao.chat_option(m_ds.uuid(), chat_id)?
-                    .with_context(|| format!("Source chat {} not found!", chat_id))?;
-                let s_cwd = s_dao.chat_option(s_ds.uuid(), chat_id)?
-                    .with_context(|| format!("Source chat {} not found!", chat_id))?;
+            let mut analysis = Vec::with_capacity(req.chat_id_pairs.len());
+            for pair @ ChatIdPair { master_chat_id, slave_chat_id } in req.chat_id_pairs.iter() {
+                let m_cwd = m_dao.chat_option(m_ds.uuid(), *master_chat_id)?
+                    .with_context(|| format!("Master chat {} not found!", *master_chat_id))?;
+                let s_cwd = s_dao.chat_option(s_ds.uuid(), *slave_chat_id)?
+                    .with_context(|| format!("Slave chat {} not found!", *slave_chat_id))?;
                 let analyzed =
                     analyzer.analyze(&m_cwd, &s_cwd, &s_cwd.chat.qualified_name())?;
                 let sections = analyzed.into_iter().map(|a| {
@@ -65,7 +64,7 @@ impl MergeService for Arc<Mutex<ChatHistoryManagerServer>> {
                     };
                     res
                 }).collect_vec();
-                analysis.push(ChatAnalysis { chat_id, sections })
+                analysis.push(ChatAnalysis { chat_ids: Some(pair.clone()), sections })
             }
             Ok(analysis)
         }, |analysis, _self_lock| Ok(AnalyzeResponse { analysis }))
