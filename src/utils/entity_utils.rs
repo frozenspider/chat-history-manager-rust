@@ -216,7 +216,7 @@ pub trait EnumResolve: Sized {
 }
 
 impl<T> EnumResolve for T where T: TryFrom<i32>,
-                                T::Error: std::error::Error + Send + Sync + 'static {
+                                T::Error: StdError + Send + Sync + 'static {
     fn resolve(tpe: i32) -> Result<Self> {
         Self::try_from(tpe).with_context(|| format!("{tpe} has no associated enum"))
     }

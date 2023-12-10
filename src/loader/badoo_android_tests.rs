@@ -18,22 +18,16 @@ use crate::protobuf::history::message_service::SealedValueOptional::*;
 
 use super::*;
 
-const RESOURCE_DIR: &str = "tinder-android";
-
-lazy_static! {
-    static ref LOADER: TinderAndroidDataLoader<MockHttpClient> = TinderAndroidDataLoader {
-        http_client: &HTTP_CLIENT
-    };
-}
+const RESOURCE_DIR: &str = "badoo-android";
+const LOADER: BadooAndroidDataLoader = BadooAndroidDataLoader;
 
 //
 // Tests
 //
 
 #[test]
-fn loading_2023_11() -> EmptyRes {
-    let (res, db_dir) = test_android::create_databases(RESOURCE_DIR, "2023-11", ".db", DB_FILENAME);
-    let _media_dir = TmpDir::new_at(db_dir.path.parent().unwrap().join(MEDIA_DIR));
+fn loading_2023_12() -> EmptyRes {
+    let (res, _db_dir) = test_android::create_databases(RESOURCE_DIR, "2023-12", "", DB_FILENAME);
 
     LOADER.looks_about_right(&res)?;
     let dao = LOADER.load(&res, &NoChooser)?;
@@ -44,7 +38,7 @@ fn loading_2023_11() -> EmptyRes {
 
     let member = User {
         ds_uuid: Some(ds_uuid.clone()),
-        id: 780327027359649707_i64,
+        id: 1234567890_i64,
         first_name_option: Some("Abcde".to_owned()),
         last_name_option: None,
         username_option: None,
@@ -62,11 +56,11 @@ fn loading_2023_11() -> EmptyRes {
             ds_uuid: Some(ds_uuid.clone()),
             id: member.id,
             name_option: Some("Abcde".to_owned()),
-            source_type: SourceType::TinderDb as i32,
+            source_type: SourceType::BadooDb as i32,
             tpe: ChatType::Personal as i32,
             img_path_option: None,
             member_ids: vec![myself.id, member.id],
-            msg_count: 2,
+            msg_count: 4,
             main_chat_id: None,
         });
 
@@ -75,17 +69,32 @@ fn loading_2023_11() -> EmptyRes {
 
         assert_eq!(msgs[0], Message {
             internal_id: 0,
-            source_id_option: Some(869569426176655274),
-            timestamp: 1699812983,
-            from_id: myself.id,
-            text: vec![RichText::make_plain("Sending you a text!".to_owned())],
-            searchable_string: "Sending you a text!".to_owned(),
+            source_id_option: Some(4313483375),
+            timestamp: 1687425601,
+            from_id: member.id,
+            text: vec![RichText::make_plain("Hello there!".to_owned())],
+            searchable_string: "Hello there!".to_owned(),
             typed: Some(MESSAGE_REGULAR_NO_CONTENT.clone()),
         });
         assert_eq!(msgs[1], Message {
             internal_id: 1,
-            source_id_option: Some(5405907581016140653),
-            timestamp: 1699813000,
+            source_id_option: Some(4313483378),
+            timestamp: 1687425658,
+            from_id: myself.id,
+            text: vec![RichText::make_plain("Reply there!".to_owned())],
+            searchable_string: "Reply there!".to_owned(),
+            typed: Some(Typed::Regular(MessageRegular {
+                edit_timestamp_option: None,
+                is_deleted: false,
+                forward_from_name_option: None,
+                reply_to_message_id_option: Some(4313483375),
+                content_option: None,
+            })),
+        });
+        assert_eq!(msgs[2], Message {
+            internal_id: 2,
+            source_id_option: Some(4313658961),
+            timestamp: 1690856116,
             from_id: member.id,
             text: vec![],
             searchable_string: "".to_owned(),
@@ -95,20 +104,24 @@ fn loading_2023_11() -> EmptyRes {
                 forward_from_name_option: None,
                 reply_to_message_id_option: None,
                 content_option: Some(Content {
-                    sealed_value_optional: Some(Sticker(ContentSticker {
-                        path_option: Some(format!("{RELATIVE_MEDIA_DIR}/848013095925873688.gif")),
-                        width: 542,
-                        height: 558,
-                        thumbnail_path_option: None,
-                        emoji_option: None,
+                    sealed_value_optional: Some(VoiceMsg(ContentVoiceMsg {
+                        path_option: None,
+                        mime_type: "".to_owned(),
+                        duration_sec_option: Some(23),
                     }))
                 }),
             })),
         });
+        assert_eq!(msgs[3], Message {
+            internal_id: 3,
+            source_id_option: Some(4313616080),
+            timestamp: 1692781351,
+            from_id: member.id,
+            text: vec![RichText::make_plain("Abcde reacted to your profile: 🤔".to_owned())],
+            searchable_string: "Abcde reacted to your profile: 🤔".to_owned(),
+            typed: Some(MESSAGE_REGULAR_NO_CONTENT.clone()),
+        });
     }
-
-    assert_eq!(HTTP_CLIENT.calls_copy(),
-               vec!["https://media.tenor.com/mYFQztB4EHoAAAAC/house-hugh-laurie.gif?width=271&height=279"]);
 
     Ok(())
 }

@@ -60,7 +60,8 @@ impl_enum_serialization!(SourceType, {
     TextImport  => "text_import",
     Telegram    => "telegram",
     WhatsappDb  => "whatsapp",
-    TinderDb    => "tinder"
+    TinderDb    => "tinder",
+    BadooDb     => "badoo"
 });
 
 impl_enum_serialization!(ChatType, {

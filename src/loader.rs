@@ -9,6 +9,7 @@ use itertools::{Either, Itertools};
 use crate::*;
 use crate::dao::ChatHistoryDao;
 use crate::dao::sqlite_dao::SqliteDao;
+use crate::loader::badoo_android::BadooAndroidDataLoader;
 use crate::loader::telegram::TelegramDataLoader;
 use crate::loader::tinder_android::TinderAndroidDataLoader;
 use crate::loader::whatsapp_android::WhatsAppAndroidDataLoader;
@@ -19,6 +20,7 @@ mod telegram;
 mod tinder_android;
 mod whatsapp_android;
 mod whatsapp_text;
+mod badoo_android;
 
 trait DataLoader {
     fn name(&self) -> &'static str;
@@ -65,9 +67,10 @@ impl Loader {
         Loader {
             loaders: vec![
                 Box::new(TelegramDataLoader),
-                Box::new(TinderAndroidDataLoader { http_client }),
                 Box::new(WhatsAppAndroidDataLoader),
                 Box::new(WhatsAppTextDataLoader),
+                Box::new(TinderAndroidDataLoader { http_client }),
+                Box::new(BadooAndroidDataLoader),
             ],
             myself_chooser,
         }
@@ -152,6 +155,12 @@ pub mod android {
         ) => {
             #[allow(dead_code)]
             const DB_FILENAME: &str = $db_filename;
+
+            const MEDIA_DIR: &str = "Media";
+            const MEDIA_DOWNLOADED_SUBDIR: &str = "_downloaded";
+
+            #[allow(dead_code)]
+            const RELATIVE_MEDIA_DIR: &str = concatcp!(MEDIA_DIR, "/", MEDIA_DOWNLOADED_SUBDIR);
 
             impl$(
                 <$(

@@ -9,6 +9,7 @@ use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 pub use anyhow::{anyhow, bail, Context};
+pub use std::error::Error as StdError;
 use chrono::Local;
 use hashers::fx_hash::FxHasher;
 use lazy_static::lazy_static;
@@ -137,8 +138,8 @@ pub fn list_all_files(p: &Path, recurse: bool) -> Result<Vec<PathBuf>> {
 
 /// Files are equal if they are equal byte-by-byte, or if they both don't exist
 pub fn files_are_equal(f1: &Path, f2: &Path) -> Result<bool> {
-    if !f1.exists() { return Ok(!f2.exists()) }
-    if !f2.exists() { return Ok(!f1.exists()) }
+    if !f1.exists() { return Ok(!f2.exists()); }
+    if !f2.exists() { return Ok(!f1.exists()); }
 
     let f1 = File::open(f1)?;
     let f2 = File::open(f2)?;
@@ -197,7 +198,7 @@ pub trait ToResult<T> {
     fn normalize_error(self) -> Result<T>;
 }
 
-impl<T> ToResult<T> for StdResult<T, Box<dyn std::error::Error + Send + Sync>> {
+impl<T> ToResult<T> for StdResult<T, Box<dyn StdError + Send + Sync>> {
     /// Unfortunately, anyhow::Error::from_boxed is private so we're losing information.
     fn normalize_error(self) -> Result<T> {
         self.map_err(|e| anyhow!("{}", e.as_ref()))
@@ -257,4 +258,8 @@ pub fn truncate_to(str: String, max_len: usize) -> String {
 
 pub fn transpose_option_result<T>(x: Option<Result<T>>) -> Result<Option<T>> {
     x.map_or(Ok(None), |v| v.map(Some))
+}
+
+pub fn transpose_option_std_result<T, E: StdError + Send + Sync + 'static>(x: Option<StdResult<T, E>>) -> Result<Option<T>> {
+    x.map_or(Ok(None), |v| Ok(v.map(Some)?))
 }

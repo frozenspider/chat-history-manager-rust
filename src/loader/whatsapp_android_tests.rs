@@ -85,7 +85,7 @@ fn vcards() -> EmptyRes {
 
 #[test]
 fn loading_2023_10() -> EmptyRes {
-    let (res, _db_dir) = test_android::create_databases(RESOURCE_DIR, "2023-10", DB_FILENAME);
+    let (res, _db_dir) = test_android::create_databases(RESOURCE_DIR, "2023-10", ".db", DB_FILENAME);
     LOADER.looks_about_right(&res)?;
 
     let dao = LOADER.load(&res, &NoChooser)?;

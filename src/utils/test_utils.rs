@@ -328,7 +328,10 @@ pub mod test_android {
 
     use super::*;
 
-    pub fn create_databases(name: &str, name_suffix: &str, db_filename: &str) -> (PathBuf, TmpDir) {
+    pub fn create_databases(name: &str,
+                            name_suffix: &str,
+                            target_db_ext_suffix: &str,
+                            db_filename: &str) -> (PathBuf, TmpDir) {
         let folder = resource(&format!("{}_{}", name, name_suffix));
         assert!(folder.exists());
 
@@ -346,7 +349,8 @@ pub mod test_android {
                 .collect_vec();
 
         for (table_name, file) in files.into_iter() {
-            let target_db_path = databases.path.join(format!("{}.db", table_name));
+            let target_db_path =
+                databases.path.join(format!("{table_name}{target_db_ext_suffix}"));
             log::info!("Creating table {}", table_name);
             let conn = Connection::open(target_db_path).unwrap();
             let sql = fs::read_to_string(&file).unwrap();

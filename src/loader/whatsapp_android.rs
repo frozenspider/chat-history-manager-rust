@@ -3,7 +3,6 @@ use std::collections::hash_map::Entry;
 use ical::VcardParser;
 
 use lazy_static::lazy_static;
-use log::warn;
 use regex::Regex;
 use rusqlite::{Connection, OptionalExtension, Row, Statement};
 
@@ -112,14 +111,14 @@ impl WhatsAppAndroidDataLoader {
         users.myself_id = Some(MYSELF_ID);
         assert!(!users.occupied_user_ids.contains(&MYSELF_ID));
 
-        let my_name_option = conn.query_row("SELECT value FROM props WHERE key = 'user_push_name'",
-                                            [], |r| r.get::<_, Option<String>>(0))
-            .optional().map(|o| o.flatten())?;
+        let my_name = conn.query_row("SELECT value FROM props WHERE key = 'user_push_name'",
+                                     [], |r| r.get::<_, Option<String>>(0))
+            .optional().map(|o| o.flatten())?.unwrap_or("Me".to_owned());
 
         users.id_to_user.insert(MYSELF_ID, User {
             ds_uuid: Some(ds_uuid.clone()),
             id: *MYSELF_ID,
-            first_name_option: my_name_option,
+            first_name_option: Some(my_name),
             last_name_option: None,
             username_option: None,
             phone_number_option: None,
@@ -524,7 +523,7 @@ fn parse_chats(conn: &Connection, ds_uuid: &PbUuid, users: &mut Users) -> Result
         while let Some(row) = call_rows.next()? {
             if chat_tpe == ChatType::PrivateGroup {
                 // TODO: Not sure how group chat calls work here
-                warn!("Group chat call found and skipped for chat {}!", name_or_unnamed(&chat.name_option));
+                log::warn!("Group chat call found and skipped for chat {}!", name_or_unnamed(&chat.name_option));
             }
             let from_id: UserId = match row.get(columns::call_logs::FROM_ME)? {
                 1 => myself_id,

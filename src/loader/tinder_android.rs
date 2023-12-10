@@ -19,10 +19,6 @@ pub struct TinderAndroidDataLoader<H: HttpClient + 'static> {
 
 android_sqlite_loader!(TinderAndroidDataLoader<H: HttpClient>, TinderDb, "Tinder", "tinder-3.db");
 
-const MEDIA_DIR: &str = "Media";
-const MEDIA_DOWNLOADED_SUBDIR: &str = "_downloaded";
-const RELATIVE_MEDIA_DIR: &str = concatcp!(MEDIA_DIR, "/", MEDIA_DOWNLOADED_SUBDIR);
-
 /// Using a first legal ID (i.e. "1") for myself
 const MYSELF_ID: UserId = UserId(UserId::INVALID.0 + 1);
 
@@ -48,7 +44,7 @@ impl<H: HttpClient + 'static> TinderAndroidDataLoader<H> {
         users.insert(MYSELF_KEY.to_owned(), User {
             ds_uuid: Some(ds_uuid.clone()),
             id: *MYSELF_ID,
-            first_name_option: None, // No way to know your own name, sadly
+            first_name_option: Some("Me".to_owned()), // No way to know your own name, sadly
             last_name_option: None,
             username_option: None,
             phone_number_option: None,

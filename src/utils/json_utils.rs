@@ -107,7 +107,7 @@ macro_rules! get_field {
 }
 #[macro_export]
 macro_rules! get_field_str {
-    ($v:expr, $path:expr, $txt:expr) => {as_str!(get_field!($v, $path, $txt), format!("{}.{}", $path, $txt))};
+    ($v:expr, $path:expr, $txt:expr) => {as_str!(get_field!($v, $path, $txt)?, format!("{}.{}", $path, $txt))};
 }
 
 #[macro_export]
