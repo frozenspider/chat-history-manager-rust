@@ -93,6 +93,7 @@ enum SourceType {
   SOURCE_TYPE_WHATSAPP_DB = 2;
   SOURCE_TYPE_TINDER_DB = 3;
   SOURCE_TYPE_BADOO_DB = 4;
+  SOURCE_TYPE_MRA = 5;
 }
 
 enum ChatType {
