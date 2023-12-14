@@ -51,6 +51,7 @@ impl DatasetRoot {
     }
 }
 
+#[repr(transparent)]
 #[derive(Deref, Clone, Copy, Debug, PartialEq, Eq, Hash, DeepSizeOf)]
 pub struct UserId(pub i64);
 
@@ -62,16 +63,20 @@ impl UserId {
     pub fn is_valid(&self) -> bool { self.0 > 0 }
 }
 
+#[repr(transparent)]
 #[derive(Deref, Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct ChatId(pub i64);
 
+#[repr(transparent)]
 #[derive(Deref, Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct MessageSourceId(pub i64);
 
+#[repr(transparent)]
 #[derive(Deref, Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct MessageInternalId(pub i64);
 
 /// Number of epoch seconds
+#[repr(transparent)]
 #[derive(Deref, Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Timestamp(pub i64);
 
@@ -426,6 +431,7 @@ impl ContentLocation {
 // Master/slave specific entities
 //
 
+#[repr(transparent)]
 #[derive(Deref, Copy, Clone, Debug, PartialEq, Eq)]
 pub struct MasterInternalId(pub i64);
 
@@ -433,6 +439,7 @@ impl MasterInternalId {
     pub fn generalize(&self) -> MessageInternalId { MessageInternalId(self.0) }
 }
 
+#[repr(transparent)]
 #[derive(Deref, Copy, Clone, Debug, PartialEq, Eq)]
 pub struct SlaveInternalId(pub i64);
 
@@ -445,6 +452,7 @@ pub trait WithTypedId {
     fn typed_id(&self) -> Self::Item;
 }
 
+#[repr(transparent)]
 #[derive(Deref, Clone, Debug)]
 pub struct MasterMessage(pub Message);
 
@@ -460,6 +468,7 @@ impl WithTypedId for MasterMessage {
     fn typed_id(&self) -> MasterInternalId { MasterInternalId(self.0.internal_id) }
 }
 
+#[repr(transparent)]
 #[derive(Deref, Clone, Debug)]
 pub struct SlaveMessage(pub Message);
 
