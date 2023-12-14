@@ -233,10 +233,10 @@ impl ShiftableChatHistoryDao for InMemoryDao {
         let timestamp_shift: i64 = (hours_shift * 60 * 60).into();
         for cwm in self.cwms.iter_mut() {
             for m in cwm.messages.iter_mut() {
-                m.timestamp = m.timestamp + timestamp_shift;
+                m.timestamp += timestamp_shift;
                 match m.typed_mut() {
                     Typed::Regular(mr) =>
-                        mr.edit_timestamp_option.iter_mut().for_each(|ts| *ts = *ts + timestamp_shift),
+                        mr.edit_timestamp_option.iter_mut().for_each(|ts| *ts += timestamp_shift),
                     Typed::Service(_) => { /* NOOP */ }
                 }
             }

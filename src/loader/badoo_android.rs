@@ -128,7 +128,7 @@ impl BadooAndroidDataLoader {
                     let parsed = simd_json::to_borrowed_value(&mut payload_bytes_vec)
                         .with_context(|| payload_json.clone())?;
                     let root_obj = as_object!(parsed, "root");
-                    let keys: HashSet<&str> = root_obj.keys().map(|s| *&s.as_ref()).collect();
+                    let keys: HashSet<&str> = root_obj.keys().map(|s| s.as_ref()).collect();
                     match row.get::<_, String>("payload_type")?.as_str() {
                         "REACTION" => {
                             require!(keys == HashSet::from(["photo_id", "photo_url", "photo_width", "photo_height",

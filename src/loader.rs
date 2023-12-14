@@ -129,7 +129,7 @@ fn hash_to_id(str: &str) -> i64 {
 fn first_line(path: &Path) -> Result<String> {
     let input = File::open(path)?;
     let buffered = BufReader::new(input);
-    Ok(buffered.lines().next().with_context(|| format!("File is empty"))??.trim().to_owned())
+    Ok(buffered.lines().next().context("File is empty")??.trim().to_owned())
 }
 
 // Android-specific helpers.

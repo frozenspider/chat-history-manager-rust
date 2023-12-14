@@ -938,7 +938,7 @@ impl MutableChatHistoryDao for SqliteDao {
             }
 
             let src_paths_parents: HashSet<_> = relative_paths.iter()
-                .filter_map(|relative| ds_root.to_absolute(&relative).parent().map(|p| p.to_path_buf()))
+                .filter_map(|relative| ds_root.to_absolute(relative).parent().map(|p| p.to_path_buf()))
                 .collect();
 
             // Remove all empty parent directories

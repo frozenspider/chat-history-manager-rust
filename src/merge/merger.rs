@@ -62,64 +62,64 @@ pub fn merge_datasets(
         // Actual logic
         let sqlite_dao_file = sqlite_dao_dir.join(SqliteDao::FILENAME);
         let mut new_dao = SqliteDao::create(&sqlite_dao_file)?;
-        let new_dataset = merge_inner(&mut new_dao,
-                                      master_dao, master_ds, master_users, master_cwds,
-                                      slave_dao, slave_ds, slave_users, slave_cwds,
-                                      user_merges, chat_merges)?;
+        let master = DaoMergeEntities { dao: master_dao, ds: master_ds, users: master_users, cwds: master_cwds };
+        let slave = DaoMergeEntities { dao: slave_dao, ds: slave_ds, users: slave_users, cwds: slave_cwds };
+        let new_dataset = merge_inner(&mut new_dao, master, slave, user_merges, chat_merges)?;
         Ok((new_dao, new_dataset))
     }, |_, t| log::info!("Datasets merged in {t} ms"))
 }
 
+struct DaoMergeEntities<'a> {
+    dao: &'a dyn ChatHistoryDao,
+    ds: &'a Dataset,
+    users: HashMap<UserId, User>,
+    cwds: HashMap<ChatId, ChatWithDetails>,
+}
+
 fn merge_inner(
     new_dao: &mut SqliteDao,
-    master_dao: &dyn ChatHistoryDao,
-    master_ds: &Dataset,
-    master_users: HashMap<UserId, User>,
-    master_cwds: HashMap<ChatId, ChatWithDetails>,
-    slave_dao: &dyn ChatHistoryDao,
-    slave_ds: &Dataset,
-    slave_users: HashMap<UserId, User>,
-    slave_cwds: HashMap<ChatId, ChatWithDetails>,
+    master: DaoMergeEntities,
+    slave: DaoMergeEntities,
     user_merges: Vec<UserMergeDecision>,
     chat_merges: Vec<ChatMergeDecision>,
 ) -> Result<Dataset> {
     let new_ds = Dataset {
         uuid: Some(PbUuid::random()),
-        alias: format!("{} (merged)", master_ds.alias),
+        alias: format!("{} (merged)", master.ds.alias),
     };
     let new_ds = new_dao.insert_dataset(new_ds)?;
 
-    let master_ds_root = master_dao.dataset_root(master_ds.uuid())?;
-    let slave_ds_root = slave_dao.dataset_root(slave_ds.uuid())?;
+    let master_ds_root = master.dao.dataset_root(master.ds.uuid())?;
+    let slave_ds_root = slave.dao.dataset_root(slave.ds.uuid())?;
 
     let chat_inserts = chat_merges.iter().filter_map(|cm| {
         match cm {
             ChatMergeDecision::Retain { master_chat_id } =>
-                Some((master_cwds[&master_chat_id].clone(), &master_ds_root, cm)),
+                Some((master.cwds[&master_chat_id].clone(), &master_ds_root, cm)),
             ChatMergeDecision::Add { slave_chat_id } =>
-                Some((slave_cwds[&slave_chat_id].clone(), &slave_ds_root, cm)),
+                Some((slave.cwds[&slave_chat_id].clone(), &slave_ds_root, cm)),
             ChatMergeDecision::DontAdd { .. } =>
                 None,
             ChatMergeDecision::Merge { chat_id, .. } =>
-                Some((slave_cwds[&chat_id].clone(), &slave_ds_root, cm)),
+                Some((slave.cwds[&chat_id].clone(), &slave_ds_root, cm)),
         }
     }).collect_vec();
 
     // Users
     let selected_chat_members: HashSet<i64> =
         chat_inserts.iter().flat_map(|(cwd, _, _)| cwd.chat.member_ids.clone()).collect();
-    let master_self = master_dao.myself(master_ds.uuid())?;
-    let slave_self = slave_dao.myself(slave_ds.uuid())?;
+    let master_self = master.dao.myself(master.ds.uuid())?;
+    let slave_self = slave.dao.myself(slave.ds.uuid())?;
     require!(master_self.id == slave_self.id, "Myself of merged datasets doesn't match!");
     for um in user_merges {
         let user_to_insert_option = match um {
-            UserMergeDecision::Retain(user_id) => Some(master_users[&user_id].clone()),
-            UserMergeDecision::MatchOrDontReplace(user_id) => Some(master_users[&user_id].clone()),
-            UserMergeDecision::Add(user_id) => Some(slave_users[&user_id].clone()),
+            UserMergeDecision::Retain(user_id) => Some(master.users[&user_id].clone()),
+            UserMergeDecision::MatchOrDontReplace(user_id) => Some(master.users[&user_id].clone()),
+            UserMergeDecision::Add(user_id) => Some(slave.users[&user_id].clone()),
             UserMergeDecision::DontAdd(user_id) if selected_chat_members.contains(&user_id.0) =>
                 bail!("Cannot skip user {} because it's used in a chat that wasn't skipped", user_id.0),
             UserMergeDecision::DontAdd(_) => None,
-            UserMergeDecision::Replace(user_id) => Some(slave_users[&user_id].clone()),
+            UserMergeDecision::Replace(user_id) => Some(slave.users[&user_id].clone()),
         };
         if let Some(mut user) = user_to_insert_option {
             user.ds_uuid = Some(new_ds.uuid().clone());
@@ -151,18 +151,18 @@ fn merge_inner(
 
         let mut new_chat = new_dao.insert_chat(cwd.chat.clone(), chat_ds_root)?;
 
-        macro_rules! master_cwd { () => { &master_cwds[&cwd.id()] }; }
-        macro_rules! slave_cwd { () =>  { &slave_cwds[&cwd.id()] }; }
+        macro_rules! master_cwd { () => { &master.cwds[&cwd.id()] }; }
+        macro_rules! slave_cwd { () =>  { &slave.cwds[&cwd.id()] }; }
 
         // Messages
         let mut msg_count = 0;
         match cm {
             ChatMergeDecision::Retain { .. } =>
-                msg_count += copy_all_messages(master_dao, master_cwd!(),
+                msg_count += copy_all_messages(master.dao, master_cwd!(),
                                                &master_ds_root, new_dao, &new_chat,
                                                &final_users)?,
             ChatMergeDecision::Add { .. } =>
-                msg_count += copy_all_messages(slave_dao, slave_cwd!(),
+                msg_count += copy_all_messages(slave.dao, slave_cwd!(),
                                                &slave_ds_root, new_dao, &new_chat,
                                                &final_users)?,
             ChatMergeDecision::DontAdd { .. } =>
@@ -184,11 +184,11 @@ fn merge_inner(
                             // to have missing content.
                             // We keep master messages unless slave has new content.
                             let master_msgs =
-                                master_dao.messages_slice(&master_cwd.chat,
+                                master.dao.messages_slice(&master_cwd.chat,
                                                           v.first_master_msg_id.generalize(),
                                                           v.last_master_msg_id.generalize())?;
                             let slave_msgs =
-                                slave_dao.messages_slice(&slave_cwd.chat,
+                                slave.dao.messages_slice(&slave_cwd.chat,
                                                          v.first_slave_msg_id.generalize(),
                                                          v.last_slave_msg_id.generalize())?;
                             assert!(master_msgs.len() == slave_msgs.len());
@@ -212,13 +212,13 @@ fn merge_inner(
                             data_grouped
                         }
                         MessagesMergeDecision::Retain(v) => {
-                            let msgs = master_dao.messages_slice(&master_cwd.chat,
+                            let msgs = master.dao.messages_slice(&master_cwd.chat,
                                                                  v.first_master_msg_id.generalize(),
                                                                  v.last_master_msg_id.generalize())?;
                             vec![(Source::Master, msgs)]
                         }
                         MessagesMergeDecision::Add(v) => {
-                            let msgs = slave_dao.messages_slice(&slave_cwd.chat,
+                            let msgs = slave.dao.messages_slice(&slave_cwd.chat,
                                                                 v.first_slave_msg_id.generalize(),
                                                                 v.last_slave_msg_id.generalize())?;
                             vec![(Source::Slave, msgs)]
@@ -230,7 +230,7 @@ fn merge_inner(
                         MessagesMergeDecision::Replace(v) => {
                             // Treat exactly as Add
                             // TODO: Should we analyze content and make sure nothing is lost?
-                            let msgs = slave_dao.messages_slice(&slave_cwd.chat,
+                            let msgs = slave.dao.messages_slice(&slave_cwd.chat,
                                                                 v.first_slave_msg_id.generalize(),
                                                                 v.last_slave_msg_id.generalize())?;
                             vec![(Source::Slave, msgs)]
@@ -238,7 +238,7 @@ fn merge_inner(
                         MessagesMergeDecision::DontReplace(v) => {
                             // Treat exactly as Retain
                             // TODO: Should we analyze content and make sure nothing is lost?
-                            let msgs = master_dao.messages_slice(&master_cwd.chat,
+                            let msgs = master.dao.messages_slice(&master_cwd.chat,
                                                                  v.first_master_msg_id.generalize(),
                                                                  v.last_master_msg_id.generalize())?;
                             vec![(Source::Master, msgs)]

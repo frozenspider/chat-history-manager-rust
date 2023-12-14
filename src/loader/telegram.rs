@@ -211,7 +211,7 @@ fn parse_telegram_file(path: &Path, ds: Dataset, myself_chooser: &dyn MyselfChoo
 
     // Sanity check: every chat member is supposed to have an associated user.
     for cwm in &chats_with_messages {
-        let chat = cwm.chat.as_ref().with_context(|| format!("Chat absent!"))?;
+        let chat = cwm.chat.as_ref().context("Chat absent!")?;
         for member_id in chat.member_ids() {
             if !users.id_to_user.contains_key(&member_id) {
                 return err!("No member with id={} found for chat with id={} '{}'",
@@ -736,8 +736,8 @@ fn parse_regular_message(message_json: &mut MessageJson,
             let (lat_str, lon_str) = {
                 let loc_info =
                     as_object!(message_json.field("location_information")?, json_path, "location_information");
-                (loc_info.get("latitude").with_context(|| format!("Latitude not found!"))?.to_string(),
-                 loc_info.get("longitude").with_context(|| format!("Longitude not found!"))?.to_string())
+                (loc_info.get("latitude").context("Latitude not found!")?.to_string(),
+                 loc_info.get("longitude").context("Longitude not found!")?.to_string())
             };
             Some(SealedValueOptional::Location(ContentLocation {
                 title_option: message_json.field_opt_str("place_name")?,

@@ -783,7 +783,7 @@ pub mod message {
             "underline" => RichText::make_underline(text_or_bail!()),
             "strikethrough" => RichText::make_strikethrough(text_or_bail!()),
             "link" => RichText::make_link(raw.text,
-                                          raw.href.with_context(|| format!("Link has no href!"))?,
+                                          raw.href.context("Link has no href!")?,
                                           raw.hidden.map(deserialize_bool).unwrap_or_default()),
             "prefmt_inline" => RichText::make_prefmt_inline(text_or_bail!()),
             "prefmt_block" => RichText::make_prefmt_block(text_or_bail!(), raw.language),
