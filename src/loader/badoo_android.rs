@@ -111,7 +111,7 @@ impl BadooAndroidDataLoader {
 
             let mut messages = vec![];
             while let Some(row) = rows.next()? {
-                let from_id = if row.get::<_, i8>("is_incoming")? == 1 { user_id.0 } else { *MYSELF_ID };
+                let from_id = if row.get::<_, i8>("is_incoming")? == 1 { *user_id } else { MYSELF_ID };
 
                 let source_id: i64 = row.get::<_, String>("id")?.parse()?;
                 let reply_to_message_id_option = row.get::<_, Option<String>>("reply_to_id")?;

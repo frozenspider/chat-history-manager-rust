@@ -591,7 +591,7 @@ pub mod message {
             raw.m.internal_id.expect("Message has no internal ID!"),
             raw.m.source_id,
             raw.m.time_sent,
-            raw.m.from_id,
+            UserId(raw.m.from_id),
             text,
             typed,
         ))

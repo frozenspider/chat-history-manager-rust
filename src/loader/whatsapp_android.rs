@@ -1,8 +1,9 @@
 use std::collections::{HashMap, HashSet};
 use std::collections::hash_map::Entry;
-use ical::VcardParser;
 
+use ical::VcardParser;
 use lazy_static::lazy_static;
+use num_traits::FromPrimitive;
 use regex::Regex;
 use rusqlite::{Connection, OptionalExtension, Row, Statement};
 
@@ -175,8 +176,8 @@ fn parse_users_from_stmt(stmt: &mut Statement, ds_uuid: &PbUuid, users: &mut Use
     Ok(())
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, ::prost::Enumeration)]
 #[repr(i32)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, FromPrimitive)]
 enum MessageType {
     Text = 0,
     Picture = 1,
@@ -206,8 +207,8 @@ enum MessageType {
     OneTimeVideo = 43,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, ::prost::Enumeration)]
 #[repr(i32)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, FromPrimitive)]
 enum SystemActionType {
     /// Details are in `message_system_photo_change`, but it's not very useful
     GroupPhotoChange = 6,
@@ -469,10 +470,9 @@ fn parse_chats(conn: &Connection, ds_uuid: &PbUuid, users: &mut Users) -> Result
 
             assert!(users.id_to_user.contains_key(&from_id));
             member_ids.insert(from_id);
-            let from_id = *from_id;
 
             let msg_tpe = row.get::<_, i32>(columns::message::TYPE)?;
-            let msg_tpe = MessageType::try_from(msg_tpe).with_context(|| format!("Unknown message type ID: {msg_tpe}"))?;
+            let msg_tpe = FromPrimitive::from_i32(msg_tpe).with_context(|| format!("Unknown message type ID: {msg_tpe}"))?;
 
             let (typed, text_column) = {
                 let result_option = match msg_tpe {
@@ -537,8 +537,6 @@ fn parse_chats(conn: &Connection, ds_uuid: &PbUuid, users: &mut Users) -> Result
             let source_id = hash_to_id(&key);
             msg_key_to_source_id.insert(key, source_id);
 
-            let from_id = *from_id;
-
             use message_service::SealedValueOptional;
             cwm.messages.push(Message::new(
                 *NO_INTERNAL_ID,
@@ -584,7 +582,7 @@ fn parse_system_message<'a>(
     let val: SealedValueOptional = match msg_tpe {
         MessageType::System => {
             let action_type = row.get::<_, i32>("action_type")?;
-            let action_type = SystemActionType::try_from(action_type)
+            let action_type = FromPrimitive::from_i32(action_type)
                 .with_context(|| format!("Unknown system message type ID: {action_type}"))?;
 
             let mut get_group_user = |users: &'a mut Users, column: &str| -> Result<&'a User> {

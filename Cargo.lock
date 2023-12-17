@@ -285,6 +285,8 @@ dependencies = [
  "lazy_static",
  "log",
  "mimalloc",
+ "num-derive",
+ "num-traits",
  "pretty_assertions",
  "prost",
  "rand",
@@ -297,6 +299,7 @@ dependencies = [
  "tonic-build",
  "tonic-reflection",
  "unicode-segmentation",
+ "utf16string",
  "uuid",
  "zip",
 ]
@@ -1277,10 +1280,21 @@ dependencies = [
 ]
 
 [[package]]
-name = "num-traits"
-version = "0.2.16"
+name = "num-derive"
+version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f30b0abd723be7e2ffca1272140fac1a2f084c77ec3e123c192b66af1ee9e6c2"
+checksum = "cfb77679af88f8b125209d354a202862602672222e7f2313fdd6dc349bad4712"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.39",
+]
+
+[[package]]
+name = "num-traits"
+version = "0.2.17"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "39e3200413f237f41ab11ad6d161bc7239c84dcb631773ccd7de3dfe4b5c267c"
 dependencies = [
  "autocfg",
 ]
@@ -2294,6 +2308,15 @@ dependencies = [
  "form_urlencoded",
  "idna",
  "percent-encoding",
+]
+
+[[package]]
+name = "utf16string"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0b62a1e85e12d5d712bf47a85f426b73d303e2d00a90de5f3004df3596e9d216"
+dependencies = [
+ "byteorder",
 ]
 
 [[package]]

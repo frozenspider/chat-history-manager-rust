@@ -545,7 +545,7 @@ fn parse_message(json_path: &str,
         short_user.id = UserId(*short_user.id - USER_ID_SHIFT);
     }
 
-    let from_id = *short_user.id;
+    let from_id = short_user.id;
 
     member_ids.insert(short_user.id);
 
