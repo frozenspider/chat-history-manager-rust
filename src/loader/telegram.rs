@@ -899,7 +899,7 @@ fn parse_service_message(message_json: &mut MessageJson,
 // Rich Text
 //
 
-fn parse_rich_text(json_path: &str, rt_json: &Value) -> Result<Vec<RichTextElement>> {
+fn parse_rich_text(json_path: &str, rt_json: &BorrowedValue) -> Result<Vec<RichTextElement>> {
     fn parse_plain_option(s: &str) -> Option<RichTextElement> {
         if s.is_empty() {
             None
@@ -910,18 +910,18 @@ fn parse_rich_text(json_path: &str, rt_json: &Value) -> Result<Vec<RichTextEleme
 
     // Empty plain strings are discarded
     let mut rtes = match rt_json {
-        Value::Static(StaticNode::Null) =>
+        BorrowedValue::Static(StaticNode::Null) =>
             Ok(vec![]),
-        Value::String(s) => {
+        BorrowedValue::String(s) => {
             Ok(parse_plain_option(s).map(|plain| vec![plain]).unwrap_or_default())
         }
-        Value::Array(arr) => {
+        BorrowedValue::Array(arr) => {
             let mut result: Vec<RichTextElement> = vec![];
             for json_el in arr {
                 let val: Option<RichTextElement> = match json_el {
-                    Value::String(s) =>
+                    BorrowedValue::String(s) =>
                         parse_plain_option(s),
-                    Value::Object(obj) =>
+                    BorrowedValue::Object(obj) =>
                         parse_rich_text_object(json_path, obj)?,
                     etc =>
                         return err!("Don't know how to parse RichText element '{:?}'", etc)
@@ -1087,16 +1087,15 @@ fn parse_user_id(bw: &BorrowedValue) -> Result<UserId> {
     let err_msg = format!("Don't know how to get user ID from '{}'", bw);
     let parse_str = |s: &str| -> Result<UserId> {
         match s {
-            s if s.starts_with("user") => Ok(UserId(s[4..].parse::<i64>()?)),
-            s if s.starts_with("channel") => Ok(UserId(s[7..].parse::<i64>()?)),
+            s if s.starts_with("user") => Ok(UserId(s[4..].parse()?)),
+            s if s.starts_with("channel") => Ok(UserId(s[7..].parse()?)),
             _ => bail!(err_msg.clone())
         }
     };
     match bw {
-        Value::Static(StaticNode::I64(i)) => Ok(UserId(*i)),
-        Value::Static(StaticNode::U64(u)) => Ok(UserId(*u as i64)),
-        Value::String(std::borrow::Cow::Borrowed(s)) => parse_str(s),
-        Value::String(std::borrow::Cow::Owned(s)) => parse_str(s),
+        BorrowedValue::Static(StaticNode::I64(i)) => Ok(UserId(*i)),
+        BorrowedValue::Static(StaticNode::U64(u)) => Ok(UserId(*u as i64)),
+        BorrowedValue::String(s) => parse_str(s),
         _ => bail!(err_msg)
     }
 }

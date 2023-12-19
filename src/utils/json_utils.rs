@@ -1,6 +1,8 @@
 // Reexporting simd_json for simplicity.
-pub use simd_json::{BorrowedValue, StaticNode, Value as JValue, ValueAccess, ValueType};
-pub use simd_json::borrowed::{Object, Value};
+
+pub use simd_json::BorrowedValue;
+pub use simd_json::borrowed::Object;
+pub use simd_json::prelude::*;
 
 use crate::*;
 
