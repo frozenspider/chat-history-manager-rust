@@ -13,35 +13,19 @@ option (scalapb.options) = {
   enum_strip_prefix: true
 };
 
-service HistoryParserService {
-  // Parse a history file and return it entirely
-  rpc Parse(ParseRequest) returns (ParseResponse) {}
+//
+// HistoryLoaderService
+//
+
+service HistoryLoaderService {
+  // Parse/open a history file and return its DAO handle
+  rpc Load(LoadRequest) returns (LoadResponse) {}
+  rpc GetLoadedFiles(Empty) returns (GetLoadedFilesResponse) {}
+  rpc Close(CloseRequest) returns (Empty) {}
+  rpc EnsureSame(EnsureSameRequest) returns (Empty) {}
 }
 
 message Empty {}
-
-message ParseRequest {
-  string path = 1;
-}
-
-message ParseResponse {
-  repeated ParseResponseData data = 1;
-}
-
-message ParseResponseData {
-  Dataset ds = 1 [(scalapb.field).no_box = true];
-
-  string root_file = 2;
-
-  int64 myself_id = 3;
-
-  // Includes myself
-  repeated User users = 4;
-
-  repeated ChatWithMessages cwms = 5;
-}
-
-
 
 service ChooseMyselfService {
   rpc ChooseMyself(ChooseMyselfRequest) returns (ChooseMyselfResponse) {}
@@ -438,16 +422,8 @@ message MessageServiceGroupCall {
 }
 
 //
-// HistoryLoaderService
+// HistoryDaoService
 //
-
-service HistoryLoaderService {
-  // Parse/open a history file and return its DAO handle
-  rpc Load(LoadRequest) returns (LoadResponse) {}
-  rpc GetLoadedFiles(Empty) returns (GetLoadedFilesResponse) {}
-  rpc Close(CloseRequest) returns (Empty) {}
-  rpc EnsureSame(EnsureSameRequest) returns (Empty) {}
-}
 
 service HistoryDaoService {
   rpc SaveAs(SaveAsRequest) returns (LoadedFile) {}

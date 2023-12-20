@@ -3,31 +3,9 @@ use std::sync::{Arc, Mutex};
 use tonic::Request;
 
 use crate::*;
-use crate::protobuf::history::history_parser_service_server::*;
 use crate::protobuf::history::history_loader_service_server::*;
 
 use super::*;
-
-#[tonic::async_trait]
-impl HistoryParserService for Arc<Mutex<ChatHistoryManagerServer>> {
-    async fn parse(&self, req: Request<ParseRequest>) -> TonicResult<ParseResponse> {
-        self.process_request(&req, move |req, self_lock| {
-            let path = Path::new(&req.path);
-            let dao = self_lock.loader.parse(path)?;
-            let data: Vec<_> = dao.datasets()?.into_iter().map(|ds| {
-                let ds_uuid = ds.uuid().clone();
-                Ok::<_, anyhow::Error>(ParseResponseData {
-                    ds: Some(ds),
-                    root_file: String::from(dao.dataset_root(&ds_uuid)?.to_str().unwrap()),
-                    myself_id: dao.myself(&ds_uuid)?.id,
-                    users: dao.users(&ds_uuid)?,
-                    cwms: dao.cwms[&ds_uuid].clone(),
-                })
-            }).try_collect()?;
-            Ok(ParseResponse { data })
-        })
-    }
-}
 
 #[tonic::async_trait]
 impl HistoryLoaderService for Arc<Mutex<ChatHistoryManagerServer>> {

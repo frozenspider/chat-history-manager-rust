@@ -21,7 +21,6 @@ use crate::protobuf::history::*;
 use crate::protobuf::history::choose_myself_service_client::ChooseMyselfServiceClient;
 use crate::protobuf::history::history_dao_service_server::HistoryDaoServiceServer;
 use crate::protobuf::history::history_loader_service_server::HistoryLoaderServiceServer;
-use crate::protobuf::history::history_parser_service_server::HistoryParserServiceServer;
 use crate::protobuf::history::merge_service_server::MergeServiceServer;
 
 mod myself_chooser;
@@ -133,7 +132,6 @@ pub async fn start_server<H: HttpClient>(port: u16, http_client: &'static H) -> 
         .unwrap();
 
     Server::builder()
-        .add_service(HistoryParserServiceServer::new(chm_server.clone()))
         .add_service(HistoryLoaderServiceServer::new(chm_server.clone()))
         .add_service(HistoryDaoServiceServer::new(chm_server.clone()))
         .add_service(MergeServiceServer::new(chm_server))
