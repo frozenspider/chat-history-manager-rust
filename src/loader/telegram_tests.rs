@@ -29,8 +29,8 @@ fn loading_2020_01() -> EmptyRes {
     let dao =
         LOADER.load(&res, &NoChooser)?;
 
-    let ds_uuid = &dao.ds_uuid;
-    let myself = dao.in_mem_myself();
+    let ds_uuid = &dao.ds_uuid();
+    let myself = dao.myself_single_ds();
     assert_eq!(myself, expected_myself(ds_uuid));
 
     let member = ShortUser::new(UserId(32507588), None);
@@ -74,15 +74,15 @@ fn loading_2020_01() -> EmptyRes {
         },
     ];
 
-    assert_eq!(dao.in_mem_users().len(), 9);
-    assert_eq!(dao.in_mem_users(), expected_users);
+    assert_eq!(dao.users_single_ds().len(), 9);
+    assert_eq!(dao.users_single_ds(), expected_users);
 
-    assert_eq!(dao.cwms.len(), 4);
+    assert_eq!(dao.cwms_single_ds().len(), 4);
 
     // "Ordered" chat
     {
-        let cwm = dao.cwms.iter()
-            .find(|&c| c.chat.unwrap_ref().id == 4321012345)
+        let cwm = dao.cwms_single_ds().into_iter()
+            .find(|c| c.chat.unwrap_ref().id == 4321012345)
             .unwrap();
         let chat = cwm.chat.unwrap_ref();
         assert_eq!(*chat, Chat {
@@ -131,8 +131,8 @@ fn loading_2021_05() -> EmptyRes {
     let dao =
         LOADER.load(&res, &NoChooser)?;
 
-    let ds_uuid = &dao.ds_uuid;
-    let myself = dao.in_mem_myself();
+    let ds_uuid = &dao.ds_uuid();
+    let myself = dao.myself_single_ds();
     assert_eq!(myself, expected_myself(ds_uuid));
 
     // We only know of myself + two users (other's IDs aren't known), as well as service "member".
@@ -154,16 +154,16 @@ fn loading_2021_05() -> EmptyRes {
         username_option: None,
         phone_number_option: Some("+7 999 333 44 55".to_owned()), // Taken from contacts list
     };
-    assert_eq!(dao.in_mem_users().len(), 4);
-    assert_eq!(dao.in_mem_users().iter().collect_vec(), vec![&myself, &service_member, &member1, &member2]);
+    assert_eq!(dao.users_single_ds().len(), 4);
+    assert_eq!(dao.users_single_ds().iter().collect_vec(), vec![&myself, &service_member, &member1, &member2]);
 
-    assert_eq!(dao.cwms.len(), 1);
+    assert_eq!(dao.cwms_single_ds().len(), 1);
 
     // Group chat
     {
         // Chat ID is shifted by 2^33
-        let cwm = dao.cwms.iter()
-            .find(|&c| c.chat.unwrap_ref().id == 123123123 + GROUP_CHAT_ID_SHIFT)
+        let cwm = dao.cwms_single_ds().into_iter()
+            .find(|c| c.chat.unwrap_ref().id == 123123123 + GROUP_CHAT_ID_SHIFT)
             .unwrap();
         let chat = cwm.chat.unwrap_ref();
         assert_eq!(*chat, Chat {
@@ -200,8 +200,8 @@ fn loading_2021_06_supergroup() -> EmptyRes {
     let dao =
         LOADER.load(&res, &NoChooser)?;
 
-    let ds_uuid = &dao.ds_uuid;
-    let myself = dao.in_mem_myself();
+    let ds_uuid = &dao.ds_uuid();
+    let myself = dao.myself_single_ds();
     assert_eq!(myself, expected_myself(ds_uuid));
 
     // We only know of myself + two users (other's IDs aren't known), as well as service "member".
@@ -213,18 +213,18 @@ fn loading_2021_06_supergroup() -> EmptyRes {
         ShortUser::new_name_str(UserId(444444444), "Vvvvvvvv Bbbbbbb").to_user(ds_uuid);
 
     {
-        let sorted_users = dao.in_mem_users().into_iter().sorted_by_key(|u| u.id).collect_vec();
+        let sorted_users = dao.users_single_ds().into_iter().sorted_by_key(|u| u.id).collect_vec();
         assert_eq!(sorted_users.len(), 4);
         assert_eq!(sorted_users.iter().collect_vec(), vec![&myself, &u222222222, &u333333333, &u444444444]);
     }
 
-    assert_eq!(dao.cwms.len(), 1);
+    assert_eq!(dao.cwms_single_ds().len(), 1);
 
     // Group chat
     {
         // Chat ID is shifted by 2^33
-        let cwm = dao.cwms.iter()
-            .find(|&c| c.chat.unwrap_ref().id == 1234567890 + GROUP_CHAT_ID_SHIFT)
+        let cwm = dao.cwms_single_ds().into_iter()
+            .find(|c| c.chat.unwrap_ref().id == 1234567890 + GROUP_CHAT_ID_SHIFT)
             .unwrap();
         let chat = cwm.chat.unwrap_ref();
         // All users are taken from chat itself
@@ -332,8 +332,8 @@ fn loading_2021_07() -> EmptyRes {
     let dao =
         LOADER.load(&res, &NoChooser)?;
 
-    let ds_uuid = &dao.ds_uuid;
-    let myself = dao.in_mem_myself();
+    let ds_uuid = &dao.ds_uuid();
+    let myself = dao.myself_single_ds();
     assert_eq!(myself, expected_myself(ds_uuid));
 
     let member = User {
@@ -344,16 +344,16 @@ fn loading_2021_07() -> EmptyRes {
         username_option: None,
         phone_number_option: Some("+7 999 333 44 55".to_owned()), // Taken from contacts list
     };
-    assert_eq!(dao.in_mem_users().len(), 2);
-    assert_eq!(dao.in_mem_users().iter().collect_vec(), vec![&myself, &member]);
+    assert_eq!(dao.users_single_ds().len(), 2);
+    assert_eq!(dao.users_single_ds().iter().collect_vec(), vec![&myself, &member]);
 
-    assert_eq!(dao.cwms.len(), 1);
+    assert_eq!(dao.cwms_single_ds().len(), 1);
 
     // Group chat
     {
         // Chat ID is shifted by 2^33
-        let cwm = dao.cwms.iter()
-            .find(|&c| c.chat.unwrap_ref().id == 123123123 + GROUP_CHAT_ID_SHIFT)
+        let cwm = dao.cwms_single_ds().into_iter()
+            .find(|c| c.chat.unwrap_ref().id == 123123123 + GROUP_CHAT_ID_SHIFT)
             .unwrap();
         let chat = cwm.chat.unwrap_ref();
         assert_eq!(*chat, Chat {
@@ -412,8 +412,8 @@ fn loading_2023_01() -> EmptyRes {
     // Parsing as UTC+5.
     let offset = FixedOffset::east_opt(5 * 3600).unwrap();
 
-    let ds_uuid = &dao.ds_uuid;
-    let myself = dao.in_mem_myself();
+    let ds_uuid = &dao.ds_uuid();
+    let myself = dao.myself_single_ds();
     assert_eq!(myself, expected_myself(ds_uuid));
 
     let member = User {
@@ -432,16 +432,16 @@ fn loading_2023_01() -> EmptyRes {
         username_option: None,
         phone_number_option: None,
     };
-    assert_eq!(dao.in_mem_users().len(), 3);
-    assert_eq!(dao.in_mem_users().iter().collect_vec(), vec![&myself, &member, &channel_user]);
+    assert_eq!(dao.users_single_ds().len(), 3);
+    assert_eq!(dao.users_single_ds().iter().collect_vec(), vec![&myself, &member, &channel_user]);
 
-    assert_eq!(dao.cwms.len(), 1);
+    assert_eq!(dao.cwms_single_ds().len(), 1);
 
     // Group chat
     {
         // Chat ID is shifted by 2^33
-        let cwm = dao.cwms.iter()
-            .find(|&c| c.chat.unwrap_ref().id == 123123123 + GROUP_CHAT_ID_SHIFT)
+        let cwm = dao.cwms_single_ds().into_iter()
+            .find(|c| c.chat.unwrap_ref().id == 123123123 + GROUP_CHAT_ID_SHIFT)
             .unwrap();
         let chat = cwm.chat.unwrap_ref();
         assert_eq!(*chat, Chat {
@@ -575,8 +575,8 @@ fn loading_2023_08() -> EmptyRes {
     let dao =
         LOADER.load(&res, &NoChooser)?;
 
-    let ds_uuid = &dao.ds_uuid;
-    let myself = dao.in_mem_myself();
+    let ds_uuid = &dao.ds_uuid();
+    let myself = dao.myself_single_ds();
     assert_eq!(myself, expected_myself(ds_uuid));
 
     let unnamed_user = User {
@@ -587,16 +587,16 @@ fn loading_2023_08() -> EmptyRes {
         username_option: None,
         phone_number_option: None,
     };
-    assert_eq!(dao.in_mem_users().len(), 2);
-    assert_eq!(dao.in_mem_users().iter().collect_vec(), vec![&myself, &unnamed_user]);
+    assert_eq!(dao.users_single_ds().len(), 2);
+    assert_eq!(dao.users_single_ds().iter().collect_vec(), vec![&myself, &unnamed_user]);
 
-    assert_eq!(dao.cwms.len(), 1);
+    assert_eq!(dao.cwms_single_ds().len(), 1);
 
     // Group chat
     {
         // Chat ID is shifted by 2^33
-        let cwm = dao.cwms.iter()
-            .find(|&c| c.chat.unwrap_ref().id == 123123123 + GROUP_CHAT_ID_SHIFT)
+        let cwm = dao.cwms_single_ds().into_iter()
+            .find(|c| c.chat.unwrap_ref().id == 123123123 + GROUP_CHAT_ID_SHIFT)
             .unwrap();
         let chat = cwm.chat.unwrap_ref();
         assert_eq!(*chat, Chat {
@@ -662,8 +662,8 @@ fn loading_2023_10_audio_video() -> EmptyRes {
     let dao =
         LOADER.load(&res, &NoChooser)?;
 
-    let ds_uuid = &dao.ds_uuid;
-    let myself = dao.in_mem_myself();
+    let ds_uuid = &dao.ds_uuid();
+    let myself = dao.myself_single_ds();
     assert_eq!(myself, expected_myself(ds_uuid));
 
     let unnamed_user = User {
@@ -674,16 +674,16 @@ fn loading_2023_10_audio_video() -> EmptyRes {
         username_option: None,
         phone_number_option: None,
     };
-    assert_eq!(dao.in_mem_users().len(), 2);
-    assert_eq!(dao.in_mem_users().iter().collect_vec(), vec![&myself, &unnamed_user]);
+    assert_eq!(dao.users_single_ds().len(), 2);
+    assert_eq!(dao.users_single_ds().iter().collect_vec(), vec![&myself, &unnamed_user]);
 
-    assert_eq!(dao.cwms.len(), 1);
+    assert_eq!(dao.cwms_single_ds().len(), 1);
 
     // Group chat
     {
         // Chat ID is shifted by 2^33
-        let cwm = dao.cwms.iter()
-            .find(|&c| c.chat.unwrap_ref().id == 123123123 + GROUP_CHAT_ID_SHIFT)
+        let cwm = dao.cwms_single_ds().into_iter()
+            .find(|c| c.chat.unwrap_ref().id == 123123123 + GROUP_CHAT_ID_SHIFT)
             .unwrap();
         let chat = cwm.chat.unwrap_ref();
         assert_eq!(*chat, Chat {
@@ -815,7 +815,7 @@ fn loading_2023_11_diff() -> EmptyRes {
     let dao =
         LOADER.load(&res, &NoChooser)?;
 
-    let cwm = &dao.cwms[0];
+    let cwm = &dao.cwms_single_ds()[0];
     let msgs = &cwm.messages;
     assert_eq!(msgs.len() as i32, 1);
 

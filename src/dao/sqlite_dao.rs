@@ -276,7 +276,7 @@ impl WithCache for SqliteDao {
             let myself = myselves.remove(0);
             users.insert(0, myself.clone());
             inner.users.insert(ds_uuid, UserCacheForDataset {
-                myself,
+                myself_id: myself.id(),
                 user_by_id: users.into_iter().map(|u| (u.id(), u)).collect(),
             });
         }

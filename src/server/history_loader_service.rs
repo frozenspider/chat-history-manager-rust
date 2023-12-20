@@ -14,13 +14,17 @@ impl HistoryParserService for Arc<Mutex<ChatHistoryManagerServer>> {
         self.process_request(&req, move |req, self_lock| {
             let path = Path::new(&req.path);
             let dao = self_lock.loader.parse(path)?;
-            Ok(ParseResponse {
-                ds: Some(dao.in_mem_dataset()),
-                root_file: String::from(dao.ds_root.to_str().unwrap()),
-                myself: Some(dao.in_mem_myself()),
-                users: (dao.in_mem_users()),
-                cwms: dao.cwms,
-            })
+            let data: Vec<_> = dao.datasets()?.into_iter().map(|ds| {
+                let ds_uuid = ds.uuid().clone();
+                Ok::<_, anyhow::Error>(ParseResponseData {
+                    ds: Some(ds),
+                    root_file: String::from(dao.dataset_root(&ds_uuid)?.to_str().unwrap()),
+                    myself_id: dao.myself(&ds_uuid)?.id,
+                    users: dao.users(&ds_uuid)?,
+                    cwms: dao.cwms[&ds_uuid].clone(),
+                })
+            }).try_collect()?;
+            Ok(ParseResponse { data })
         })
     }
 }

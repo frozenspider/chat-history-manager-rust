@@ -19,50 +19,50 @@ macro_rules! subtract_or_zero {
 #[derive(DeepSizeOf)]
 pub struct InMemoryDao {
     pub name: String,
-    pub ds_uuid: PbUuid,
-    pub ds_root: PathBuf,
-    pub cwms: Vec<ChatWithMessages>,
+    pub storage_path: PathBuf,
+    pub ds_roots: HashMap<PbUuid, DatasetRoot>,
+    pub cwms: HashMap<PbUuid, Vec<ChatWithMessages>>,
     cache: DaoCache,
 }
 
 impl InMemoryDao {
-    pub fn new(name: String,
-               dataset: Dataset,
-               ds_root: PathBuf,
-               myself: User,
-               users: Vec<User>,
-               cwms: Vec<ChatWithMessages>) -> Self {
-        let ds_root = ds_root.canonicalize().expect("Could not canonicalize dataset root");
-        let ds_uuid = dataset.uuid().clone();
-        assert!(users.iter().any(|u| *u == myself));
+    pub fn new_single(name: String,
+                      dataset: Dataset,
+                      ds_root: PathBuf,
+                      myself_id: UserId,
+                      users: Vec<User>,
+                      cwms: Vec<ChatWithMessages>) -> Self {
+        Self::new(name, ds_root.clone(), vec![(dataset, ds_root, (myself_id, users), cwms)])
+    }
 
+    pub fn new(name: String,
+               storage_path: PathBuf,
+               data: Vec<(Dataset, PathBuf, (UserId, Vec<User>), Vec<ChatWithMessages>)>) -> Self {
         let cache = DaoCache::new();
+        let mut ds_roots = HashMap::new();
+        let mut cwms_map = HashMap::new();
         let mut cache_inner = (*cache.inner).borrow_mut();
         cache_inner.initialized = true;
-        cache_inner.datasets = vec![dataset];
-        cache_inner.users.insert(ds_uuid.clone(), UserCacheForDataset {
-            myself,
-            user_by_id: users.into_iter().map(|u| (u.id(), u)).collect(),
-        });
+        for (ds, ds_root, (myself_id, users), cwms) in data {
+            assert!(users.iter().any(|u| u.id() == myself_id));
+            let ds_uuid = ds.uuid().clone();
+            cache_inner.datasets.push(ds);
+            cache_inner.users.insert(ds_uuid.clone(), UserCacheForDataset {
+                myself_id,
+                user_by_id: users.into_iter().map(|u| (u.id(), u)).collect(),
+            });
+            ds_roots.insert(ds_uuid.clone(),
+                            DatasetRoot(ds_root.canonicalize().expect("Could not canonicalize dataset root")));
+            cwms_map.insert(ds_uuid, cwms);
+        }
+
         drop(cache_inner);
 
-        InMemoryDao { name, ds_uuid, ds_root, cwms, cache }
+        InMemoryDao { name, storage_path, ds_roots, cwms: cwms_map, cache }
     }
 
-    pub fn in_mem_dataset(&self) -> Dataset {
-        self.get_cache().unwrap().datasets.first().unwrap().clone()
-    }
-
-    pub fn in_mem_myself(&self) -> User {
-        self.get_cache().unwrap().users[&self.ds_uuid].myself.clone()
-    }
-
-    pub fn in_mem_users(&self) -> Vec<User> {
-        self.users(&self.ds_uuid).unwrap()
-    }
-
-    fn chat_members(&self, chat: &Chat) -> Vec<User> {
-        let me = self.in_mem_myself();
+    fn chat_members(&self, chat: &Chat) -> Result<Vec<User>> {
+        let me = self.myself(chat.ds_uuid())?;
         let mut members = chat.member_ids.iter()
             .filter(|&id| *id != me.id)
             .map(|id| self.user_option(chat.ds_uuid(), *id)
@@ -71,23 +71,23 @@ impl InMemoryDao {
             .sorted_by_key(|u| u.id)
             .collect_vec();
         members.insert(0, me);
-        members
+        Ok(members)
     }
 
-    fn cwm_option(&self, id: i64) -> Option<&ChatWithMessages> {
-        self.cwms.iter()
+    fn cwm_option(&self, ds_uuid: &PbUuid, id: i64) -> Option<&ChatWithMessages> {
+        self.cwms[ds_uuid].iter()
             .find(|cwm| cwm.chat.iter().any(|c| c.id == id))
     }
 
-    fn messages_option(&self, chat_id: i64) -> Option<&Vec<Message>> {
-        self.cwm_option(chat_id).map(|cwm| &cwm.messages)
+    fn messages_option(&self, ds_uuid: &PbUuid, chat_id: i64) -> Option<&Vec<Message>> {
+        self.cwm_option(ds_uuid, chat_id).map(|cwm| &cwm.messages)
     }
 
     fn cwm_to_cwd(&self, cwm: &ChatWithMessages) -> ChatWithDetails {
         ChatWithDetails {
             chat: cwm.chat.clone().unwrap(),
             last_msg_option: cwm.messages.last().cloned(),
-            members: self.chat_members(cwm.chat.as_ref().unwrap()),
+            members: self.chat_members(cwm.chat.as_ref().unwrap()).unwrap(),
         }
     }
 }
@@ -106,25 +106,25 @@ impl ChatHistoryDao for InMemoryDao {
     }
 
     fn storage_path(&self) -> &Path {
-        &self.ds_root
+        &self.storage_path
     }
 
-    fn dataset_root(&self, _ds_uuid: &PbUuid) -> Result<DatasetRoot> {
-        Ok(DatasetRoot(self.storage_path().to_owned()))
+    fn dataset_root(&self, ds_uuid: &PbUuid) -> Result<DatasetRoot> {
+        Ok(self.ds_roots[ds_uuid].clone())
     }
 
-    fn chats_inner(&self, _ds_uuid: &PbUuid) -> Result<Vec<ChatWithDetails>> {
-        Ok(self.cwms.iter().map(|cwm| self.cwm_to_cwd(cwm)).collect_vec())
+    fn chats_inner(&self, ds_uuid: &PbUuid) -> Result<Vec<ChatWithDetails>> {
+        Ok(self.cwms[ds_uuid].iter().map(|cwm| self.cwm_to_cwd(cwm)).collect_vec())
     }
 
     fn scroll_messages(&self, chat: &Chat, offset: usize, limit: usize) -> Result<Vec<Message>> {
-        Ok(self.messages_option(chat.id)
+        Ok(self.messages_option(chat.ds_uuid(), chat.id)
             .map(|msgs| cutout(msgs, offset, offset + limit))
             .unwrap_or_default())
     }
 
     fn last_messages(&self, chat: &Chat, limit: usize) -> Result<Vec<Message>> {
-        Ok(self.messages_option(chat.id)
+        Ok(self.messages_option(chat.ds_uuid(), chat.id)
             .map(|msgs| {
                 cutout(msgs, subtract_or_zero!(msgs.len(), limit), msgs.len()).to_vec()
             })
@@ -132,7 +132,7 @@ impl ChatHistoryDao for InMemoryDao {
     }
 
     fn messages_before_impl(&self, chat: &Chat, msg_id: MessageInternalId, limit: usize) -> Result<Vec<Message>> {
-        let msgs = self.messages_option(chat.id).unwrap();
+        let msgs = self.messages_option(chat.ds_uuid(), chat.id).unwrap();
         let idx = msgs.iter().rposition(|m| m.internal_id == *msg_id);
         match idx {
             None => err!("Message not found!"),
@@ -143,7 +143,7 @@ impl ChatHistoryDao for InMemoryDao {
     }
 
     fn messages_after_impl(&self, chat: &Chat, msg_id: MessageInternalId, limit: usize) -> Result<Vec<Message>> {
-        let msgs = self.messages_option(chat.id).unwrap();
+        let msgs = self.messages_option(chat.ds_uuid(), chat.id).unwrap();
         let idx = msgs.iter().position(|m| m.internal_id == *msg_id);
         match idx {
             None => err!("Message not found!"),
@@ -155,7 +155,7 @@ impl ChatHistoryDao for InMemoryDao {
     }
 
     fn messages_slice(&self, chat: &Chat, msg1_id: MessageInternalId, msg2_id: MessageInternalId) -> Result<Vec<Message>> {
-        let msgs = self.messages_option(chat.id).unwrap();
+        let msgs = self.messages_option(chat.ds_uuid(), chat.id).unwrap();
         let idx1 = msgs.iter().position(|m| m.internal_id == *msg1_id);
         let idx2 = msgs.iter().rposition(|m| m.internal_id == *msg2_id);
         match (idx1, idx2) {
@@ -172,7 +172,7 @@ impl ChatHistoryDao for InMemoryDao {
                                         msg2_id: MessageInternalId,
                                         combined_limit: usize,
                                         abbreviated_limit: usize) -> Result<(Vec<Message>, usize, Vec<Message>)> {
-        let msgs = self.messages_option(chat.id).unwrap();
+        let msgs = self.messages_option(chat.ds_uuid(), chat.id).unwrap();
         let idx1 = msgs.iter().position(|m| m.internal_id == *msg1_id);
         let idx2 = msgs.iter().rposition(|m| m.internal_id == *msg2_id);
         match (idx1, idx2) {
@@ -198,7 +198,7 @@ impl ChatHistoryDao for InMemoryDao {
 
     fn messages_around_date(&self, chat: &Chat, date_ts: Timestamp, limit: usize)
                             -> Result<(Vec<Message>, Vec<Message>)> {
-        let messages = self.messages_option(chat.id).unwrap();
+        let messages = self.messages_option(chat.ds_uuid(), chat.id).unwrap();
         let idx = messages.iter().position(|m| m.timestamp >= *date_ts);
         Ok(match idx {
             None => {
@@ -214,7 +214,7 @@ impl ChatHistoryDao for InMemoryDao {
     }
 
     fn message_option(&self, chat: &Chat, source_id: MessageSourceId) -> Result<Option<Message>> {
-        Ok(self.messages_option(chat.id).unwrap()
+        Ok(self.messages_option(chat.ds_uuid(), chat.id).unwrap()
             .iter().find(|m| m.source_id_option.iter().contains(&*source_id)).cloned())
     }
 
@@ -229,9 +229,9 @@ impl ChatHistoryDao for InMemoryDao {
 
 impl ShiftableChatHistoryDao for InMemoryDao {
     fn shift_dataset_time(&mut self, uuid: PbUuid, hours_shift: i32) -> EmptyRes {
-        require!(uuid == self.ds_uuid, "Wrong dataset UUID!");
         let timestamp_shift: i64 = (hours_shift * 60 * 60).into();
-        for cwm in self.cwms.iter_mut() {
+        let cwms = self.cwms.get_mut(&uuid).unwrap();
+        for cwm in cwms.iter_mut() {
             for m in cwm.messages.iter_mut() {
                 m.timestamp += timestamp_shift;
                 match m.typed_mut() {

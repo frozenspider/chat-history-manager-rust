@@ -32,8 +32,8 @@ fn loading_2023_12() -> EmptyRes {
     LOADER.looks_about_right(&res)?;
     let dao = LOADER.load(&res, &NoChooser)?;
 
-    let ds_uuid = &dao.ds_uuid;
-    let myself = dao.in_mem_myself();
+    let ds_uuid = &dao.ds_uuid();
+    let myself = dao.myself_single_ds();
     assert_eq!(myself, expected_myself(ds_uuid));
 
     let member = User {
@@ -45,12 +45,12 @@ fn loading_2023_12() -> EmptyRes {
         phone_number_option: None,
     };
 
-    assert_eq!(dao.in_mem_users(), vec![myself.clone(), member.clone()]);
+    assert_eq!(dao.users_single_ds(), vec![myself.clone(), member.clone()]);
 
-    assert_eq!(dao.cwms.len(), 1);
+    assert_eq!(dao.cwms_single_ds().len(), 1);
 
     {
-        let cwm = &dao.cwms[0];
+        let cwm = dao.cwms_single_ds().remove(0);
         let chat = cwm.chat.unwrap_ref();
         assert_eq!(*chat, Chat {
             ds_uuid: Some(ds_uuid.clone()),

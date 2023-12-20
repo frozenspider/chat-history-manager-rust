@@ -209,11 +209,11 @@ pub mod android {
                 let cwms = this.parse_chats(&conn, ds_uuid, &mut users, &path)?;
 
                 let users = this.normalize_users(users, &cwms)?;
-                Ok(Box::new(InMemoryDao::new(
+                Ok(Box::new(InMemoryDao::new_single(
                     format!("{} ({})", $name, path_file_name(path)?),
                     ds,
                     path.to_path_buf(),
-                    users[0].clone(),
+                    users[0].id(),
                     users,
                     cwms,
                 )))

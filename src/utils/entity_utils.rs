@@ -28,7 +28,8 @@ impl PbUuid {
     pub fn random() -> Self { PbUuid { value: Uuid::new_v4().to_string() } }
 }
 
-#[derive(Deref, Debug, Clone, PartialEq, Eq)]
+#[repr(transparent)]
+#[derive(Deref, Debug, Clone, PartialEq, Eq, DeepSizeOf)]
 pub struct DatasetRoot(pub PathBuf);
 
 impl DatasetRoot {

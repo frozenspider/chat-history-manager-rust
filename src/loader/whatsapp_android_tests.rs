@@ -90,8 +90,8 @@ fn loading_2023_10() -> EmptyRes {
 
     let dao = LOADER.load(&res, &NoChooser)?;
 
-    let ds_uuid = &dao.ds_uuid;
-    let myself = dao.in_mem_myself();
+    let ds_uuid = &dao.ds_uuid();
+    let myself = dao.myself_single_ds();
     assert_eq!(myself, expected_myself(ds_uuid));
 
     let member = User {
@@ -103,12 +103,12 @@ fn loading_2023_10() -> EmptyRes {
         phone_number_option: Some("+11111".to_owned()),
     };
 
-    assert_eq!(dao.in_mem_users(), vec![myself.clone(), member.clone()]);
+    assert_eq!(dao.users_single_ds(), vec![myself.clone(), member.clone()]);
 
-    assert_eq!(dao.cwms.len(), 2);
+    assert_eq!(dao.cwms_single_ds().len(), 2);
 
     {
-        let cwm = dao.cwms.iter().find(|cwm| cwm.chat.unwrap_ref().tpe == ChatType::PrivateGroup as i32).unwrap();
+        let cwm = dao.cwms_single_ds().into_iter().find(|cwm| cwm.chat.unwrap_ref().tpe == ChatType::PrivateGroup as i32).unwrap();
         let chat = cwm.chat.unwrap_ref();
         assert_eq!(*chat, Chat {
             ds_uuid: Some(ds_uuid.clone()),
@@ -163,7 +163,7 @@ fn loading_2023_10() -> EmptyRes {
     }
 
     {
-        let cwm = dao.cwms.iter().find(|cwm| cwm.chat.unwrap_ref().tpe == ChatType::Personal as i32).unwrap();
+        let cwm = dao.cwms_single_ds().into_iter().find(|cwm| cwm.chat.unwrap_ref().tpe == ChatType::Personal as i32).unwrap();
         let chat = cwm.chat.unwrap_ref();
         assert_eq!(*chat, Chat {
             ds_uuid: Some(ds_uuid.clone()),

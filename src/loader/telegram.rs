@@ -226,11 +226,11 @@ fn parse_telegram_file(path: &Path, ds: Dataset, myself_chooser: &dyn MyselfChoo
     users.sort_by_key(|u| if u.id == myself.id { *UserId::MIN } else { u.id });
 
     let parent_name = path_file_name(path.parent().unwrap())?;
-    Ok(Box::new(InMemoryDao::new(
+    Ok(Box::new(InMemoryDao::new_single(
         format!("Telegram ({})", parent_name),
         ds,
         path.parent().unwrap().to_path_buf(),
-        myself,
+        myself.id(),
         users,
         chats_with_messages,
     )))

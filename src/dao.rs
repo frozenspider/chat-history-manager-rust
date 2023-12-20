@@ -57,7 +57,9 @@ pub trait ChatHistoryDao: WithCache + Send {
     fn dataset_root(&self, ds_uuid: &PbUuid) -> Result<DatasetRoot>;
 
     fn myself(&self, ds_uuid: &PbUuid) -> Result<User> {
-        Ok(self.get_cache()?.users[ds_uuid].myself.clone())
+        let cache = self.get_cache()?;
+        let users_cache = &cache.users[ds_uuid];
+        Ok(users_cache.user_by_id[&users_cache.myself_id].clone())
     }
 
     /** Contains myself as the first element, other users are sorted by ID. Method is expected to be fast. */
@@ -70,9 +72,9 @@ pub trait ChatHistoryDao: WithCache + Send {
     /** Returns all users, as well as myself ID. Method is expected to be fast. */
     fn users_inner(&self, ds_uuid: &PbUuid) -> Result<(Vec<User>, UserId)> {
         let cache = self.get_cache()?;
-        let users_cache = cache.users.get(ds_uuid).context("Dataset has no users!")?;
+        let users_cache = &cache.users[ds_uuid];
         let users = users_cache.user_by_id.values().cloned().collect_vec();
-        Ok((users, UserId(users_cache.myself.id)))
+        Ok((users, users_cache.myself_id))
     }
 
     fn user_option(&self, ds_uuid: &PbUuid, id: i64) -> Result<Option<User>> {
@@ -214,7 +216,7 @@ type UserCache = HashMap<PbUuid, UserCacheForDataset>;
 
 #[derive(DeepSizeOf)]
 pub struct UserCacheForDataset {
-    pub myself: User,
+    pub myself_id: UserId,
     pub user_by_id: HashMap<UserId, User>,
 }
 

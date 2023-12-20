@@ -218,7 +218,7 @@ pub mod chat {
             )
             .try_collect::<_, Vec<_>, _>()?
             .into_iter()
-            .sorted_by_key(|u| if u.id == cache.myself.id { i64::MIN } else { u.id })
+            .sorted_by_key(|u| if u.id() == cache.myself_id { i64::MIN } else { u.id })
             .collect_vec())
     }
 }

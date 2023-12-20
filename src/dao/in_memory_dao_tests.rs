@@ -9,9 +9,11 @@ fn basics() -> EmptyRes {
     let dao_holder = create_specific_dao();
     let dao = dao_holder.dao;
     assert_eq!(dao.name(), &dao.name);
-    assert_eq!(dao.storage_path(), &dao.ds_root);
-    assert_eq!(dao.datasets()?.iter().collect_vec(), vec![&dao.in_mem_dataset()]);
+    assert_eq!(dao.storage_path(), dao.storage_path);
+    assert_eq!(dao.datasets()?.iter().collect_vec(), vec![&dao.dataset()]);
     let ds_uuid = dao.datasets()?.remove(0).uuid.unwrap();
+
+    assert_eq!(dao.dataset_root(&ds_uuid)?, dao.ds_roots[&ds_uuid]);
 
     let users = dao.users(&ds_uuid)?;
     assert_eq!(users.len(), 2);
@@ -20,7 +22,7 @@ fn basics() -> EmptyRes {
     assert_eq!(dao.chats(&ds_uuid)?.len(), 1);
 
     let cwd = dao.chats(&ds_uuid)?.remove(0);
-    assert_eq!(cwd.last_msg_option.as_ref(), dao.cwms[0].messages.last());
+    assert_eq!(cwd.last_msg_option.as_ref(), dao.cwms[&ds_uuid][0].messages.last());
     assert_eq!(cwd.members, users);
     Ok(())
 }
@@ -31,7 +33,7 @@ fn messages_first_last_scroll() -> EmptyRes {
     let dao = dao_holder.dao;
     let ds_uuid = dao.datasets()?.remove(0).uuid.unwrap();
     let chat = dao.chats(&ds_uuid)?.remove(0).chat;
-    let msgs = &dao.cwms[0].messages;
+    let msgs = &dao.cwms[&ds_uuid][0].messages;
     let len = msgs.len();
 
     assert_eq!(dao.first_messages(&chat, 1)?, msgs.smart_slice(..=0));
@@ -64,7 +66,7 @@ fn messages_befoer_after_slice() -> EmptyRes {
     let dao = dao_holder.dao;
     let ds_uuid = dao.datasets()?.remove(0).uuid.unwrap();
     let chat = dao.chats(&ds_uuid)?.remove(0).chat;
-    let msgs = &dao.cwms[0].messages;
+    let msgs = &dao.cwms[&ds_uuid][0].messages;
     let len = msgs.len();
 
     assert_eq!(dao.messages_after(&chat, msgs[0].internal_id(), 1)?, msgs.smart_slice(1..=1));
@@ -126,7 +128,7 @@ fn messages_around() -> EmptyRes {
     let dao = dao_holder.dao;
     let ds_uuid = dao.datasets()?.remove(0).uuid.unwrap();
     let chat = dao.chats(&ds_uuid)?.remove(0).chat;
-    let msgs = &dao.cwms[0].messages;
+    let msgs = &dao.cwms[&ds_uuid][0].messages;
     let len = msgs.len();
 
     let none_vec = vec![];

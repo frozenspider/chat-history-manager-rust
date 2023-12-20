@@ -244,9 +244,16 @@ pub fn create_dao(
             amend_messages(&ds_root, m);
         }
     }
-    let myself = users.first().unwrap().clone();
+    let myself_id = users.first().unwrap().id();
     InMemoryDaoHolder {
-        dao: Box::new(InMemoryDao::new(format!("Test Dao {name_suffix}"), ds, ds_root.0, myself, users, cwms)),
+        dao: Box::new(InMemoryDao::new_single(
+            format!("Test Dao {name_suffix}"),
+            ds,
+            ds_root.0,
+            myself_id,
+            users,
+            cwms,
+        )),
         tmp_dir: tmp_dir,
     }
 }
@@ -371,6 +378,29 @@ pub trait ExtOption<T> {
 
 impl<T> ExtOption<T> for Option<T> {
     fn unwrap_ref(&self) -> &T { self.as_ref().unwrap() }
+}
+
+/// Since InMemoryDao is usually used to store just one dataset, test helpers are in order.
+impl InMemoryDao {
+    pub fn ds_uuid(&self) -> PbUuid {
+        self.dataset().uuid().clone()
+    }
+
+    pub fn dataset(&self) -> Dataset {
+        self.datasets().unwrap().first().unwrap().clone()
+    }
+
+    pub fn myself_single_ds(&self) -> User {
+        self.myself(&self.ds_uuid()).unwrap()
+    }
+
+    pub fn users_single_ds(&self) -> Vec<User> {
+        self.users(&self.ds_uuid()).unwrap()
+    }
+
+    pub fn cwms_single_ds(&self) -> Vec<ChatWithMessages> {
+        self.cwms[&self.ds_uuid()].clone()
+    }
 }
 
 pub struct InMemoryDaoHolder {

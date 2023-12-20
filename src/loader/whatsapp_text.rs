@@ -71,11 +71,11 @@ fn parse_whatsapp_text_file(path: &Path, ds: Dataset) -> Result<Box<InMemoryDao>
     }];
 
     let parent_name = path_file_name(path.parent().unwrap())?;
-    Ok(Box::new(InMemoryDao::new(
+    Ok(Box::new(InMemoryDao::new_single(
         format!("WhatsApp ({})", parent_name),
         ds,
         path.parent().unwrap().to_path_buf(),
-        myself.clone(),
+        myself.id(),
         vec![myself, other],
         cwms,
     )))
