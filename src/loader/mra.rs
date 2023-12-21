@@ -208,7 +208,7 @@ fn load_messages<'a>(
 
             // TODO: RTF messages?
 
-            let mra_msg = MraMessage { offset: header_offset, header, text, author, payload };
+            let mra_msg = MraMessage { offset: header_offset, header, text, author, payload_offset, payload };
             msgs.push(mra_msg);
 
             msg_id_option = u32_ptr_to_option(header.prev_id);
@@ -356,7 +356,9 @@ fn convert<'a>(
                 }
                 MraMessageType::Call |
                 MraMessageType::VideoCall => {
-                    // FIXME
+                    let payload = mra_msg.payload;
+                    let payload = validate_skip_bytes(payload, mra_msg.text.as_bytes())?;
+
                     (vec![RichText::make_plain("<Video/Call>".to_owned())],
                      message::Typed::Regular(Default::default()))
                 }
@@ -393,9 +395,34 @@ fn convert<'a>(
                      message::Typed::Regular(Default::default()))
                 }
                 MraMessageType::LocationChange => {
-                    // FIXME
-                    (vec![RichText::make_plain("<LocationChange>".to_owned())],
-                     message::Typed::Regular(Default::default()))
+                    // Payload format: <name_len_u32><name><lat_len_u32><lat><lon_len_u32><lon><...>
+                    let payload = mra_msg.payload;
+                    // We observe that location name is exactly the same as the message text
+                    let payload = validate_skip_bytes(payload, mra_msg.text.as_bytes())?;
+                    // Lattitude
+                    let lat_len = read_u32_le(payload, 0) as usize;
+                    let payload = &payload[4..];
+                    let lat_str = String::from_utf8(payload[..lat_len].to_vec())?;
+                    let payload = &payload[lat_len..];
+                    // Longitude
+                    let lon_len = read_u32_le(payload, 0) as usize;
+                    let payload = &payload[4..];
+                    let lon_str = String::from_utf8(payload[..lon_len].to_vec())?;
+
+                    let location = ContentLocation {
+                        title_option: None,
+                        address_option: Some(mra_msg.text.to_utf8()),
+                        lat_str: lat_str,
+                        lon_str: lon_str,
+                        duration_sec_option: None,
+                    };
+                    (vec![RichText::make_plain("(Location changed)".to_owned())],
+                     message::Typed::Regular(MessageRegular {
+                         content_option: Some(Content {
+                             sealed_value_optional: Some(SealedValueOptional::Location(location))
+                         }),
+                         ..Default::default()
+                     }))
                 }
             };
 
@@ -522,6 +549,7 @@ struct MraMessage<'a> {
     header: &'a MraMessageHeader,
     text: &'a WStr<LE>,
     author: &'a WStr<LE>,
+    payload_offset: usize,
     /// Exact interpretation depends on the message type
     payload: &'a [u8],
 }
@@ -540,6 +568,7 @@ impl Debug for MraMessage<'_> {
         };
         formatter.field("author", &self.author.to_utf8());
         formatter.field("text", &self.text.to_utf8());
+        formatter.field("payload_offset", &format!("{:#010x}", self.payload_offset));
         formatter.field("payload", &bytes_to_pretty_string(self.payload, usize::MAX));
         formatter.finish()
     }
@@ -593,6 +622,18 @@ fn read_4_bytes(bytes: &[u8], shift: usize) -> [u8; 4] {
     bytes[shift..(shift + 4)].try_into().unwrap()
 }
 
+/// In the next <N_u32><...N bytes...> validate that N bytes correspond to the expected bytes provided
+fn validate_skip_bytes<'a>(payload: &'a [u8], expected_bytes: &[u8]) -> Result<&'a [u8]> {
+    let len = read_u32_le(payload, 0) as usize;
+    require!(len == expected_bytes.len(),
+             "Unexpected message payload format!");
+    let payload = &payload[4..];
+    let (actual, rest) = payload.split_at(len);
+    require!(actual == expected_bytes,
+             "Unexpected message payload format!");
+    Ok(rest)
+}
+
 fn u32_ptr_to_option(int: u32) -> Option<u32> {
     match int {
         0 => None,
@@ -621,6 +662,16 @@ fn find_positions<T: PartialEq>(source: &[T], to_find: &[T]) -> Vec<usize> {
 
 fn find_first_position<T: PartialEq>(source: &[T], to_find: &[T]) -> Option<usize> {
     inner_find_positions_of(source, to_find, true).first().cloned()
+}
+
+fn get_null_terminated_utf8_slice(bs: &[u8]) -> Result<&[u8]> {
+    static NULL_UTF8: u8 = 0x00;
+
+    let null_term_idx = bs.iter()
+        .position(|&bs| bs == NULL_UTF8)
+        .context("Null terminator not found!")?;
+
+    Ok(&bs[..null_term_idx])
 }
 
 fn get_null_terminated_utf16le_slice(bs: &[u8]) -> Result<&[u8]> {
