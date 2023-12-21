@@ -282,9 +282,10 @@ fn convert<'a>(
 
         let mut internal_id = 0;
 
-        let mut msgs = vec![];
+        let mut msgs: Vec<Message> = vec![];
         let mut user_nickname_set = user.username_option.is_some();
         let mut user_name_set = user.first_name_option.is_some();
+        let mut ongoing_call_msg_id = None;
         for mra_msg in conv_w_msgs.msgs.iter() {
             let timestamp = filetime_to_timestamp(mra_msg.header.time);
 
@@ -316,14 +317,16 @@ fn convert<'a>(
             let tpe = mra_msg.header.get_tpe()?;
 
             let text = mra_msg.text.to_utf8();
-            use crate::protobuf::history::content::SealedValueOptional;
+            use crate::protobuf::history::message::Typed;
+            use crate::protobuf::history::content::SealedValueOptional as ContentSvo;
+            use crate::protobuf::history::message_service::SealedValueOptional as ServiceSvo;
             let (text, typed) = match tpe {
                 MraMessageType::AuthorizationRequest |
                 MraMessageType::RegularMaybeUnauthorized |
                 MraMessageType::Regular |
                 MraMessageType::Sms => {
                     (vec![RichText::make_plain(text)],
-                     message::Typed::Regular(Default::default()))
+                     Typed::Regular(Default::default()))
                 }
                 MraMessageType::FileTransfer => {
                     // We can get file names from the outgoing messages.
@@ -341,10 +344,10 @@ fn convert<'a>(
                     } else {
                         None
                     };
-                    (vec![RichText::make_plain("<FileTransfer>".to_owned())],
-                     message::Typed::Regular(MessageRegular {
+                    (vec![],
+                     Typed::Regular(MessageRegular {
                          content_option: Some(Content {
-                             sealed_value_optional: Some(SealedValueOptional::File(ContentFile {
+                             sealed_value_optional: Some(ContentSvo::File(ContentFile {
                                  path_option: None,
                                  file_name_option,
                                  mime_type_option: None,
@@ -356,43 +359,107 @@ fn convert<'a>(
                 }
                 MraMessageType::Call |
                 MraMessageType::VideoCall => {
+                    // Payload format: <text_len_u32><text>
+                    // It does not carry call information per se.
                     let payload = mra_msg.payload;
                     let payload = validate_skip_bytes(payload, mra_msg.text.as_bytes())?;
+                    require!(payload.is_empty(), "Unexpected {:?} message payload format!", tpe);
 
-                    (vec![RichText::make_plain("<Video/Call>".to_owned())],
-                     message::Typed::Regular(Default::default()))
+                    let text = mra_msg.text.to_utf8();
+
+                    const BEGIN_CONNECTING: &str = "Устанавливается соединение...";
+                    const BEGIN_I_CALL: &str = "Звонок от вашего собеседника";
+                    const BEGIN_O_CALL: &str = "Вы звоните собеседнику. Ожидание ответа...";
+                    const BEGIN_STARTED: &str = "Начался разговор";
+
+                    const END_HANG: &str = "Звонок завершен";
+                    const END_VHANG: &str = "Видеозвонок завершен";
+                    const END_CONN_FAILED: &str = "Не удалось установить соединение. Попробуйте позже.";
+                    const END_I_CANCELLED: &str = "Вы отменили звонок";
+                    const END_I_VCANCELLED: &str = "Вы отменили видеозвонок";
+                    const END_O_CANCELLED: &str = "Собеседник отменил звонок";
+                    const END_O_VCANCELLED: &str = "Собеседник отменил видеозвонок";
+
+                    // MRA is not very rigid in propagating all the statuses.
+                    match text.as_str() {
+                        BEGIN_CONNECTING | BEGIN_I_CALL | BEGIN_O_CALL | BEGIN_STARTED => {
+                            if ongoing_call_msg_id.is_some_and(|id| internal_id - id <= 5) {
+                                // If call is already (recently) marked, do nothing
+                                continue;
+                            } else {
+                                // Save call ID to later amend with duration and status.
+                                ongoing_call_msg_id = Some(internal_id);
+                            }
+                        }
+                        END_HANG | END_VHANG |
+                        END_CONN_FAILED |
+                        END_I_CANCELLED | END_I_VCANCELLED |
+                        END_O_CANCELLED | END_O_VCANCELLED => {
+                            if ongoing_call_msg_id.is_some_and(|id| internal_id - id <= 50) {
+                                let msg_id = ongoing_call_msg_id.unwrap();
+                                let msg = msgs.iter_mut().rfind(|m| m.internal_id == msg_id).unwrap();
+                                let start_time = msg.timestamp;
+                                let discard_reason_option = match text.as_str() {
+                                    END_HANG | END_VHANG => None,
+                                    END_CONN_FAILED => Some("Failed to connect"),
+                                    END_I_CANCELLED | END_I_VCANCELLED => Some("Declined by you"),
+                                    END_O_CANCELLED | END_O_VCANCELLED => Some("Declined by user"),
+                                    _ => unreachable!()
+                                };
+                                match msg.typed_mut() {
+                                    Typed::Service(MessageService { sealed_value_optional: Some(ServiceSvo::PhoneCall(call)), .. }) => {
+                                        call.duration_sec_option = Some((timestamp - start_time) as i32);
+                                        call.discard_reason_option = discard_reason_option.map(|s| s.to_owned());
+                                    }
+                                    etc => bail!("Unexpected ongoing call type: {etc:?}")
+                                };
+                                ongoing_call_msg_id = None;
+                            }
+                            // Either way, this message itself isn't supposed to have a separate entry.
+                            continue;
+                        }
+                        etc => bail!("Unrecognized call message: {etc}"),
+                    }
+
+                    (vec![],
+                     Typed::Service(MessageService {
+                         sealed_value_optional: Some(ServiceSvo::PhoneCall(MessageServicePhoneCall {
+                             duration_sec_option: None,
+                             discard_reason_option: None,
+                         }))
+                     }))
                 }
                 MraMessageType::BirthdayReminder => {
                     // FIXME
                     (vec![RichText::make_plain("<BirthdayReminder>".to_owned())],
-                     message::Typed::Regular(Default::default()))
+                     Typed::Regular(Default::default()))
                 }
                 MraMessageType::Cartoon => {
                     // FIXME
                     (vec![RichText::make_plain("<Cartoon>".to_owned())],
-                     message::Typed::Regular(Default::default()))
+                     Typed::Regular(Default::default()))
                 }
                 MraMessageType::ConferenceUsersChange => {
                     // FIXME
                     (vec![RichText::make_plain("<ConferenceUsersChange>".to_owned())],
-                     message::Typed::Regular(Default::default()))
+                     Typed::Regular(Default::default()))
                 }
                 MraMessageType::MicroblogRecordType1 |
                 MraMessageType::MicroblogRecordType2 => {
                     // FIXME
                     (vec![RichText::make_plain("<MicroblogRecord>".to_owned())],
-                     message::Typed::Regular(Default::default()))
+                     Typed::Regular(Default::default()))
                 }
                 MraMessageType::ConferenceMessageType1 |
                 MraMessageType::ConferenceMessageType2 => {
                     // FIXME
                     (vec![RichText::make_plain("<ConferenceMessage>".to_owned())],
-                     message::Typed::Regular(Default::default()))
+                     Typed::Regular(Default::default()))
                 }
                 MraMessageType::Unknown1 => {
                     // FIXME
                     (vec![RichText::make_plain("<Unknown1>".to_owned())],
-                     message::Typed::Regular(Default::default()))
+                     Typed::Regular(Default::default()))
                 }
                 MraMessageType::LocationChange => {
                     // Payload format: <name_len_u32><name><lat_len_u32><lat><lon_len_u32><lon><...>
@@ -417,9 +484,9 @@ fn convert<'a>(
                         duration_sec_option: None,
                     };
                     (vec![RichText::make_plain("(Location changed)".to_owned())],
-                     message::Typed::Regular(MessageRegular {
+                     Typed::Regular(MessageRegular {
                          content_option: Some(Content {
-                             sealed_value_optional: Some(SealedValueOptional::Location(location))
+                             sealed_value_optional: Some(ContentSvo::Location(location))
                          }),
                          ..Default::default()
                      }))
