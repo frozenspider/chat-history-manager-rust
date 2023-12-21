@@ -187,24 +187,29 @@ fn load_messages<'a>(
             let author = WStr::from_utf16le(author_utf16)?;
 
             let text_offset = author_offset + header.nickname_length as usize * 2;
-            let mut text_slice = &dbs_bytes[text_offset..];
+            let text_slice = &dbs_bytes[text_offset..];
 
-            // TODO: This seem to never occur?
-            if text_slice[0] == 0 && header.tpe_u32 == MraMessageType::Sms as u32 {
-                // Original code did: header->count_message = ((*(text + 1)) / sizeof(char16_t)) + 1;
-                text_slice = &text_slice[3..];
-            }
+            // I don't have SMS messages to check whether this is needed, or is done correctly, leaving this as a
+            // leftover.
+            //
+            // if text_slice[0] == 0 && header.tpe_u32 == MraMessageType::Sms as u32 {
+            //     // Original code did: header->count_message = ((*(text + 1)) / sizeof(char16_t)) + 1;
+            //     text_slice = &text_slice[3..];
+            // }
 
             let text_utf16 = get_null_terminated_utf16le_slice(text_slice)?;
             let text = WStr::from_utf16le(text_utf16)?;
+
+            let payload_offset = text_offset + 2 * header.text_length as usize;
+            let payload = &dbs_bytes[payload_offset..(header_offset + header.size as usize)];
 
             // WriteFile(hTmpFile, str, (header->count_message - 1) * sizeof(char16_t), &len, NULL); //пишем сообщение
             // text += mes->count_message; // теперь указатель показывает на LSP RTF, но оно нам не надо :)
 
             // TODO: RTF messages?
 
-            msgs.push(MraMessage { offset: header_offset, header, text, author });
-
+            let mra_msg = MraMessage { offset: header_offset, header, text, author, payload };
+            msgs.push(mra_msg);
 
             msg_id_option = u32_ptr_to_option(header.prev_id);
         }
@@ -263,7 +268,7 @@ fn convert<'a>(
             }
         });
 
-        // FIXME: Use proper ID!
+        // FIXME: Use proper persistent ID!
         // FIXME: Sometimes user is already present!
         let mut user = User {
             ds_uuid: entry.ds.uuid.clone(),
@@ -473,6 +478,7 @@ enum MraMessageType {
 #[repr(C, packed)]
 #[derive(Debug)]
 struct MraMessageHeader {
+    /// Total message size in bytes, including the header itself
     size: u32,
     prev_id: u32,
     next_id: u32,
@@ -516,6 +522,8 @@ struct MraMessage<'a> {
     header: &'a MraMessageHeader,
     text: &'a WStr<LE>,
     author: &'a WStr<LE>,
+    /// Exact interpretation depends on the message type
+    payload: &'a [u8],
 }
 
 impl Debug for MraMessage<'_> {
@@ -532,6 +540,7 @@ impl Debug for MraMessage<'_> {
         };
         formatter.field("author", &self.author.to_utf8());
         formatter.field("text", &self.text.to_utf8());
+        formatter.field("payload", &bytes_to_pretty_string(self.payload, usize::MAX));
         formatter.finish()
     }
 }
