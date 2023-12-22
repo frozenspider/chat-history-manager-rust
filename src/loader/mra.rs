@@ -285,6 +285,9 @@ fn convert<'a>(
             // within a chat.
             let source_id_option = Some((mra_msg.header.time / 2) as i64);
 
+            let mut from_username =
+                if mra_msg.header.is_outgoing()? { myself_username.clone() } else { conv_username.clone() };
+
             let tpe = mra_msg.header.get_tpe()?;
 
             let text = mra_msg.text.to_utf8();
@@ -333,7 +336,7 @@ fn convert<'a>(
                     // Payload format: <text_len_u32><text>
                     // It does not carry call information per se.
                     let payload = mra_msg.payload;
-                    let payload = validate_skip_bytes(payload, mra_msg.text.as_bytes())?;
+                    let payload = validate_skip_chunk(payload, mra_msg.text.as_bytes())?;
                     require!(payload.is_empty(), "Unexpected {:?} message payload format!", tpe);
 
                     let text = mra_msg.text.to_utf8();
@@ -421,10 +424,37 @@ fn convert<'a>(
                     (vec![RichText::make_plain("<MicroblogRecord>".to_owned())],
                      Typed::Regular(Default::default()))
                 }
-                MraMessageType::ConferenceMessageType1 |
-                MraMessageType::ConferenceMessageType2 => {
-                    // FIXME
-                    (vec![RichText::make_plain("<ConferenceMessage>".to_owned())],
+                MraMessageType::ConferenceMessagePlaintext => {
+                    let payload = mra_msg.payload;
+                    // Text duplication
+                    let payload = validate_skip_chunk(payload, mra_msg.text.as_bytes())?;
+                    // Author email
+                    let (author_email_bytes, payload) = read_sized_chunk(payload)?;
+                    from_username = String::from_utf8(author_email_bytes.to_vec())?;
+                    require!(payload.is_empty(), "Unexpected {:?} message payload format!", tpe);
+
+                    (vec![RichText::make_plain(mra_msg.text.to_utf8())],
+                     Typed::Regular(Default::default()))
+                }
+                MraMessageType::ConferenceMessageRtf => {
+                    let payload = mra_msg.payload;
+                    // RTF
+                    let (rtf_bytes, payload) = read_sized_chunk(payload)?;
+                    let rtf_utf16 = WStr::from_utf16le(rtf_bytes)?;
+                    let rtf = rtf_utf16.to_utf8();
+                    // RGBA bytes, ignoring
+                    let payload = &payload[4..];
+                    // Author email (only present for others' messages)
+                    require!(payload.is_empty() == mra_msg.header.is_outgoing()?,
+                             "Expected message payload to be empty for self messages only!");
+                    if !mra_msg.header.is_outgoing()? {
+                        let (author_email_bytes, payload) = read_sized_chunk(payload)?;
+                        require!(payload.is_empty(), "Unexpected {:?} message payload format!", tpe);
+                        from_username = String::from_utf8(author_email_bytes.to_vec())?
+                    };
+
+                    // TODO: Use RTF
+                    (vec![RichText::make_plain(mra_msg.text.to_utf8())],
                      Typed::Regular(Default::default()))
                 }
                 MraMessageType::Unknown1 => {
@@ -436,16 +466,13 @@ fn convert<'a>(
                     // Payload format: <name_len_u32><name><lat_len_u32><lat><lon_len_u32><lon><...>
                     let payload = mra_msg.payload;
                     // We observe that location name is exactly the same as the message text
-                    let payload = validate_skip_bytes(payload, mra_msg.text.as_bytes())?;
+                    let payload = validate_skip_chunk(payload, mra_msg.text.as_bytes())?;
                     // Lattitude
-                    let lat_len = read_u32_le(payload, 0) as usize;
-                    let payload = &payload[4..];
-                    let lat_str = String::from_utf8(payload[..lat_len].to_vec())?;
-                    let payload = &payload[lat_len..];
+                    let (lat_bytes, payload) = read_sized_chunk(payload)?;
+                    let lat_str = String::from_utf8(lat_bytes.to_vec())?;
                     // Longitude
-                    let lon_len = read_u32_le(payload, 0) as usize;
-                    let payload = &payload[4..];
-                    let lon_str = String::from_utf8(payload[..lon_len].to_vec())?;
+                    let (lon_bytes, _payload) = read_sized_chunk(payload)?;
+                    let lon_str = String::from_utf8(lon_bytes.to_vec())?;
 
                     let location = ContentLocation {
                         title_option: None,
@@ -464,10 +491,9 @@ fn convert<'a>(
                 }
             };
 
-            let from_username = if mra_msg.header.is_outgoing()? { &myself_username } else { &conv_username };
             let user = entry.users.entry(from_username.clone()).or_insert_with(|| User {
                 ds_uuid: entry.ds.uuid.clone(),
-                id: hash_to_id(from_username),
+                id: hash_to_id(&from_username),
                 first_name_option: None,
                 last_name_option: None,
                 username_option: Some(from_username.clone()),
@@ -500,13 +526,19 @@ fn convert<'a>(
             .sorted_by_key(|id| if *id == *MYSELF_ID { i64::MIN } else { *id })
             .collect_vec();
 
+        let chat_type = if conv_username.ends_with("@chat.agent") || member_ids.len() > 2 {
+            ChatType::PrivateGroup
+        } else {
+            ChatType::Personal
+        };
+
         entry.cwms.insert(conv_username.clone(), ChatWithMessages {
             chat: Some(Chat {
                 ds_uuid: entry.ds.uuid.clone(),
                 id: hash_to_id(&conv_username),
                 name_option: Some(conv_username), // FIXME
                 source_type: SourceType::Mra as i32,
-                tpe: ChatType::Personal as i32, // FIXME
+                tpe: chat_type as i32,
                 img_path_option: None,
                 member_ids,
                 msg_count: msgs.len() as i32,
@@ -565,9 +597,8 @@ enum MraMessageType {
     /// User was invited or left the conference
     ConferenceUsersChange = 0x22,
     MicroblogRecordType1 = 0x23,
-    ConferenceMessageType1 = 0x24,
-    // No idea what's the difference between them, TODO: Look into it!
-    ConferenceMessageType2 = 0x25,
+    ConferenceMessagePlaintext = 0x24,
+    ConferenceMessageRtf = 0x25,
     Unknown1 = 0x27,
     // No idea what's the difference between them, TODO: Look into it!
     MicroblogRecordType2 = 0x29,
@@ -674,27 +705,6 @@ struct MraDatasetEntry {
 // Helper functions
 //
 
-fn read_hash_table_bytes(bytes: &[u8], shift: usize) -> Vec<u32> {
-    let mut res = vec![];
-    let mut i = 0;
-    loop {
-        let v = read_u32_le(bytes, shift + i * 4);
-        if v == 4 {
-            break res;
-        }
-        res.push(v);
-        i += 1;
-    }
-}
-
-fn read_chunk_le(bytes: &[u8], shift: usize, count: usize) -> Vec<u32> {
-    let mut res = Vec::with_capacity(count);
-    for i in 0..count {
-        res.push(read_u32_le(bytes, shift + i * 4));
-    }
-    res
-}
-
 fn read_u32_le(bytes: &[u8], shift: usize) -> u32 {
     u32::from_le_bytes(read_4_bytes(bytes, shift))
 }
@@ -703,8 +713,14 @@ fn read_4_bytes(bytes: &[u8], shift: usize) -> [u8; 4] {
     bytes[shift..(shift + 4)].try_into().unwrap()
 }
 
+/// Assumes the next 4 payload bytes to specify the size of the chunk. Read and return it, and the rest of the payload.
+fn read_sized_chunk<'a>(payload: &'a [u8]) -> Result<(&'a [u8], &'a [u8])> {
+    let len = read_u32_le(payload, 0) as usize;
+    Ok(payload[4..].split_at(len))
+}
+
 /// In the next <N_u32><...N bytes...> validate that N bytes correspond to the expected bytes provided
-fn validate_skip_bytes<'a>(payload: &'a [u8], expected_bytes: &[u8]) -> Result<&'a [u8]> {
+fn validate_skip_chunk<'a>(payload: &'a [u8], expected_bytes: &[u8]) -> Result<&'a [u8]> {
     let len = read_u32_le(payload, 0) as usize;
     require!(len == expected_bytes.len(),
              "Unexpected message payload format!");
