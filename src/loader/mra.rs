@@ -273,6 +273,26 @@ fn convert<'a>(
             }
         });
 
+        /// Resolve a user by username, possibly setting a first name if it's not an email too.
+        fn resolve_user(entry: &mut MraDatasetEntry,
+                        username: String,
+                        first_name_or_email: String) -> &mut User {
+            let user = entry.users.entry(username.clone()).or_insert_with(|| User {
+                ds_uuid: entry.ds.uuid.clone(),
+                id: hash_to_id(&username),
+                first_name_option: None,
+                last_name_option: None,
+                username_option: Some(username.clone()),
+                phone_number_option: None,
+            });
+
+            if user.first_name_option.is_none() && first_name_or_email != username {
+                user.first_name_option = Some(first_name_or_email);
+            }
+
+            user
+        }
+
         let mut internal_id = 0;
 
         let mut msgs: Vec<Message> = vec![];
@@ -289,6 +309,9 @@ fn convert<'a>(
                 if mra_msg.header.is_outgoing()? { myself_username.clone() } else { conv_username.clone() };
 
             let tpe = mra_msg.header.get_tpe()?;
+            macro_rules! require_format {
+                ($cond:expr) => { require!($cond, "Unexpected {:?} message payload format!", tpe) };
+            }
 
             let text = mra_msg.text.to_utf8();
             use crate::protobuf::history::message::Typed;
@@ -337,7 +360,7 @@ fn convert<'a>(
                     // It does not carry call information per se.
                     let payload = mra_msg.payload;
                     let payload = validate_skip_chunk(payload, mra_msg.text.as_bytes())?;
-                    require!(payload.is_empty(), "Unexpected {:?} message payload format!", tpe);
+                    require_format!(payload.is_empty());
 
                     let text = mra_msg.text.to_utf8();
 
@@ -414,9 +437,63 @@ fn convert<'a>(
                      Typed::Regular(Default::default()))
                 }
                 MraMessageType::ConferenceUsersChange => {
-                    // FIXME
-                    (vec![RichText::make_plain("<ConferenceUsersChange>".to_owned())],
-                     Typed::Regular(Default::default()))
+                    let payload = mra_msg.payload;
+                    // All payload is a single chunk
+                    let change_tpe = read_u32_le(payload, 0);
+                    let payload = &payload[4..];
+
+                    fn resolve_members(entry: &mut MraDatasetEntry,
+                                       emails: Vec<String>,
+                                       names_or_emails: Vec<String>) -> Vec<String> {
+                        emails.into_iter().zip(names_or_emails.into_iter())
+                            .map(|(email, name_or_email)|
+                                resolve_user(entry, email, name_or_email).pretty_name()
+                            ).collect_vec()
+                    }
+
+                    const USER_JOINED: u32 = 0x03;
+                    const USER_LEFT: u32 = 0x05;
+                    let service: ServiceSvo = match change_tpe {
+                        USER_JOINED => {
+                            let (_inviting_user_name_or_email, payload) = read_sized_chunk(payload)?;
+                            let num_invited_user_names = read_u32_le(payload, 0) as usize;
+                            let mut names = Vec::with_capacity(num_invited_user_names);
+                            let mut emails = Vec::with_capacity(num_invited_user_names);
+
+                            let mut payload = &payload[4..];
+                            for i in 0..num_invited_user_names {
+                                let (name_bytes, payload2) = read_sized_chunk(payload)?;
+                                payload = payload2;
+                                names.push(WStr::from_utf16le(name_bytes)?.to_utf8());
+                            }
+                            let num_invited_user_emails = read_u32_le(payload, 0) as usize;
+                            require_format!(num_invited_user_names == num_invited_user_emails);
+
+                            let mut payload = &payload[4..];
+                            for i in 0..num_invited_user_names {
+                                let (email_bytes, payload2) = read_sized_chunk(payload)?;
+                                payload = payload2;
+                                emails.push(WStr::from_utf16le(email_bytes)?.to_utf8());
+                            }
+                            require_format!(payload.is_empty());
+
+                            let members = resolve_members(entry, emails, names);
+                            ServiceSvo::GroupInviteMembers(MessageServiceGroupInviteMembers { members })
+                        }
+                        USER_LEFT => {
+                            let (name_bytes, payload) = read_sized_chunk(payload)?;
+                            let (email_bytes, payload) = read_sized_chunk(payload)?;
+                            require_format!(payload.is_empty());
+
+                            let members = resolve_members(entry,
+                                                          vec![WStr::from_utf16le(email_bytes)?.to_utf8()],
+                                                          vec![WStr::from_utf16le(name_bytes)?.to_utf8()]);
+                            ServiceSvo::GroupRemoveMembers(MessageServiceGroupRemoveMembers { members })
+                        }
+                        etc => bail!("Unexpected {tpe:?} change type {etc}")
+                    };
+
+                    (vec![], Typed::Service(MessageService { sealed_value_optional: Some(service) }))
                 }
                 MraMessageType::MicroblogRecordType1 |
                 MraMessageType::MicroblogRecordType2 => {
@@ -431,7 +508,7 @@ fn convert<'a>(
                     // Author email
                     let (author_email_bytes, payload) = read_sized_chunk(payload)?;
                     from_username = String::from_utf8(author_email_bytes.to_vec())?;
-                    require!(payload.is_empty(), "Unexpected {:?} message payload format!", tpe);
+                    require_format!(payload.is_empty());
 
                     (vec![RichText::make_plain(mra_msg.text.to_utf8())],
                      Typed::Regular(Default::default()))
@@ -449,7 +526,7 @@ fn convert<'a>(
                              "Expected message payload to be empty for self messages only!");
                     if !mra_msg.header.is_outgoing()? {
                         let (author_email_bytes, payload) = read_sized_chunk(payload)?;
-                        require!(payload.is_empty(), "Unexpected {:?} message payload format!", tpe);
+                        require_format!(payload.is_empty());
                         from_username = String::from_utf8(author_email_bytes.to_vec())?
                     };
 
@@ -491,21 +568,8 @@ fn convert<'a>(
                 }
             };
 
-            let user = entry.users.entry(from_username.clone()).or_insert_with(|| User {
-                ds_uuid: entry.ds.uuid.clone(),
-                id: hash_to_id(&from_username),
-                first_name_option: None,
-                last_name_option: None,
-                username_option: Some(from_username.clone()),
-                phone_number_option: None,
-            });
+            let user = resolve_user(entry, from_username, mra_msg.author.to_utf8());
 
-            if user.first_name_option.is_none() {
-                let author = mra_msg.author.to_utf8();
-                if !EMAIL_REGEX.is_match(&author) {
-                    user.first_name_option = Some(author);
-                }
-            }
             interlocutor_ids.insert(user.id());
 
             let msg = Message::new(
@@ -536,7 +600,7 @@ fn convert<'a>(
             chat: Some(Chat {
                 ds_uuid: entry.ds.uuid.clone(),
                 id: hash_to_id(&conv_username),
-                name_option: Some(conv_username), // FIXME
+                name_option: Some(conv_username), // Will be changed later
                 source_type: SourceType::Mra as i32,
                 tpe: chat_type as i32,
                 img_path_option: None,
@@ -548,14 +612,25 @@ fn convert<'a>(
         });
     }
 
-    Ok(result.into_values().map(|entry| DatasetEntry {
-        ds: entry.ds,
-        ds_root: entry.ds_root,
-        myself_id: MYSELF_ID,
-        users: entry.users.into_values()
-            .sorted_by_key(|u| if u.id() == MYSELF_ID { i64::MIN } else { u.id })
-            .collect_vec(),
-        cwms: entry.cwms.into_values().collect_vec(),
+    Ok(result.into_values().map(|mut entry| {
+        // Now that we know all user names, rename chats accordingly
+        for cwm in entry.cwms.values_mut() {
+            if let Some(ref mut chat) = cwm.chat {
+                let chat_email = chat.name_option.as_ref().unwrap();
+                if let Some(pretty_name) = entry.users.get(chat_email).map(|u| u.pretty_name()) {
+                    chat.name_option = Some(pretty_name);
+                }
+            }
+        }
+        DatasetEntry {
+            ds: entry.ds,
+            ds_root: entry.ds_root,
+            myself_id: MYSELF_ID,
+            users: entry.users.into_values()
+                .sorted_by_key(|u| if u.id() == MYSELF_ID { i64::MIN } else { u.id })
+                .collect_vec(),
+            cwms: entry.cwms.into_values().collect_vec(),
+        }
     }).collect_vec())
 }
 
