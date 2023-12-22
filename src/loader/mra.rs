@@ -1,6 +1,7 @@
 use std::{cmp, fmt, fs, mem, slice};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
+use std::path::PathBuf;
 
 use lazy_static::lazy_static;
 use num_traits::FromPrimitive;
@@ -121,7 +122,7 @@ fn load_conversations<'a>(dbs_bytes: &'a [u8], offsets_table: &[u32]) -> Result<
         let current_offset = offsets_table[conv_id as usize] as usize;
         assert!(current_offset < dbs_bytes.len());
 
-        let id = read_u32_le(&dbs_bytes, current_offset);
+        let len = read_u32_le(&dbs_bytes, current_offset) as usize;
         let prev_conv_id = read_u32_le(&dbs_bytes, current_offset + CONVERSATION_IDS_OFFSET);
         let next_conv_id = read_u32_le(&dbs_bytes, current_offset + CONVERSATION_IDS_OFFSET + 4);
 
@@ -131,20 +132,31 @@ fn load_conversations<'a>(dbs_bytes: &'a [u8], offsets_table: &[u32]) -> Result<
         let mrahistory_loc = current_offset + MRAHISTORY_FOOTPRINT_OFFSET;
         if &dbs_bytes[mrahistory_loc..][0..mrahistory_footprint.len()] == mrahistory_footprint {
             // Setting the pointer right after the "mrahistory_"
-            let name_utf16 = &dbs_bytes[(mrahistory_loc + mrahistory_footprint.len())..];
-            let name_utf16 = get_null_terminated_utf16le_slice(name_utf16)?;
+            let name_slice = &dbs_bytes[(mrahistory_loc + mrahistory_footprint.len())..];
+            let separator_pos = {
+                // Names are separated by either zero char (0x0000) or an underscore (0x5F00)
+                let zero_byte_pos = find_first_position(name_slice, &[0x00, 0x00], 2);
+                let underscore_pos = find_first_position(name_slice, &[0x5F, 0x00], 2);
+                [zero_byte_pos, underscore_pos].into_iter().filter_map(|v| v).min().unwrap()
+            };
+            let myself_name_utf16 = &name_slice[..separator_pos];
+
+            // Just zero char this time
+            let name_slice = &name_slice[(separator_pos + 2)..];
+            let separator_pos = find_first_position(name_slice, &[0x00, 0x00], 2).unwrap();
+            let other_name_utf16 = &name_slice[..separator_pos];
 
             let conv = MraConversation {
                 offset: current_offset,
-                name: WStr::from_utf16le(name_utf16)?,
+                myself_name: WStr::from_utf16le(myself_name_utf16)?,
+                other_name: WStr::from_utf16le(other_name_utf16)?,
                 msg_id1: u32_ptr_to_option(read_u32_le(&dbs_bytes, current_offset + MESSAGE_IDS_OFFSET)),
                 msg_id2: u32_ptr_to_option(read_u32_le(&dbs_bytes, current_offset + MESSAGE_IDS_OFFSET + 4)),
+                raw: &dbs_bytes[current_offset..(current_offset + len)],
             };
 
-            let bytes = &dbs_bytes[current_offset..(current_offset + MRAHISTORY_FOOTPRINT_OFFSET)];
-            let bytes_str = bytes_to_pretty_string(bytes, 99999);
-            log::debug!("{} - {:#010x}, {}", bytes_str, current_offset, conv.name.to_utf8());
-            // log::debug!("mail_data at offset {:#010x}: Conversation {id} named {}", current_offset, conv.name.to_utf8());
+            log::debug!("mail_data at offset {:#010x}: Conversation between {} and {}",
+                        current_offset, conv.myself_name.to_utf8(), conv.other_name.to_utf8());
             result.push(conv);
         } else {
             log::debug!("mail_data at offset {:#010x}: Skipping as it doesn't seem to be message related", current_offset);
@@ -230,89 +242,48 @@ fn convert<'a>(
         static ref EMAIL_REGEX: Regex = Regex::new(r"^[a-zA-Z0-9._-]+@([a-z-]+\.)+[a-z]+$").unwrap();
     }
 
-    let mut result = HashMap::<String, DatasetEntry>::new();
+    let mut result = HashMap::<String, MraDatasetEntry>::new();
 
-    let mut self_name_set = false;
     for conv_w_msgs in convs_with_msgs.iter() {
+        let myself_username = conv_w_msgs.conv.myself_name.to_utf8();
+        let conv_username = conv_w_msgs.conv.other_name.to_utf8();
+
         if conv_w_msgs.msgs.is_empty() {
-            log::debug!("Skipping conversation {} with no messages", conv_w_msgs.conv.name.to_utf8());
+            log::debug!("Skipping conversation between {} and {} with no messages", myself_username, conv_username);
             continue;
         }
 
-        let name = conv_w_msgs.conv.name.to_utf8();
-        let name_slit = name.splitn(2, '_').map(|s| s.to_owned()).collect_vec();
-
-        let conv_owner_email =
-            name_slit.get(0)
-                .with_context(|| format!("Couldn't get owner from conversation name {name}"))?
-                .clone();
-
-        let entry = result.entry(conv_owner_email.clone()).or_insert_with(|| {
+        let entry = result.entry(myself_username.clone()).or_insert_with(|| {
             let ds_uuid = PbUuid::random();
             let myself = User {
                 ds_uuid: Some(ds_uuid.clone()),
                 id: *MYSELF_ID,
                 first_name_option: None,
                 last_name_option: None,
-                username_option: Some(conv_owner_email.clone()),
+                username_option: Some(myself_username.clone()),
                 phone_number_option: None,
             };
-            let ds_root = storage_path.join(DATASETS_DIR_NAME).join(conv_owner_email.as_str());
+            let ds_root = storage_path.join(DATASETS_DIR_NAME).join(myself_username.as_str());
             fs::create_dir_all(&ds_root).unwrap();
-            DatasetEntry {
-                ds: Dataset { uuid: Some(ds_uuid), alias: conv_owner_email.clone() },
+            MraDatasetEntry {
+                ds: Dataset { uuid: Some(ds_uuid), alias: myself_username.clone() },
                 ds_root,
-                myself_id: MYSELF_ID,
-                users: vec![myself],
-                cwms: vec![],
+                users: HashMap::from([(myself_username.clone(), myself)]),
+                cwms: HashMap::new(),
             }
         });
-
-        // FIXME: Use proper persistent ID!
-        // FIXME: Sometimes user is already present!
-        let mut user = User {
-            ds_uuid: entry.ds.uuid.clone(),
-            id: conv_w_msgs.conv.offset as i64,
-            first_name_option: None,
-            last_name_option: None,
-            username_option: name_slit.get(1).cloned(),
-            phone_number_option: None,
-        };
-
 
         let mut internal_id = 0;
 
         let mut msgs: Vec<Message> = vec![];
-        let mut user_nickname_set = user.username_option.is_some();
-        let mut user_name_set = user.first_name_option.is_some();
         let mut ongoing_call_msg_id = None;
+        let mut interlocutor_ids = HashSet::from([MYSELF_ID]);
         for mra_msg in conv_w_msgs.msgs.iter() {
             let timestamp = filetime_to_timestamp(mra_msg.header.time);
-
-            let from_id = if mra_msg.header.is_outgoing()? { MYSELF_ID } else { user.id() };
-
-            // Dealing with names
-            let author = mra_msg.author.to_utf8();
-            if mra_msg.header.is_outgoing()? {
-                if !self_name_set && !EMAIL_REGEX.is_match(&author) {
-                    entry.users.first_mut().unwrap().first_name_option = Some(author);
-                    self_name_set = true;
-                }
-            } else {
-                if !user_name_set && !EMAIL_REGEX.is_match(&author) {
-                    user.first_name_option = Some(author);
-                    user_name_set = true;
-                } else if !user_nickname_set && EMAIL_REGEX.is_match(&author) {
-                    user.username_option = Some(author);
-                    user_nickname_set = true;
-                }
-            }
 
             // For a source message ID, let's use message time as it's precise enough for us to expect it to be unique
             // within a chat.
             let source_id_option = Some((mra_msg.header.time / 2) as i64);
-
-            if user_nickname_set {}
 
             let tpe = mra_msg.header.get_tpe()?;
 
@@ -493,11 +464,29 @@ fn convert<'a>(
                 }
             };
 
+            let from_username = if mra_msg.header.is_outgoing()? { &myself_username } else { &conv_username };
+            let user = entry.users.entry(from_username.clone()).or_insert_with(|| User {
+                ds_uuid: entry.ds.uuid.clone(),
+                id: hash_to_id(from_username),
+                first_name_option: None,
+                last_name_option: None,
+                username_option: Some(from_username.clone()),
+                phone_number_option: None,
+            });
+
+            if user.first_name_option.is_none() {
+                let author = mra_msg.author.to_utf8();
+                if !EMAIL_REGEX.is_match(&author) {
+                    user.first_name_option = Some(author);
+                }
+            }
+            interlocutor_ids.insert(user.id());
+
             let msg = Message::new(
                 internal_id,
                 source_id_option,
                 timestamp,
-                from_id,
+                user.id(),
                 text,
                 typed,
             );
@@ -505,24 +494,37 @@ fn convert<'a>(
             internal_id += 1;
         }
 
-        entry.cwms.push(ChatWithMessages {
+        let member_ids = interlocutor_ids
+            .into_iter()
+            .map(|id| *id)
+            .sorted_by_key(|id| if *id == *MYSELF_ID { i64::MIN } else { *id })
+            .collect_vec();
+
+        entry.cwms.insert(conv_username.clone(), ChatWithMessages {
             chat: Some(Chat {
                 ds_uuid: entry.ds.uuid.clone(),
-                id: user.id,
-                name_option: user.pretty_name_option(),
+                id: hash_to_id(&conv_username),
+                name_option: Some(conv_username), // FIXME
                 source_type: SourceType::Mra as i32,
                 tpe: ChatType::Personal as i32, // FIXME
                 img_path_option: None,
-                member_ids: vec![*MYSELF_ID, user.id],// FIXME
+                member_ids,
                 msg_count: msgs.len() as i32,
                 main_chat_id: None,
             }),
             messages: msgs,
         });
-        entry.users.push(user);
     }
 
-    Ok(result.into_values().collect_vec())
+    Ok(result.into_values().map(|entry| DatasetEntry {
+        ds: entry.ds,
+        ds_root: entry.ds_root,
+        myself_id: MYSELF_ID,
+        users: entry.users.into_values()
+            .sorted_by_key(|u| if u.id() == MYSELF_ID { i64::MIN } else { u.id })
+            .collect_vec(),
+        cwms: entry.cwms.into_values().collect_vec(),
+    }).collect_vec())
 }
 
 //
@@ -532,11 +534,14 @@ fn convert<'a>(
 struct MraConversation<'a> {
     /// Offset at which data begins
     offset: usize,
-    name: &'a WStr<LE>,
+    myself_name: &'a WStr<LE>,
+    other_name: &'a WStr<LE>,
     /// Point to offset table data
     msg_id1: Option<u32>,
     /// Point to offset table data
     msg_id2: Option<u32>,
+    /// Raw bytes for the conversation record
+    raw: &'a [u8],
 }
 
 #[repr(u32)]
@@ -656,6 +661,15 @@ struct MraConversationWithMessages<'a> {
     msgs: Vec<MraMessage<'a>>,
 }
 
+struct MraDatasetEntry {
+    ds: Dataset,
+    ds_root: PathBuf,
+    /// Key is username (in most cases, email)
+    users: HashMap<String, User>,
+    /// Key is conversation name (in most cases, email or email-like name)
+    cwms: HashMap<String, ChatWithMessages>,
+}
+
 //
 // Helper functions
 //
@@ -723,12 +737,12 @@ fn filetime_to_timestamp(ft: u64) -> i64 {
 /// Does not return indexes that overlap matches found earlier.
 /// Works in O(n) of the source length, assuming to_find length to be negligible and not accounting for degenerate
 /// input cases.
-fn find_positions<T: PartialEq>(source: &[T], to_find: &[T]) -> Vec<usize> {
-    inner_find_positions_of(source, to_find, false)
+fn find_positions<T: PartialEq>(source: &[T], to_find: &[T], step: usize) -> Vec<usize> {
+    inner_find_positions_of(source, to_find, step, false)
 }
 
-fn find_first_position<T: PartialEq>(source: &[T], to_find: &[T]) -> Option<usize> {
-    inner_find_positions_of(source, to_find, true).first().cloned()
+fn find_first_position<T: PartialEq>(source: &[T], to_find: &[T], step: usize) -> Option<usize> {
+    inner_find_positions_of(source, to_find, step, true).first().cloned()
 }
 
 fn get_null_terminated_utf8_slice(bs: &[u8]) -> Result<&[u8]> {
@@ -765,7 +779,8 @@ fn bytes_to_pretty_string(bytes: &[u8], columns: usize) -> String {
     result.trim_end().to_owned()
 }
 
-fn inner_find_positions_of<T: PartialEq>(source: &[T], to_find: &[T], find_one: bool) -> Vec<usize> {
+fn inner_find_positions_of<T: PartialEq>(source: &[T], to_find: &[T], step: usize, find_one: bool) -> Vec<usize> {
+    assert!(to_find.len() % step == 0, "to_find sequence length is not a multiplier of {step}!");
     if to_find.len() == 0 { panic!("to_find slice was empty!"); }
     let max_i = source.len() as i64 - to_find.len() as i64 + 1;
     if max_i <= 0 { return vec![]; }
@@ -775,7 +790,7 @@ fn inner_find_positions_of<T: PartialEq>(source: &[T], to_find: &[T], find_one: 
     'outer: while i < max_i {
         for j in 0..to_find.len() {
             if source[i + j] != to_find[j] {
-                i += 1;
+                i += step;
                 continue 'outer;
             }
         }
