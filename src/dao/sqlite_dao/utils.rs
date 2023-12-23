@@ -477,6 +477,8 @@ pub mod message {
                     is_blocked: Some(serialize_bool(v.is_blocked)),
                     ..Default::default()
                 })),
+            StatusTextChanged(_) =>
+                ("status_text_changed", None),
             GroupCreate(v) =>
                 ("group_create", Some(RawMessageContent {
                     title: Some(v.title.clone()),
@@ -723,6 +725,8 @@ pub mod message {
                     is_blocked: deserialize_bool(get_or_bail!(raw.is_blocked)),
                 })
             }
+            "status_text_changed" =>
+                StatusTextChanged(MessageServiceStatusTextChanged {}),
             "group_create" => {
                 let raw = raw_or_bail!();
                 GroupCreate(MessageServiceGroupCreate {

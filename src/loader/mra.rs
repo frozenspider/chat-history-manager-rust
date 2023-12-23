@@ -322,8 +322,7 @@ fn convert<'a>(
                 MraMessageType::RegularMaybeUnauthorized |
                 MraMessageType::Regular |
                 MraMessageType::Sms => {
-                    (vec![RichText::make_plain(text)],
-                     Typed::Regular(Default::default()))
+                    (vec![RichText::make_plain(text)], Typed::Regular(Default::default()))
                 }
                 MraMessageType::FileTransfer => {
                     // We can get file names from the outgoing messages.
@@ -341,18 +340,17 @@ fn convert<'a>(
                     } else {
                         None
                     };
-                    (vec![],
-                     Typed::Regular(MessageRegular {
-                         content_option: Some(Content {
-                             sealed_value_optional: Some(ContentSvo::File(ContentFile {
-                                 path_option: None,
-                                 file_name_option,
-                                 mime_type_option: None,
-                                 thumbnail_path_option: None,
-                             }))
-                         }),
-                         ..Default::default()
-                     }))
+                    (vec![], Typed::Regular(MessageRegular {
+                        content_option: Some(Content {
+                            sealed_value_optional: Some(ContentSvo::File(ContentFile {
+                                path_option: None,
+                                file_name_option,
+                                mime_type_option: None,
+                                thumbnail_path_option: None,
+                            }))
+                        }),
+                        ..Default::default()
+                    }))
                 }
                 MraMessageType::Call |
                 MraMessageType::VideoCall => {
@@ -418,13 +416,12 @@ fn convert<'a>(
                         etc => bail!("Unrecognized call message: {etc}"),
                     }
 
-                    (vec![],
-                     Typed::Service(MessageService {
-                         sealed_value_optional: Some(ServiceSvo::PhoneCall(MessageServicePhoneCall {
-                             duration_sec_option: None,
-                             discard_reason_option: None,
-                         }))
-                     }))
+                    (vec![], Typed::Service(MessageService {
+                        sealed_value_optional: Some(ServiceSvo::PhoneCall(MessageServicePhoneCall {
+                            duration_sec_option: None,
+                            discard_reason_option: None,
+                        }))
+                    }))
                 }
                 MraMessageType::BirthdayReminder => {
                     // FIXME
@@ -495,11 +492,28 @@ fn convert<'a>(
 
                     (vec![], Typed::Service(MessageService { sealed_value_optional: Some(service) }))
                 }
-                MraMessageType::MicroblogRecordType1 |
-                MraMessageType::MicroblogRecordType2 => {
-                    // FIXME
-                    (vec![RichText::make_plain("<MicroblogRecord>".to_owned())],
-                     Typed::Regular(Default::default()))
+                MraMessageType::MicroblogRecordBroadcast |
+                MraMessageType::MicroblogRecordDirected => {
+                    let payload = mra_msg.payload;
+                    // Text duplication
+                    let mut payload = validate_skip_chunk(payload, mra_msg.text.as_bytes())?;
+                    let target_name = if tpe == MraMessageType::MicroblogRecordDirected {
+                        let (target_name_bytes, payload2) = read_sized_chunk(payload)?;
+                        payload = payload2;
+                        Some(WStr::from_utf16le(target_name_bytes)?.to_utf8())
+                    } else { None };
+                    // Next 8 bytes as some timestamp we don't really care about.
+                    let payload = &payload[8..];
+                    require_format!(payload.is_empty());
+
+                    let text = format!("{}{}",
+                                       target_name.map(|n| format!("(To {n})\n")).unwrap_or_default(),
+                                       mra_msg.text.to_utf8());
+
+                    (vec![RichText::make_plain(text)],
+                     Typed::Service(MessageService {
+                         sealed_value_optional: Some(ServiceSvo::StatusTextChanged(MessageServiceStatusTextChanged {}))
+                     }))
                 }
                 MraMessageType::ConferenceMessagePlaintext => {
                     let payload = mra_msg.payload;
@@ -671,12 +685,12 @@ enum MraMessageType {
     VideoCall = 0x1E,
     /// User was invited or left the conference
     ConferenceUsersChange = 0x22,
-    MicroblogRecordType1 = 0x23,
+    MicroblogRecordBroadcast = 0x23,
     ConferenceMessagePlaintext = 0x24,
     ConferenceMessageRtf = 0x25,
     Unknown1 = 0x27,
-    // No idea what's the difference between them, TODO: Look into it!
-    MicroblogRecordType2 = 0x29,
+    /// Payload has a name of the user this is directed to
+    MicroblogRecordDirected = 0x29,
     LocationChange = 0x2E,
 }
 
@@ -834,16 +848,6 @@ fn find_positions<T: PartialEq>(source: &[T], to_find: &[T], step: usize) -> Vec
 
 fn find_first_position<T: PartialEq>(source: &[T], to_find: &[T], step: usize) -> Option<usize> {
     inner_find_positions_of(source, to_find, step, true).first().cloned()
-}
-
-fn get_null_terminated_utf8_slice(bs: &[u8]) -> Result<&[u8]> {
-    static NULL_UTF8: u8 = 0x00;
-
-    let null_term_idx = bs.iter()
-        .position(|&bs| bs == NULL_UTF8)
-        .context("Null terminator not found!")?;
-
-    Ok(&bs[..null_term_idx])
 }
 
 fn get_null_terminated_utf16le_slice(bs: &[u8]) -> Result<&[u8]> {

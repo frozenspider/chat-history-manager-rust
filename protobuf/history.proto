@@ -158,6 +158,7 @@ message MessageService {
     MessageServicePinMessage            pin_message = 2;
     MessageServiceClearHistory          clear_history = 3;
     MessageServiceBlockUser             block_user = 15;
+    MessageServiceStatusTextChanged     status_text_changed = 16;
     MessageServiceGroupCreate           group_create = 4;
     MessageServiceGroupEditTitle        group_edit_title = 5;
     MessageServiceGroupEditPhoto        group_edit_photo = 6;
@@ -385,6 +386,10 @@ message MessageServiceClearHistory {}
 
 message MessageServiceBlockUser {
   bool is_blocked = 1;
+}
+
+message MessageServiceStatusTextChanged {
+  // Text is stored in the message itself
 }
 
 message MessageServiceGroupCreate {

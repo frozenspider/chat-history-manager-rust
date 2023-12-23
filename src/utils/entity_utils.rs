@@ -291,6 +291,7 @@ impl Message {
                     Some(PinMessage(_)) => vec![],
                     Some(ClearHistory(_)) => vec![],
                     Some(BlockUser(_)) => vec![],
+                    Some(StatusTextChanged(_)) => vec![],
                     Some(GroupCreate(_)) => vec![],
                     Some(GroupEditTitle(_)) => vec![],
                     Some(GroupEditPhoto(v)) => vec![v.photo.as_ref().and_then(|p| p.path_option.as_deref())],
