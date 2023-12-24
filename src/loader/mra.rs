@@ -431,9 +431,29 @@ fn convert<'a>(
                      Typed::Regular(Default::default()))
                 }
                 MraMessageType::Cartoon => {
-                    // FIXME
-                    (vec![RichText::make_plain("<Cartoon>".to_owned())],
-                     Typed::Regular(Default::default()))
+                    let payload = mra_msg.payload;
+                    // Source is a <SMILE> tag
+                    let (src_bytes, payload) = read_sized_chunk(payload)?;
+                    require_format!(payload.is_empty());
+                    let src = WStr::from_utf16le(src_bytes)?.to_utf8();
+                    let (_id, emoji_option) = match SMILE_TAG_REGEX.captures(&src) {
+                        Some(captures) => (captures.name("id").unwrap().as_str(),
+                                           smiley_to_emoji(captures.name("alt").unwrap().as_str())),
+                        None => bail!("Unexpected cartoon source: {src}")
+                    };
+
+                    (vec![], Typed::Regular(MessageRegular {
+                        content_option: Some(Content {
+                            sealed_value_optional: Some(ContentSvo::Sticker(ContentSticker {
+                                path_option: None,
+                                width: 0,
+                                height: 0,
+                                thumbnail_path_option: None,
+                                emoji_option,
+                            }))
+                        }),
+                        ..Default::default()
+                    }))
                 }
                 MraMessageType::ConferenceUsersChange => {
                     let payload = mra_msg.payload;
