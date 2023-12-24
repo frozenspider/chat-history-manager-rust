@@ -9,7 +9,6 @@ itertools = "0.12.0"
 simd-json = "0.13.4"
 mimalloc = "0.1.39" # As advise by SIMD Json docs
 chrono = "0.4.31"
-regex = "1.10.2"
 lazy_static = "1.4.0"
 hashers = "1.0.1"
 rand = { version = "0.8.5", features = ["small_rng"] }
@@ -18,11 +17,16 @@ anyhow = { version = "1.0.75", features = ["backtrace"] }
 ical = "0.9.0"
 const_format = "0.2.32"
 reqwest = { version = "0.11.23", features = ["blocking"] }
-unicode-segmentation = "1.10.1"
 deepsize = "0.2.0"
 zip = "0.6.6"
 fs_extra = "1.3.0"
+
+# Text processing
+regex = "1.10.2"
+unicode-segmentation = "1.10.1"
 utf16string = "0.2.0"
+rtf-grimoire = "0.2.1"
+encoding_rs = "0.8.33"
 
 # Enum derivation
 num-traits = "0.2.17"

@@ -6,6 +6,7 @@ use std::path::PathBuf;
 use lazy_static::lazy_static;
 use num_traits::FromPrimitive;
 use regex::{Captures, Regex};
+use rtf_grimoire::tokenizer::Token;
 use utf16string::{LE, WStr};
 
 use crate::*;
@@ -34,8 +35,9 @@ lazy_static! {
     // Could also be @chat.agent, which indicates a group chat.
     static ref EMAIL_REGEX: Regex = Regex::new(r"^[a-zA-Z0-9._-]+@([a-z-]+\.)+[a-z]+$").unwrap();
 
-    static ref SMILE_TAG_REGEX: Regex = Regex::new(r"<SMILE>id=(?<id>[^ ]+) alt='(?<alt>[^']+)'</SMILE>").unwrap();
+    static ref SMILE_TAG_REGEX: Regex = Regex::new(r"<SMILE>id=(?<id>[^ ]+)( alt='(?<alt>[^']+)')?</SMILE>").unwrap();
     static ref SMILE_INLINE_REGEX: Regex = Regex::new(r#":(([А-ЯË][а-яё" .,!?-]+)|([0-9]{3,})):"#).unwrap();
+    static ref SMILE_IMG_REGEX: Regex = Regex::new(r#"<###(?<prefix>\d+)###img(?<id>\d+)>"#).unwrap();
 }
 
 impl DataLoader for MailRuAgentDataLoader {
@@ -224,11 +226,6 @@ fn load_messages<'a>(
             let payload_offset = text_offset + 2 * header.text_length as usize;
             let payload = &dbs_bytes[payload_offset..(header_offset + header.size as usize)];
 
-            // WriteFile(hTmpFile, str, (header->count_message - 1) * sizeof(char16_t), &len, NULL); //пишем сообщение
-            // text += mes->count_message; // теперь указатель показывает на LSP RTF, но оно нам не надо :)
-
-            // TODO: RTF messages?
-
             let mra_msg = MraMessage { offset: header_offset, header, text, author, payload_offset, payload };
             msgs.push(mra_msg);
 
@@ -308,8 +305,8 @@ fn convert<'a>(
             // within a chat.
             let source_id_option = Some((mra_msg.header.time / 2) as i64);
 
-            let mut from_username =
-                if mra_msg.header.is_outgoing()? { myself_username.clone() } else { conv_username.clone() };
+            let from_me = mra_msg.header.is_from_me()?;
+            let mut from_username = if from_me { myself_username.clone() } else { conv_username.clone() };
 
             let tpe = mra_msg.header.get_tpe()?;
             macro_rules! require_format {
@@ -322,11 +319,31 @@ fn convert<'a>(
             use crate::protobuf::history::message_service::SealedValueOptional as ServiceSvo;
             let (text, typed) = match tpe {
                 MraMessageType::AuthorizationRequest |
-                MraMessageType::RegularMaybeUnauthorized |
-                MraMessageType::Regular |
+                MraMessageType::RegularPlaintext |
+                MraMessageType::RegularRtf |
                 MraMessageType::Sms => {
-                    let text = replace_smiles_with_emojis(&text);
-                    (vec![RichText::make_plain(text)], Typed::Regular(Default::default()))
+                    let rtes = if tpe == MraMessageType::RegularRtf {
+                        let payload = mra_msg.payload;
+                        let (rtf_bytes, payload) = read_sized_chunk(payload)?;
+                        let rtf = WStr::from_utf16le(rtf_bytes)?.to_utf8();
+                        // RGBA bytes, ignoring
+                        let mut payload = &payload[4..];
+
+                        if !from_me {
+                            // Expecting 4 more empty bytes.
+                            let zeros = read_u32_le(payload, 0);
+                            require_format!(zeros == 0);
+                            payload = &payload[4..];
+                        }
+
+                        require_format!(payload.is_empty());
+                        parse_rtf(&rtf)?
+                    } else {
+                        let text = replace_smiles_with_emojis(&text);
+                        vec![RichText::make_plain(text)]
+                    };
+
+                    (rtes, Typed::Regular(Default::default()))
                 }
                 MraMessageType::FileTransfer => {
                     // We can get file names from the outgoing messages.
@@ -438,7 +455,7 @@ fn convert<'a>(
                     let src = WStr::from_utf16le(src_bytes)?.to_utf8();
                     let (_id, emoji_option) = match SMILE_TAG_REGEX.captures(&src) {
                         Some(captures) => (captures.name("id").unwrap().as_str(),
-                                           smiley_to_emoji(captures.name("alt").unwrap().as_str())),
+                                           captures.name("alt").and_then(|smiley| smiley_to_emoji(smiley.as_str()))),
                         None => bail!("Unexpected cartoon source: {src}")
                     };
 
@@ -555,18 +572,16 @@ fn convert<'a>(
                     // RGBA bytes, ignoring
                     let payload = &payload[4..];
                     // Author email (only present for others' messages)
-                    require!(payload.is_empty() == mra_msg.header.is_outgoing()?,
+                    require!(payload.is_empty() == mra_msg.header.is_from_me()?,
                              "Expected message payload to be empty for self messages only!");
-                    if !mra_msg.header.is_outgoing()? {
+                    if !mra_msg.header.is_from_me()? {
                         let (author_email_bytes, payload) = read_sized_chunk(payload)?;
                         require_format!(payload.is_empty());
                         from_username = String::from_utf8(author_email_bytes.to_vec())?
                     };
 
-                    // TODO: Use RTF, replace smileys
-                    // let text = replace_smiles_with_emojis(&text);
-                    (vec![RichText::make_plain(text)],
-                     Typed::Regular(Default::default()))
+                    let rtes = parse_rtf(&rtf)?;
+                    (rtes, Typed::Regular(Default::default()))
                 }
                 MraMessageType::Unknown1 => {
                     // FIXME
@@ -688,10 +703,9 @@ struct MraConversation<'a> {
 #[repr(u32)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, FromPrimitive)]
 enum MraMessageType {
-    /// Not sure if that's actually unauthorized, some messages seem to have it out of the blue
-    RegularMaybeUnauthorized = 0x02,
+    RegularPlaintext = 0x02,
     AuthorizationRequest = 0x04,
-    Regular = 0x07,
+    RegularRtf = 0x07,
     FileTransfer = 0x0A,
     /// Call status change - initiated, cancelled, connecting, done, etc.
     /// Note: some call statuses might be missing!
@@ -746,7 +760,7 @@ impl MraMessageHeader {
         FromPrimitive::from_u32(tpe_u32).with_context(|| format!("Unknown message type: {}", tpe_u32))
     }
 
-    fn is_outgoing(&self) -> Result<bool> {
+    fn is_from_me(&self) -> Result<bool> {
         match self.flag_outgoing {
             0 => Ok(false),
             1 => Ok(true),
@@ -894,12 +908,128 @@ fn bytes_to_pretty_string(bytes: &[u8], columns: usize) -> String {
     result.trim_end().to_owned()
 }
 
+/// Handles bold, italic and underline styles, interprets everything else as a plaintext
+fn parse_rtf(rtf: &str) -> Result<Vec<RichTextElement>> {
+    use rtf_grimoire::tokenizer::Token;
+
+    let tokens = rtf_grimoire::tokenizer::parse_finished(rtf.as_bytes())
+        .map_err(|e| anyhow!("Unable to parse RTF {rtf}"))?;
+
+    let mut curr_text: Option<String> = None;
+    macro_rules! curr_text { () => { curr_text.get_or_insert_with(|| "".to_owned()) }; }
+
+    enum Style { Plain, Bold, Italic, Underline }
+    // If multiple styles are set, last one is used.
+    let mut style = Style::Plain;
+
+    fn make_rich_text(src: String, style: &Style) -> RichTextElement {
+        match style {
+            Style::Plain => RichText::make_plain(src),
+            Style::Bold => RichText::make_bold(src),
+            Style::Italic => RichText::make_italic(src),
+            Style::Underline => RichText::make_underline(src),
+        }
+    }
+    fn commit(text: &mut Option<String>, state: &Style, result: &mut Vec<RichTextElement>) {
+        if let Some(text) = text.take() {
+            let trimmed = text.trim();
+            if !trimmed.is_empty() {
+                let text = replace_smiles_with_emojis(&trimmed);
+                result.push(make_rich_text(text, state));
+            }
+        }
+    }
+    let mut skip_next_char = false;
+
+    let mut result: Vec<RichTextElement> = vec![];
+    let colortbl = Token::ControlWord { name: "colortbl".to_owned(), arg: None };
+    for token in tokens.into_iter().skip_while(|t| *t != colortbl).skip_while(|t| *t != Token::EndGroup) {
+        let get_new_state = |arg: Option<i32>, desired: Style| -> Result<Style>{
+            match arg {
+                None => Ok(Style::Italic),
+                Some(0) => Ok(Style::Plain),
+                Some(_) => err!("Unknown RTF token {token:?}")
+            }
+        };
+        match token {
+            Token::ControlWord { ref name, arg } if name == "i" => {
+                commit(&mut curr_text, &style, &mut result);
+                style = get_new_state(arg, Style::Italic)?;
+            }
+            Token::ControlWord { ref name, arg } if name == "b" => {
+                commit(&mut curr_text, &style, &mut result);
+                style = get_new_state(arg, Style::Bold)?;
+            }
+            Token::ControlWord { ref name, arg } if name == "ul" => {
+                commit(&mut curr_text, &style, &mut result);
+                style = get_new_state(arg, Style::Underline)?;
+            }
+            Token::ControlWord { ref name, arg } if name == "ulnone" => {
+                commit(&mut curr_text, &style, &mut result);
+                style = get_new_state(arg, Style::Plain)?;
+            }
+            Token::ControlWord { name, arg: Some(arg) } if name == "'" && arg >= 0 => {
+                // Mail.Ru RTF seems to be hardcoded to use cp1251 even if \ansicpg says otherwise
+                curr_text!().push(cp1251_to_utf8(arg as u16)?);
+            }
+            Token::ControlWord { name, arg: Some(arg) } if name == "u" => {
+                // UTF-16 character
+                let string = WStr::from_utf16le(&arg.to_le_bytes())?.to_utf8();
+                // String is zero-terminated, we don't need that
+                let str = string.as_str().trim_end_matches(char::from(0));
+                curr_text!().push_str(str);
+                skip_next_char = true;
+            }
+            Token::Text(t) => {
+                let string = String::from_utf8(t)?;
+                let mut str = string.as_str();
+                if skip_next_char {
+                    str = &str[1..];
+                    skip_next_char = false;
+                }
+                curr_text!().push_str(str);
+            }
+            Token::Newline(_) => {
+                curr_text!().push('\n');
+            }
+            Token::ControlSymbol(c) => {
+                curr_text!().push(c);
+            }
+            Token::ControlBin(_) =>
+                bail!("Unexpected RTF token {token:?} in {rtf}"),
+            _ => {}
+        }
+    }
+    commit(&mut curr_text, &style, &mut result);
+    Ok(result)
+}
+
+fn cp1251_to_utf8(u: u16) -> Result<char> {
+    use encoding_rs::*;
+    let bytes = u.to_le_bytes();
+    let enc = WINDOWS_1251;
+    let (res, had_errors) = enc.decode_without_bom_handling(&bytes);
+    if !had_errors {
+        let mut chars = res.chars();
+        let result = Ok(chars.next().unwrap());
+        assert!(chars.next() == Some('\0'));
+        result
+    } else {
+        err!("Couldn't decode {u}")
+    }
+}
+
 /// Replaces <SMILE> tags and inline smiles with emojis
 fn replace_smiles_with_emojis(s_org: &str) -> String {
     let s = SMILE_TAG_REGEX.replace_all(s_org, |capt: &Captures| {
-        let smiley = capt.name("alt").unwrap().as_str();
-        let emoji_option = smiley_to_emoji(smiley);
-        emoji_option.unwrap_or_else(|| smiley.to_owned())
+        if let Some(smiley) = capt.name("alt") {
+            let smiley = smiley.as_str();
+            let emoji_option = smiley_to_emoji(smiley);
+            emoji_option.unwrap_or_else(|| smiley.to_owned())
+        } else {
+            // Leave as-is
+            capt.get(0).unwrap().as_str().to_owned()
+        }
     });
 
     let s = SMILE_INLINE_REGEX.replace_all(&s, |capt: &Captures| {
@@ -907,6 +1037,14 @@ fn replace_smiles_with_emojis(s_org: &str) -> String {
         let emoji_option = smiley_to_emoji(smiley);
         emoji_option.unwrap_or_else(|| smiley.to_owned())
     });
+
+    // SMILE_IMG_REGEX is a third format, but I don't know a replacement for any of them
+    //
+    // let s = SMILE_IMG_REGEX.replace_all(&s, |capt: &Captures| {
+    //     let smiley_id = capt.name("id").unwrap().as_str();
+    //     println!("{}", smiley_id);
+    //     todo!()
+    // });
 
     s.into()
 }
