@@ -36,7 +36,7 @@ lazy_static! {
     static ref EMAIL_REGEX: Regex = Regex::new(r"^[a-zA-Z0-9._-]+@([a-z-]+\.)+[a-z]+$").unwrap();
 
     static ref SMILE_TAG_REGEX: Regex = Regex::new(r"<SMILE>id=(?<id>[^ ]+)( alt='(?<alt>[^']+)')?</SMILE>").unwrap();
-    static ref SMILE_INLINE_REGEX: Regex = Regex::new(r#":(([А-ЯË][а-яё" .,!?-]+)|([0-9]{3,})):"#).unwrap();
+    static ref SMILE_INLINE_REGEX: Regex = Regex::new(r#":(([А-ЯË][^:\n]+)|([0-9]{3,})):"#).unwrap();
     static ref SMILE_IMG_REGEX: Regex = Regex::new(r#"<###(?<prefix>\d+)###img(?<id>\d+)>"#).unwrap();
 }
 
@@ -447,7 +447,7 @@ fn convert<'a>(
                     (vec![RichText::make_plain("<BirthdayReminder>".to_owned())],
                      Typed::Regular(Default::default()))
                 }
-                MraMessageType::Cartoon => {
+                MraMessageType::Cartoon | MraMessageType::CartoonType2 => {
                     let payload = mra_msg.payload;
                     // Source is a <SMILE> tag
                     let (src_bytes, payload) = read_sized_chunk(payload)?;
@@ -583,11 +583,6 @@ fn convert<'a>(
                     let rtes = parse_rtf(&rtf)?;
                     (rtes, Typed::Regular(Default::default()))
                 }
-                MraMessageType::Unknown1 => {
-                    // FIXME
-                    (vec![RichText::make_plain("<Unknown1>".to_owned())],
-                     Typed::Regular(Default::default()))
-                }
                 MraMessageType::LocationChange => {
                     // Payload format: <name_len_u32><name><lat_len_u32><lat><lon_len_u32><lon><...>
                     let payload = mra_msg.payload;
@@ -722,7 +717,8 @@ enum MraMessageType {
     MicroblogRecordBroadcast = 0x23,
     ConferenceMessagePlaintext = 0x24,
     ConferenceMessageRtf = 0x25,
-    Unknown1 = 0x27,
+    /// Not sure what's the difference with a regular cartoon
+    CartoonType2 = 0x27,
     /// Payload has a name of the user this is directed to
     MicroblogRecordDirected = 0x29,
     LocationChange = 0x2E,
@@ -1073,9 +1069,10 @@ fn smiley_to_emoji(smiley: &str) -> Option<String> {
         ":Рыдаю:" => Some("😭"),
         ":Дразнюсь:" | ":Дурачусь:" | ":Показываю язык:" => Some("😝"),
         ":Виноват:" => Some("😅"),
-        ":Сумасшествие:" => Some("🤪"),
+        ":Сумасшествие:" | ":А я сошла с ума...:" => Some("🤪"),
         ":Целую:" => Some("😘"),
         ":Влюбленный:" | ":Влюблён:" => Some("😍️"),
+        ":Поцелуй:" => Some("💋"),
         ":Поцеловали:" => Some("🥰"),
         ":Купидон:" | ":На крыльях любви:" => Some("💘️"),
         ":Сердце:" | ":Люблю:" | ":Любовь:" => Some("❤️"),
@@ -1108,7 +1105,7 @@ fn smiley_to_emoji(smiley: &str) -> Option<String> {
         ":Ктулху:" => Some("🐙"),
         ":Я круче:" => Some("😎"),
         ":Вояка:" => Some("🥷"),
-        ":Пиво:" => Some("🍺"),
+        ":Пиво:" | ":Пивка?;):" => Some("🍺"),
         ":Алкоголик:" => Some("🥴"),
         ":Бойан:" => Some("🪗"),
         ":Лапками-лапками:" => Some("🐾"),
