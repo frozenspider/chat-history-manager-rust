@@ -159,6 +159,7 @@ message MessageService {
     MessageServiceClearHistory          clear_history = 3;
     MessageServiceBlockUser             block_user = 15;
     MessageServiceStatusTextChanged     status_text_changed = 16;
+    MessageServiceNotice                notice = 17;
     MessageServiceGroupCreate           group_create = 4;
     MessageServiceGroupEditTitle        group_edit_title = 5;
     MessageServiceGroupEditPhoto        group_edit_photo = 6;
@@ -389,6 +390,11 @@ message MessageServiceBlockUser {
 }
 
 message MessageServiceStatusTextChanged {
+  // Text is stored in the message itself
+}
+
+// Notification not initiated by user directly, like a birthday reminder
+message MessageServiceNotice {
   // Text is stored in the message itself
 }
 

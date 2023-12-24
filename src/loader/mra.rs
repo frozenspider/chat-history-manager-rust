@@ -6,7 +6,6 @@ use std::path::PathBuf;
 use lazy_static::lazy_static;
 use num_traits::FromPrimitive;
 use regex::{Captures, Regex};
-use rtf_grimoire::tokenizer::Token;
 use utf16string::{LE, WStr};
 
 use crate::*;
@@ -17,6 +16,11 @@ use crate::protobuf::history::*;
 use super::*;
 
 /// Old versions of Mail.Ru Agent stored data in unknown DBMS format storage, with strings formatted as UTF-16 LE.
+///
+/// Known issues:
+/// * Some smile types are not converted and left as-is since there's no reference too see how they looked like.
+/// * Only a limited RTF support has been added - just bold, italic and underline styles, and only one per substring.
+/// * TODO: Users changing names isn't handled
 ///
 /// Following references were helpful in reverse engineering the format (in Russian):
 /// * https://xakep.ru/2012/11/30/mailru-agent-hack/
@@ -443,9 +447,13 @@ fn convert<'a>(
                     }))
                 }
                 MraMessageType::BirthdayReminder => {
-                    // FIXME
-                    (vec![RichText::make_plain("<BirthdayReminder>".to_owned())],
-                     Typed::Regular(Default::default()))
+                    let payload = mra_msg.payload;
+                    let payload = validate_skip_chunk(payload, mra_msg.text.as_bytes())?;
+                    require_format!(payload.is_empty());
+
+                    (vec![RichText::make_plain(text)], Typed::Service(MessageService {
+                        sealed_value_optional: Some(ServiceSvo::Notice(MessageServiceNotice {}))
+                    }))
                 }
                 MraMessageType::Cartoon | MraMessageType::CartoonType2 => {
                     let payload = mra_msg.payload;
@@ -497,7 +505,7 @@ fn convert<'a>(
                             let mut emails = Vec::with_capacity(num_invited_user_names);
 
                             let mut payload = &payload[4..];
-                            for i in 0..num_invited_user_names {
+                            for _ in 0..num_invited_user_names {
                                 let (name_bytes, payload2) = read_sized_chunk(payload)?;
                                 payload = payload2;
                                 names.push(WStr::from_utf16le(name_bytes)?.to_utf8());
@@ -506,7 +514,7 @@ fn convert<'a>(
                             require_format!(num_invited_user_names == num_invited_user_emails);
 
                             let mut payload = &payload[4..];
-                            for i in 0..num_invited_user_names {
+                            for _ in 0..num_invited_user_names {
                                 let (email_bytes, payload2) = read_sized_chunk(payload)?;
                                 payload = payload2;
                                 emails.push(WStr::from_utf16le(email_bytes)?.to_utf8());
@@ -909,7 +917,7 @@ fn parse_rtf(rtf: &str) -> Result<Vec<RichTextElement>> {
     use rtf_grimoire::tokenizer::Token;
 
     let tokens = rtf_grimoire::tokenizer::parse_finished(rtf.as_bytes())
-        .map_err(|e| anyhow!("Unable to parse RTF {rtf}"))?;
+        .map_err(|_e| anyhow!("Unable to parse RTF {rtf}"))?;
 
     let mut curr_text: Option<String> = None;
     macro_rules! curr_text { () => { curr_text.get_or_insert_with(|| "".to_owned()) }; }
@@ -942,7 +950,7 @@ fn parse_rtf(rtf: &str) -> Result<Vec<RichTextElement>> {
     for token in tokens.into_iter().skip_while(|t| *t != colortbl).skip_while(|t| *t != Token::EndGroup) {
         let get_new_state = |arg: Option<i32>, desired: Style| -> Result<Style>{
             match arg {
-                None => Ok(Style::Italic),
+                None => Ok(desired),
                 Some(0) => Ok(Style::Plain),
                 Some(_) => err!("Unknown RTF token {token:?}")
             }

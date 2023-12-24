@@ -479,6 +479,8 @@ pub mod message {
                 })),
             StatusTextChanged(_) =>
                 ("status_text_changed", None),
+            Notice(_) =>
+                ("notice", None),
             GroupCreate(v) =>
                 ("group_create", Some(RawMessageContent {
                     title: Some(v.title.clone()),
@@ -727,6 +729,8 @@ pub mod message {
             }
             "status_text_changed" =>
                 StatusTextChanged(MessageServiceStatusTextChanged {}),
+            "notice" =>
+                Notice(MessageServiceNotice {}),
             "group_create" => {
                 let raw = raw_or_bail!();
                 GroupCreate(MessageServiceGroupCreate {
