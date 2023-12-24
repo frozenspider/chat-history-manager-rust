@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 use lazy_static::lazy_static;
 use num_traits::FromPrimitive;
-use regex::Regex;
+use regex::{Captures, Regex};
 use utf16string::{LE, WStr};
 
 use crate::*;
@@ -15,6 +15,13 @@ use crate::protobuf::history::*;
 
 use super::*;
 
+/// Old versions of Mail.Ru Agent stored data in unknown DBMS format storage, with strings formatted as UTF-16 LE.
+///
+/// Following references were helpful in reverse engineering the format (in Russian):
+/// * https://xakep.ru/2012/11/30/mailru-agent-hack/
+/// * https://c0dedgarik.blogspot.com/2010/08/mradbs.html
+pub struct MailRuAgentDataLoader;
+
 const MRA_DBS: &str = "mra.dbs";
 const DATASETS_DIR_NAME: &str = "_datasets";
 const MSG_HEADER_MAGIC_NUMBER: u32 = 0x38;
@@ -22,12 +29,14 @@ const MSG_HEADER_MAGIC_NUMBER: u32 = 0x38;
 /// Using a first legal ID (i.e. "1") for myself
 const MYSELF_ID: UserId = UserId(UserId::INVALID.0 + 1);
 
-/// Old versions of Mail.Ru Agent stored data in unknown DBMS format storage, with strings formatted as UTF-16 LE.
-///
-/// Following references were helpful in reverse engineering the format (in Russian):
-/// * https://xakep.ru/2012/11/30/mailru-agent-hack/
-/// * https://c0dedgarik.blogspot.com/2010/08/mradbs.html
-pub struct MailRuAgentDataLoader;
+lazy_static! {
+    // Expected entries are @mail.ru, @bk.ru and @uin.icq.
+    // Could also be @chat.agent, which indicates a group chat.
+    static ref EMAIL_REGEX: Regex = Regex::new(r"^[a-zA-Z0-9._-]+@([a-z-]+\.)+[a-z]+$").unwrap();
+
+    static ref SMILE_TAG_REGEX: Regex = Regex::new(r"<SMILE>id=(?<id>[^ ]+) alt='(?<alt>[^']+)'</SMILE>").unwrap();
+    static ref SMILE_INLINE_REGEX: Regex = Regex::new(r#":(([А-ЯË][а-яё" .,!?-]+)|([0-9]{3,})):"#).unwrap();
+}
 
 impl DataLoader for MailRuAgentDataLoader {
     fn name(&self) -> &'static str { "Mail.Ru Agent" }
@@ -236,12 +245,6 @@ fn convert<'a>(
     dbs_bytes: &'a [u8],
     storage_path: &Path,
 ) -> Result<Vec<DatasetEntry>> {
-    lazy_static! {
-        // Expected entries are @mail.ru, @bk.ru and @uin.icq.
-        // Could also be @chat.agent, which indicates a group chat.
-        static ref EMAIL_REGEX: Regex = Regex::new(r"^[a-zA-Z0-9._-]+@([a-z-]+\.)+[a-z]+$").unwrap();
-    }
-
     let mut result = HashMap::<String, MraDatasetEntry>::new();
 
     for conv_w_msgs in convs_with_msgs.iter() {
@@ -322,6 +325,7 @@ fn convert<'a>(
                 MraMessageType::RegularMaybeUnauthorized |
                 MraMessageType::Regular |
                 MraMessageType::Sms => {
+                    let text = replace_smiles_with_emojis(&text);
                     (vec![RichText::make_plain(text)], Typed::Regular(Default::default()))
                 }
                 MraMessageType::FileTransfer => {
@@ -359,8 +363,6 @@ fn convert<'a>(
                     let payload = mra_msg.payload;
                     let payload = validate_skip_chunk(payload, mra_msg.text.as_bytes())?;
                     require_format!(payload.is_empty());
-
-                    let text = mra_msg.text.to_utf8();
 
                     const BEGIN_CONNECTING: &str = "Устанавливается соединение...";
                     const BEGIN_I_CALL: &str = "Звонок от вашего собеседника";
@@ -506,14 +508,11 @@ fn convert<'a>(
                     let payload = &payload[8..];
                     require_format!(payload.is_empty());
 
-                    let text = format!("{}{}",
-                                       target_name.map(|n| format!("(To {n})\n")).unwrap_or_default(),
-                                       mra_msg.text.to_utf8());
-
-                    (vec![RichText::make_plain(text)],
-                     Typed::Service(MessageService {
-                         sealed_value_optional: Some(ServiceSvo::StatusTextChanged(MessageServiceStatusTextChanged {}))
-                     }))
+                    let text = replace_smiles_with_emojis(&text);
+                    let text = format!("{}{}", target_name.map(|n| format!("(To {n})\n")).unwrap_or_default(), text);
+                    (vec![RichText::make_plain(text)], Typed::Service(MessageService {
+                        sealed_value_optional: Some(ServiceSvo::StatusTextChanged(MessageServiceStatusTextChanged {}))
+                    }))
                 }
                 MraMessageType::ConferenceMessagePlaintext => {
                     let payload = mra_msg.payload;
@@ -524,8 +523,8 @@ fn convert<'a>(
                     from_username = String::from_utf8(author_email_bytes.to_vec())?;
                     require_format!(payload.is_empty());
 
-                    (vec![RichText::make_plain(mra_msg.text.to_utf8())],
-                     Typed::Regular(Default::default()))
+                    let text = replace_smiles_with_emojis(&text);
+                    (vec![RichText::make_plain(text)], Typed::Regular(Default::default()))
                 }
                 MraMessageType::ConferenceMessageRtf => {
                     let payload = mra_msg.payload;
@@ -544,8 +543,9 @@ fn convert<'a>(
                         from_username = String::from_utf8(author_email_bytes.to_vec())?
                     };
 
-                    // TODO: Use RTF
-                    (vec![RichText::make_plain(mra_msg.text.to_utf8())],
+                    // TODO: Use RTF, replace smileys
+                    // let text = replace_smiles_with_emojis(&text);
+                    (vec![RichText::make_plain(text)],
                      Typed::Regular(Default::default()))
                 }
                 MraMessageType::Unknown1 => {
@@ -567,7 +567,7 @@ fn convert<'a>(
 
                     let location = ContentLocation {
                         title_option: None,
-                        address_option: Some(mra_msg.text.to_utf8()),
+                        address_option: Some(text),
                         lat_str: lat_str,
                         lon_str: lon_str,
                         duration_sec_option: None,
@@ -872,6 +872,115 @@ fn bytes_to_pretty_string(bytes: &[u8], columns: usize) -> String {
         result.push('\n');
     }
     result.trim_end().to_owned()
+}
+
+/// Replaces <SMILE> tags and inline smiles with emojis
+fn replace_smiles_with_emojis(s_org: &str) -> String {
+    let s = SMILE_TAG_REGEX.replace_all(s_org, |capt: &Captures| {
+        let smiley = capt.name("alt").unwrap().as_str();
+        let emoji_option = smiley_to_emoji(smiley);
+        emoji_option.unwrap_or_else(|| smiley.to_owned())
+    });
+
+    let s = SMILE_INLINE_REGEX.replace_all(&s, |capt: &Captures| {
+        let smiley = capt.get(0).unwrap().as_str();
+        let emoji_option = smiley_to_emoji(smiley);
+        emoji_option.unwrap_or_else(|| smiley.to_owned())
+    });
+
+    s.into()
+}
+
+/// Replaces a :Smiley: code with an emoji character if known
+fn smiley_to_emoji(smiley: &str) -> Option<String> {
+    // This isn't a full list, just the ones I got.
+    // There's also a bunch of numeric smileys like :6687: whose meaning isn't known.
+    match smiley {
+        ":Ок!:" | ":Да!:" => Some("👍"),
+        ":Не-а:" | ":Нет!:" => Some("👎"),
+        ":Отлично!:" => Some("💯"),
+        ":Жжёшь!:" => Some("🔥"),
+        ":Радуюсь:" | ":Радость:" | ":Улыбка до ушей:" | ":Смеюсь:" => Some("😁"),
+        ":Улыбаюсь:" => Some("🙂"),
+        ":Лопну от смеха:" => Some("😂"),
+        ":Хихикаю:" => Some("🤭"),
+        ":Подмигиваю:" => Some("😉"),
+        ":Расстраиваюсь:" | ":Подавлен:" => Some("😟"),
+        ":Смущаюсь:" => Some("🤭"),
+        ":Стыдно:" => Some("🫣"),
+        ":Удивляюсь:" | ":Ты что!:" | ":Фига:" | ":Ой, ё:" => Some("😯"),
+        ":Сейчас расплачусь:" | ":Извини:" => Some("🥺"),
+        ":Хны...!:" => Some("😢"),
+        ":Плохо:" | ":В печали:" => Some("😔"),
+        ":Рыдаю:" => Some("😭"),
+        ":Дразнюсь:" | ":Дурачусь:" | ":Показываю язык:" => Some("😝"),
+        ":Виноват:" => Some("😅"),
+        ":Сумасшествие:" => Some("🤪"),
+        ":Целую:" => Some("😘"),
+        ":Влюбленный:" | ":Влюблён:" => Some("😍️"),
+        ":Поцеловали:" => Some("🥰"),
+        ":Купидон:" | ":На крыльях любви:" => Some("💘️"),
+        ":Сердце:" | ":Люблю:" | ":Любовь:" => Some("❤️"),
+        ":Сердце разбито:" => Some("💔️"),
+        ":Красотка:" => Some("😊"),
+        ":Тошнит:" | ":Гадость:" => Some("🤮"),
+        ":Пугаюсь:" => Some("😨"),
+        ":Ура!:" | ":Уррра!:" => Some("🎉"),
+        ":Кричу:" => Some("📢"),
+        ":Подозреваю:" | ":Подозрительно:" => Some("🤨"),
+        ":Думаю:" | ":Надо подумать:" => Some("🤔"),
+        ":Взрыв мозга:" => Some("🤯"),
+        ":Аплодисменты:" => Some("👏"),
+        ":Требую:" => Some("🫴"),
+        ":Не знаю:" => Some("🤷‍️"),
+        ":Ангелок:" | ":Ангелочек:" => Some("😇"),
+        ":Чертенок:" | ":Злорадствую:" => Some("😈"),
+        ":Пристрелю!:" | ":Застрелю:" | ":Злюсь:" => Some("😡"),
+        ":Свирепствую:" => Some("🤬"),
+        ":Чертовски злюсь:" => Some("👿"),
+        ":Отвали!:" => Some("🖕"),
+        ":Побью:" | ":Побили:" | ":В атаку!:" => Some("👊"),
+        ":Задолбал!:" => Some("😒"),
+        ":Сплю:" => Some("😴"),
+        ":Мечтаю:" => Some("😌"),
+        ":Прорвемся!:" => Some("💪"),
+        ":Пока!:" | ":Пока-пока:" => Some("👋"),
+        ":Устал:" | ":В изнеможении:" => Some("😮‍💨"),
+        ":Танцую:" => Some("🕺"),
+        ":Ктулху:" => Some("🐙"),
+        ":Я круче:" => Some("😎"),
+        ":Вояка:" => Some("🥷"),
+        ":Пиво:" => Some("🍺"),
+        ":Алкоголик:" => Some("🥴"),
+        ":Бойан:" => Some("🪗"),
+        ":Лапками-лапками:" => Some("🐾"),
+        ":Кондитер:" => Some("👨‍🍳"),
+        ":Головой об стену:" => Some("🤕"),
+        ":Слушаю музыку:" => Some("🎵"),
+        ":Кушаю:" => Some("😋"),
+        ":Дарю цветочек:" | ":Не опаздывай:" => Some("🌷"),
+        ":Пошалим?:" | ":Хочу тебя:" => Some("😏"),
+        ":Ревность:" => Some("😤"),
+        ":Внимание!:" => Some("⚠️"),
+        ":Помоги:" => Some("🆘"),
+        ":Мир!:" => Some("🤝"),
+        r#":Левая "коза":"# | r#":Правая "коза":"# => Some("🤘"),
+        ":Лучезарно:" => Some("☀️"),
+        ":Пацанчик:" => Some("🤠️"),
+        ":Карусель:" => Some("🎡"),
+        ":Бабочка:" => Some("🦋"),
+        ":Голубки:" => Some("🕊"),
+        ":Бабло!:" => Some("💸"),
+        ":Кот:" | ":Кошки-мышки:" => Some("🐈"),
+        ":Пёс:" => Some("🐕"),
+        ":Выпей яду:" => Some("☠️"),
+        ":Серьёзен как никогда, ага:" => Some("😐️"),
+        other => {
+            // Might also mean this is not a real smiley
+            log::warn!("No emoji known for a smiley {other}");
+            None
+        }
+    }.map(|s| s.to_owned())
 }
 
 fn inner_find_positions_of<T: PartialEq>(source: &[T], to_find: &[T], step: usize, find_one: bool) -> Vec<usize> {
