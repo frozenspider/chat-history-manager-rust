@@ -899,12 +899,13 @@ impl Debug for MraMessage<'_> {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         let mut formatter = formatter.debug_struct("MraMessage");
         formatter.field("offset", &format!("{:#010x}", self.offset));
-        match self.get_tpe() {
-            Ok(tpe) =>
+        let tpe_option: Option<MraMessageType> = FromPrimitive::from_u32(self.header.tpe_u32);
+        match tpe_option {
+            Some(tpe) =>
                 formatter.field("type", &tpe),
-            Err(_) => {
+            None => {
                 let tpe_u32 = self.header.tpe_u32;
-                formatter.field("type", &format!("UNKNOWN ({tpe_u32})"))
+                formatter.field("type", &format!("UNKNOWN ({tpe_u32:#04x})"))
             }
         };
         formatter.field("author", &self.author.to_utf8());
