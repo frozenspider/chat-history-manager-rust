@@ -1,3 +1,5 @@
+#![allow(clippy::reversed_empty_ranges)]
+
 use std::{cmp, fmt, fs, mem, slice};
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
@@ -41,8 +43,8 @@ lazy_static! {
     static ref EMAIL_REGEX: Regex = Regex::new(r"^[a-zA-Z0-9._-]+@([a-z-]+\.)+[a-z]+$").unwrap();
 
     static ref SMILE_TAG_REGEX: Regex = Regex::new(r"<SMILE>id=(?<id>[^ ]+)( alt='(?<alt>[^']+)')?</SMILE>").unwrap();
-    static ref SMILE_INLINE_REGEX: Regex = Regex::new(r#":(([А-ЯË][^:\n]+)|([0-9]{3,})):"#).unwrap();
-    static ref SMILE_IMG_REGEX: Regex = Regex::new(r#"<###(?<prefix>\d+)###img(?<id>\d+)>"#).unwrap();
+    static ref SMILE_INLINE_REGEX: Regex = Regex::new(r":(([А-ЯË][^:\n]+)|([0-9]{3,})):").unwrap();
+    static ref SMILE_IMG_REGEX: Regex = Regex::new(r"<###(?<prefix>\d+)###img(?<id>\d+)>").unwrap();
 }
 
 impl DataLoader for MailRuAgentDataLoader {
@@ -120,8 +122,8 @@ fn load_conversations<'a>(dbs_bytes: &'a [u8], offsets_table: &[u32]) -> Result<
     let mrahistory_footprint: &[u8] =
         &"mrahistory_".as_bytes().iter().flat_map(|&b| vec![b, 0x00u8]).collect_vec();
 
-    let expected_convs_count = read_u32_le(&dbs_bytes, offsets_table[1] as usize + CONVERSATIONS_COUNT_OFFSET);
-    let mut conv_id = read_u32_le(&dbs_bytes, offsets_table[1] as usize + LAST_CONVERSATION_OFFSET);
+    let expected_convs_count = read_u32_le(dbs_bytes, offsets_table[1] as usize + CONVERSATIONS_COUNT_OFFSET);
+    let mut conv_id = read_u32_le(dbs_bytes, offsets_table[1] as usize + LAST_CONVERSATION_OFFSET);
 
     let mut result = vec![];
 
@@ -131,9 +133,9 @@ fn load_conversations<'a>(dbs_bytes: &'a [u8], offsets_table: &[u32]) -> Result<
         let current_offset = offsets_table[conv_id as usize] as usize;
         assert!(current_offset < dbs_bytes.len());
 
-        let len = read_u32_le(&dbs_bytes, current_offset) as usize;
-        let prev_conv_id = read_u32_le(&dbs_bytes, current_offset + CONVERSATION_IDS_OFFSET);
-        let next_conv_id = read_u32_le(&dbs_bytes, current_offset + CONVERSATION_IDS_OFFSET + 4);
+        let len = read_u32_le(dbs_bytes, current_offset) as usize;
+        let prev_conv_id = read_u32_le(dbs_bytes, current_offset + CONVERSATION_IDS_OFFSET);
+        let next_conv_id = read_u32_le(dbs_bytes, current_offset + CONVERSATION_IDS_OFFSET + 4);
 
         require!(prev_conv_id == last_processed_conv_id,
                  "Conversations linked list is broken!");
@@ -146,7 +148,7 @@ fn load_conversations<'a>(dbs_bytes: &'a [u8], offsets_table: &[u32]) -> Result<
                 // Names are separated by either zero char (0x0000) or an underscore (0x5F00)
                 let zero_byte_pos = find_first_position(name_slice, &[0x00, 0x00], 2);
                 let underscore_pos = find_first_position(name_slice, &[0x5F, 0x00], 2);
-                [zero_byte_pos, underscore_pos].into_iter().filter_map(|v| v).min().unwrap()
+                [zero_byte_pos, underscore_pos].into_iter().flatten().min().unwrap()
             };
             let myself_name_utf16 = &name_slice[..separator_pos];
 
@@ -159,8 +161,8 @@ fn load_conversations<'a>(dbs_bytes: &'a [u8], offsets_table: &[u32]) -> Result<
                 offset: current_offset,
                 myself_name: WStr::from_utf16le(myself_name_utf16)?,
                 other_name: WStr::from_utf16le(other_name_utf16)?,
-                msg_id1: u32_ptr_to_option(read_u32_le(&dbs_bytes, current_offset + MESSAGE_IDS_OFFSET)),
-                msg_id2: u32_ptr_to_option(read_u32_le(&dbs_bytes, current_offset + MESSAGE_IDS_OFFSET + 4)),
+                msg_id1: u32_ptr_to_option(read_u32_le(dbs_bytes, current_offset + MESSAGE_IDS_OFFSET)),
+                msg_id2: u32_ptr_to_option(read_u32_le(dbs_bytes, current_offset + MESSAGE_IDS_OFFSET + 4)),
                 raw: &dbs_bytes[current_offset..(current_offset + len)],
             };
 
@@ -235,8 +237,8 @@ fn load_messages<'a>(
     Ok(result)
 }
 
-fn collect_datasets<'a>(
-    convs_with_msgs: &[MraConversationWithMessages<'a>],
+fn collect_datasets(
+    convs_with_msgs: &[MraConversationWithMessages<'_>],
     storage_path: &Path,
 ) -> Result<HashMap::<String, MraDatasetEntry>> {
     let mut result = HashMap::<String, MraDatasetEntry>::new();
@@ -407,330 +409,18 @@ fn convert_messages<'a>(
 
         let mut msgs: Vec<Message> = vec![];
         let mut ongoing_call_msg_id = None;
-        let mut interlocutor_ids = HashSet::from([MYSELF_ID]);
+        let mut interlocutor_ids = HashSet::from([*MYSELF_ID]);
         for mra_msg in conv_w_msgs.msgs.iter() {
-            let timestamp = filetime_to_timestamp(mra_msg.header.time);
-
-            // For a source message ID, let's use message time as it's precise enough for us to expect it to be unique
-            // within a chat.
-            let source_id_option = Some((mra_msg.header.time / 2) as i64);
-
-            let from_me = mra_msg.is_from_me()?;
-            let mut from_username = if from_me { myself_username.clone() } else { conv_username.clone() };
-
-            let tpe = mra_msg.get_tpe()?;
-            macro_rules! require_format {
-                ($cond:expr) => { require!($cond, "Unexpected {:?} message payload format!", tpe) };
+            if let Some(msg) = convert_message(mra_msg, internal_id, &myself_username, &conv_username, &entry.users,
+                                               &mut msgs, &mut ongoing_call_msg_id)? {
+                interlocutor_ids.insert(msg.from_id);
+                msgs.push(msg);
+                internal_id += 1;
             }
-
-            let text = mra_msg.text.to_utf8();
-            use crate::protobuf::history::message::Typed;
-            use crate::protobuf::history::content::SealedValueOptional as ContentSvo;
-            use crate::protobuf::history::message_service::SealedValueOptional as ServiceSvo;
-            let (text, typed) = match tpe {
-                MraMessageType::AuthorizationRequest |
-                MraMessageType::RegularPlaintext |
-                MraMessageType::RegularRtf |
-                MraMessageType::Sms => {
-                    let rtes = if tpe == MraMessageType::RegularRtf {
-                        let payload = mra_msg.payload;
-                        let (rtf_bytes, payload) = read_sized_chunk(payload)?;
-                        let rtf = WStr::from_utf16le(rtf_bytes)?.to_utf8();
-                        // RGBA bytes, ignoring
-                        let mut payload = &payload[4..];
-
-                        if !from_me {
-                            // Expecting 4 more empty bytes.
-                            let zeros = read_u32_le(payload, 0);
-                            require_format!(zeros == 0);
-                            payload = &payload[4..];
-                        }
-
-                        require_format!(payload.is_empty());
-                        parse_rtf(&rtf)?
-                    } else {
-                        let text = replace_smiles_with_emojis(&text);
-                        vec![RichText::make_plain(text)]
-                    };
-
-                    (rtes, Typed::Regular(Default::default()))
-                }
-                MraMessageType::FileTransfer => {
-                    // We can get file names from the outgoing messages.
-                    // Mail.Ru allowed to send several files in one message, so we unite them here.
-                    let text_parts = text.split('\n').collect_vec();
-                    let file_name_option = if text_parts.len() >= 3 {
-                        let file_paths: Vec<&str> = text_parts.smart_slice(1..-1).iter().map(|&s|
-                            s.trim()
-                                .rsplitn(3, ' ')
-                                .skip(2)
-                                .next()
-                                .context("Unexpected file path format!"))
-                            .try_collect()?;
-                        Some(file_paths.iter().join(", "))
-                    } else {
-                        None
-                    };
-                    (vec![], Typed::Regular(MessageRegular {
-                        content_option: Some(Content {
-                            sealed_value_optional: Some(ContentSvo::File(ContentFile {
-                                path_option: None,
-                                file_name_option,
-                                mime_type_option: None,
-                                thumbnail_path_option: None,
-                            }))
-                        }),
-                        ..Default::default()
-                    }))
-                }
-                MraMessageType::Call |
-                MraMessageType::VideoCall => {
-                    // Payload format: <text_len_u32><text>
-                    // It does not carry call information per se.
-                    let payload = mra_msg.payload;
-                    let payload = validate_skip_chunk(payload, mra_msg.text.as_bytes())?;
-                    require_format!(payload.is_empty());
-
-                    const BEGIN_CONNECTING: &str = "Устанавливается соединение...";
-                    const BEGIN_I_CALL: &str = "Звонок от вашего собеседника";
-                    const BEGIN_O_CALL: &str = "Вы звоните собеседнику. Ожидание ответа...";
-                    const BEGIN_STARTED: &str = "Начался разговор";
-
-                    const END_HANG: &str = "Звонок завершен";
-                    const END_VHANG: &str = "Видеозвонок завершен";
-                    const END_CONN_FAILED: &str = "Не удалось установить соединение. Попробуйте позже.";
-                    const END_I_CANCELLED: &str = "Вы отменили звонок";
-                    const END_I_VCANCELLED: &str = "Вы отменили видеозвонок";
-                    const END_O_CANCELLED: &str = "Собеседник отменил звонок";
-                    const END_O_VCANCELLED: &str = "Собеседник отменил видеозвонок";
-
-                    // MRA is not very rigid in propagating all the statuses.
-                    match text.as_str() {
-                        BEGIN_CONNECTING | BEGIN_I_CALL | BEGIN_O_CALL | BEGIN_STARTED => {
-                            if ongoing_call_msg_id.is_some_and(|id| internal_id - id <= 5) {
-                                // If call is already (recently) marked, do nothing
-                                continue;
-                            } else {
-                                // Save call ID to later amend with duration and status.
-                                ongoing_call_msg_id = Some(internal_id);
-                            }
-                        }
-                        END_HANG | END_VHANG |
-                        END_CONN_FAILED |
-                        END_I_CANCELLED | END_I_VCANCELLED |
-                        END_O_CANCELLED | END_O_VCANCELLED => {
-                            if ongoing_call_msg_id.is_some_and(|id| internal_id - id <= 50) {
-                                let msg_id = ongoing_call_msg_id.unwrap();
-                                let msg = msgs.iter_mut().rfind(|m| m.internal_id == msg_id).unwrap();
-                                let start_time = msg.timestamp;
-                                let discard_reason_option = match text.as_str() {
-                                    END_HANG | END_VHANG => None,
-                                    END_CONN_FAILED => Some("Failed to connect"),
-                                    END_I_CANCELLED | END_I_VCANCELLED => Some("Declined by you"),
-                                    END_O_CANCELLED | END_O_VCANCELLED => Some("Declined by user"),
-                                    _ => unreachable!()
-                                };
-                                match msg.typed_mut() {
-                                    Typed::Service(MessageService { sealed_value_optional: Some(ServiceSvo::PhoneCall(call)), .. }) => {
-                                        call.duration_sec_option = Some((timestamp - start_time) as i32);
-                                        call.discard_reason_option = discard_reason_option.map(|s| s.to_owned());
-                                    }
-                                    etc => bail!("Unexpected ongoing call type: {etc:?}")
-                                };
-                                ongoing_call_msg_id = None;
-                            }
-                            // Either way, this message itself isn't supposed to have a separate entry.
-                            continue;
-                        }
-                        etc => bail!("Unrecognized call message: {etc}"),
-                    }
-
-                    (vec![], Typed::Service(MessageService {
-                        sealed_value_optional: Some(ServiceSvo::PhoneCall(MessageServicePhoneCall {
-                            duration_sec_option: None,
-                            discard_reason_option: None,
-                        }))
-                    }))
-                }
-                MraMessageType::BirthdayReminder => {
-                    let payload = mra_msg.payload;
-                    let payload = validate_skip_chunk(payload, mra_msg.text.as_bytes())?;
-                    require_format!(payload.is_empty());
-
-                    (vec![RichText::make_plain(text)], Typed::Service(MessageService {
-                        sealed_value_optional: Some(ServiceSvo::Notice(MessageServiceNotice {}))
-                    }))
-                }
-                MraMessageType::Cartoon | MraMessageType::CartoonType2 => {
-                    let payload = mra_msg.payload;
-                    // Source is a <SMILE> tag
-                    let (src_bytes, payload) = read_sized_chunk(payload)?;
-                    require_format!(payload.is_empty());
-                    let src = WStr::from_utf16le(src_bytes)?.to_utf8();
-                    let (_id, emoji_option) = match SMILE_TAG_REGEX.captures(&src) {
-                        Some(captures) => (captures.name("id").unwrap().as_str(),
-                                           captures.name("alt").and_then(|smiley| smiley_to_emoji(smiley.as_str()))),
-                        None => bail!("Unexpected cartoon source: {src}")
-                    };
-
-                    (vec![], Typed::Regular(MessageRegular {
-                        content_option: Some(Content {
-                            sealed_value_optional: Some(ContentSvo::Sticker(ContentSticker {
-                                path_option: None,
-                                width: 0,
-                                height: 0,
-                                thumbnail_path_option: None,
-                                emoji_option,
-                            }))
-                        }),
-                        ..Default::default()
-                    }))
-                }
-                MraMessageType::ConferenceUsersChange => {
-                    let payload = mra_msg.payload;
-                    // All payload is a single chunk
-                    let change_tpe = read_u32_le(payload, 0);
-                    let payload = &payload[4..];
-
-                    // We don't care about user names here because they're already set by collect_datasets
-                    let service: ServiceSvo = match change_tpe {
-                        CONFERENCE_USER_JOINED => {
-                            let (_inviting_user_name_or_email, payload) = read_sized_chunk(payload)?;
-                            let num_invited_user_names = read_u32_le(payload, 0) as usize;
-
-                            let mut payload = &payload[4..];
-                            for _ in 0..num_invited_user_names {
-                                let (_name_bytes, payload2) = read_sized_chunk(payload)?;
-                                payload = payload2;
-                            }
-
-                            let num_invited_user_emails = read_u32_le(payload, 0) as usize;
-                            let mut emails = Vec::with_capacity(num_invited_user_emails);
-                            let mut payload = &payload[4..];
-                            for _ in 0..num_invited_user_names {
-                                let (email_bytes, payload2) = read_sized_chunk(payload)?;
-                                payload = payload2;
-                                emails.push(WStr::from_utf16le(email_bytes)?.to_utf8());
-                            }
-                            require_format!(payload.is_empty());
-
-                            let members = emails.iter().map(|e| entry.users[e].pretty_name()).collect_vec();
-                            ServiceSvo::GroupInviteMembers(MessageServiceGroupInviteMembers { members })
-                        }
-                        CONFERENCE_USER_LEFT => {
-                            let (_name_bytes, payload) = read_sized_chunk(payload)?;
-                            let (email_bytes, payload) = read_sized_chunk(payload)?;
-                            require_format!(payload.is_empty());
-
-                            let email = WStr::from_utf16le(email_bytes)?.to_utf8();
-                            let members = vec![entry.users[&email].pretty_name()];
-                            ServiceSvo::GroupRemoveMembers(MessageServiceGroupRemoveMembers { members })
-                        }
-                        etc => bail!("Unexpected {tpe:?} change type {etc}")
-                    };
-
-                    (vec![], Typed::Service(MessageService { sealed_value_optional: Some(service) }))
-                }
-                MraMessageType::MicroblogRecordBroadcast |
-                MraMessageType::MicroblogRecordDirected => {
-                    let payload = mra_msg.payload;
-                    // Text duplication
-                    let mut payload = validate_skip_chunk(payload, mra_msg.text.as_bytes())?;
-                    let target_name = if tpe == MraMessageType::MicroblogRecordDirected {
-                        let (target_name_bytes, payload2) = read_sized_chunk(payload)?;
-                        payload = payload2;
-                        Some(WStr::from_utf16le(target_name_bytes)?.to_utf8())
-                    } else { None };
-                    // Next 8 bytes as some timestamp we don't really care about.
-                    let payload = &payload[8..];
-                    require_format!(payload.is_empty());
-
-                    let text = replace_smiles_with_emojis(&text);
-                    let text = format!("{}{}", target_name.map(|n| format!("(To {n})\n")).unwrap_or_default(), text);
-                    (vec![RichText::make_plain(text)], Typed::Service(MessageService {
-                        sealed_value_optional: Some(ServiceSvo::StatusTextChanged(MessageServiceStatusTextChanged {}))
-                    }))
-                }
-                MraMessageType::ConferenceMessagePlaintext => {
-                    let payload = mra_msg.payload;
-                    // Text duplication
-                    let payload = validate_skip_chunk(payload, mra_msg.text.as_bytes())?;
-                    // Author email
-                    let (author_email_bytes, payload) = read_sized_chunk(payload)?;
-                    from_username = String::from_utf8(author_email_bytes.to_vec())?;
-                    require_format!(payload.is_empty());
-
-                    let text = replace_smiles_with_emojis(&text);
-                    (vec![RichText::make_plain(text)], Typed::Regular(Default::default()))
-                }
-                MraMessageType::ConferenceMessageRtf => {
-                    let payload = mra_msg.payload;
-                    // RTF
-                    let (rtf_bytes, payload) = read_sized_chunk(payload)?;
-                    let rtf_utf16 = WStr::from_utf16le(rtf_bytes)?;
-                    let rtf = rtf_utf16.to_utf8();
-                    // RGBA bytes, ignoring
-                    let payload = &payload[4..];
-                    // Author email (only present for others' messages)
-                    require!(payload.is_empty() == mra_msg.is_from_me()?,
-                             "Expected message payload to be empty for self messages only!");
-                    if !mra_msg.is_from_me()? {
-                        let (author_email_bytes, payload) = read_sized_chunk(payload)?;
-                        require_format!(payload.is_empty());
-                        from_username = String::from_utf8(author_email_bytes.to_vec())?
-                    };
-
-                    let rtes = parse_rtf(&rtf)?;
-                    (rtes, Typed::Regular(Default::default()))
-                }
-                MraMessageType::LocationChange => {
-                    // Payload format: <name_len_u32><name><lat_len_u32><lat><lon_len_u32><lon><...>
-                    let payload = mra_msg.payload;
-                    // We observe that location name is exactly the same as the message text
-                    let payload = validate_skip_chunk(payload, mra_msg.text.as_bytes())?;
-                    // Lattitude
-                    let (lat_bytes, payload) = read_sized_chunk(payload)?;
-                    let lat_str = String::from_utf8(lat_bytes.to_vec())?;
-                    // Longitude
-                    let (lon_bytes, _payload) = read_sized_chunk(payload)?;
-                    let lon_str = String::from_utf8(lon_bytes.to_vec())?;
-
-                    let location = ContentLocation {
-                        title_option: None,
-                        address_option: Some(text),
-                        lat_str: lat_str,
-                        lon_str: lon_str,
-                        duration_sec_option: None,
-                    };
-                    (vec![RichText::make_plain("(Location changed)".to_owned())],
-                     Typed::Regular(MessageRegular {
-                         content_option: Some(Content {
-                             sealed_value_optional: Some(ContentSvo::Location(location))
-                         }),
-                         ..Default::default()
-                     }))
-                }
-            };
-
-            let user = &entry.users[&from_username];
-
-            interlocutor_ids.insert(user.id());
-
-            let msg = Message::new(
-                internal_id,
-                source_id_option,
-                timestamp,
-                user.id(),
-                text,
-                typed,
-            );
-            msgs.push(msg);
-            internal_id += 1;
         }
 
         let member_ids = interlocutor_ids
             .into_iter()
-            .map(|id| *id)
             .sorted_by_key(|id| if *id == *MYSELF_ID { i64::MIN } else { *id })
             .collect_vec();
 
@@ -785,6 +475,328 @@ fn convert_messages<'a>(
             cwms: entry.cwms.into_values().collect_vec(),
         }
     }).collect_vec())
+}
+
+fn convert_message(
+    mra_msg: &MraMessage<'_>,
+    internal_id: i64,
+    myself_username: &str,
+    conv_username: &str,
+    users: &HashMap<String, User>,
+    prev_msgs: &mut [Message],
+    ongoing_call_msg_id: &mut Option<i64>,
+) -> Result<Option<Message>> {
+    let timestamp = filetime_to_timestamp(mra_msg.header.time);
+
+    // For a source message ID, let's use message time as it's precise enough for us to expect it to be unique
+    // within a chat.
+    let source_id_option = Some((mra_msg.header.time / 2) as i64);
+
+    let from_me = mra_msg.is_from_me()?;
+    let mut from_username = (if from_me { myself_username } else { conv_username }).to_owned();
+
+    let tpe = mra_msg.get_tpe()?;
+    macro_rules! require_format {
+                ($cond:expr) => { require!($cond, "Unexpected {:?} message payload format!", tpe) };
+            }
+
+    let text = mra_msg.text.to_utf8();
+    use crate::protobuf::history::message::Typed;
+    use crate::protobuf::history::content::SealedValueOptional as ContentSvo;
+    use crate::protobuf::history::message_service::SealedValueOptional as ServiceSvo;
+    let (text, typed) = match tpe {
+        MraMessageType::AuthorizationRequest |
+        MraMessageType::RegularPlaintext |
+        MraMessageType::RegularRtf |
+        MraMessageType::Sms => {
+            let rtes = if tpe == MraMessageType::RegularRtf {
+                let payload = mra_msg.payload;
+                let (rtf_bytes, payload) = read_sized_chunk(payload)?;
+                let rtf = WStr::from_utf16le(rtf_bytes)?.to_utf8();
+                // RGBA bytes, ignoring
+                let mut payload = &payload[4..];
+
+                if !from_me {
+                    // Expecting 4 more empty bytes.
+                    let zeros = read_u32_le(payload, 0);
+                    require_format!(zeros == 0);
+                    payload = &payload[4..];
+                }
+
+                require_format!(payload.is_empty());
+                parse_rtf(&rtf)?
+            } else {
+                let text = replace_smiles_with_emojis(&text);
+                vec![RichText::make_plain(text)]
+            };
+
+            (rtes, Typed::Regular(Default::default()))
+        }
+        MraMessageType::FileTransfer => {
+            // We can get file names from the outgoing messages.
+            // Mail.Ru allowed us to send several files in one message, so we unite them here.
+            let text_parts = text.split('\n').collect_vec();
+            let file_name_option = if text_parts.len() >= 3 {
+                let file_paths: Vec<&str> = text_parts.smart_slice(1..-1).iter().map(|&s|
+                    s.trim()
+                        .rsplitn(3, ' ')
+                        .nth(2)
+                        .context("Unexpected file path format!"))
+                    .try_collect()?;
+                Some(file_paths.iter().join(", "))
+            } else {
+                None
+            };
+            (vec![], Typed::Regular(MessageRegular {
+                content_option: Some(Content {
+                    sealed_value_optional: Some(ContentSvo::File(ContentFile {
+                        path_option: None,
+                        file_name_option,
+                        mime_type_option: None,
+                        thumbnail_path_option: None,
+                    }))
+                }),
+                ..Default::default()
+            }))
+        }
+        MraMessageType::Call |
+        MraMessageType::VideoCall => {
+            // Payload format: <text_len_u32><text>
+            // It does not carry call information per se.
+            let payload = mra_msg.payload;
+            let payload = validate_skip_chunk(payload, mra_msg.text.as_bytes())?;
+            require_format!(payload.is_empty());
+
+            const BEGIN_CONNECTING: &str = "Устанавливается соединение...";
+            const BEGIN_I_CALL: &str = "Звонок от вашего собеседника";
+            const BEGIN_O_CALL: &str = "Вы звоните собеседнику. Ожидание ответа...";
+            const BEGIN_STARTED: &str = "Начался разговор";
+
+            const END_HANG: &str = "Звонок завершен";
+            const END_VHANG: &str = "Видеозвонок завершен";
+            const END_CONN_FAILED: &str = "Не удалось установить соединение. Попробуйте позже.";
+            const END_I_CANCELLED: &str = "Вы отменили звонок";
+            const END_I_VCANCELLED: &str = "Вы отменили видеозвонок";
+            const END_O_CANCELLED: &str = "Собеседник отменил звонок";
+            const END_O_VCANCELLED: &str = "Собеседник отменил видеозвонок";
+
+            // MRA is not very rigid in propagating all the statuses.
+            match text.as_str() {
+                BEGIN_CONNECTING | BEGIN_I_CALL | BEGIN_O_CALL | BEGIN_STARTED => {
+                    if ongoing_call_msg_id.is_some_and(|id| internal_id - id <= 5) {
+                        // If call is already (recently) marked, do nothing
+                        return Ok(None);
+                    } else {
+                        // Save call ID to later amend with duration and status.
+                        *ongoing_call_msg_id = Some(internal_id);
+                    }
+                }
+                END_HANG | END_VHANG |
+                END_CONN_FAILED |
+                END_I_CANCELLED | END_I_VCANCELLED |
+                END_O_CANCELLED | END_O_VCANCELLED => {
+                    if ongoing_call_msg_id.is_some_and(|id| internal_id - id <= 50) {
+                        let msg_id = ongoing_call_msg_id.unwrap();
+                        let msg = prev_msgs.iter_mut().rfind(|m| m.internal_id == msg_id).unwrap();
+                        let start_time = msg.timestamp;
+                        let discard_reason_option = match text.as_str() {
+                            END_HANG | END_VHANG => None,
+                            END_CONN_FAILED => Some("Failed to connect"),
+                            END_I_CANCELLED | END_I_VCANCELLED => Some("Declined by you"),
+                            END_O_CANCELLED | END_O_VCANCELLED => Some("Declined by user"),
+                            _ => unreachable!()
+                        };
+                        match msg.typed_mut() {
+                            Typed::Service(MessageService { sealed_value_optional: Some(ServiceSvo::PhoneCall(call)), .. }) => {
+                                call.duration_sec_option = Some((timestamp - start_time) as i32);
+                                call.discard_reason_option = discard_reason_option.map(|s| s.to_owned());
+                            }
+                            etc => bail!("Unexpected ongoing call type: {etc:?}")
+                        };
+                        *ongoing_call_msg_id = None;
+                    }
+                    // Either way, this message itself isn't supposed to have a separate entry.
+                    return Ok(None);
+                }
+                etc => bail!("Unrecognized call message: {etc}"),
+            }
+
+            (vec![], Typed::Service(MessageService {
+                sealed_value_optional: Some(ServiceSvo::PhoneCall(MessageServicePhoneCall {
+                    duration_sec_option: None,
+                    discard_reason_option: None,
+                }))
+            }))
+        }
+        MraMessageType::BirthdayReminder => {
+            let payload = mra_msg.payload;
+            let payload = validate_skip_chunk(payload, mra_msg.text.as_bytes())?;
+            require_format!(payload.is_empty());
+
+            (vec![RichText::make_plain(text)], Typed::Service(MessageService {
+                sealed_value_optional: Some(ServiceSvo::Notice(MessageServiceNotice {}))
+            }))
+        }
+        MraMessageType::Cartoon | MraMessageType::CartoonType2 => {
+            let payload = mra_msg.payload;
+            // Source is a <SMILE> tag
+            let (src_bytes, payload) = read_sized_chunk(payload)?;
+            require_format!(payload.is_empty());
+            let src = WStr::from_utf16le(src_bytes)?.to_utf8();
+            let (_id, emoji_option) = match SMILE_TAG_REGEX.captures(&src) {
+                Some(captures) => (captures.name("id").unwrap().as_str(),
+                                   captures.name("alt").and_then(|smiley| smiley_to_emoji(smiley.as_str()))),
+                None => bail!("Unexpected cartoon source: {src}")
+            };
+
+            (vec![], Typed::Regular(MessageRegular {
+                content_option: Some(Content {
+                    sealed_value_optional: Some(ContentSvo::Sticker(ContentSticker {
+                        path_option: None,
+                        width: 0,
+                        height: 0,
+                        thumbnail_path_option: None,
+                        emoji_option,
+                    }))
+                }),
+                ..Default::default()
+            }))
+        }
+        MraMessageType::ConferenceUsersChange => {
+            let payload = mra_msg.payload;
+            // All payload is a single chunk
+            let change_tpe = read_u32_le(payload, 0);
+            let payload = &payload[4..];
+
+            // We don't care about user names here because they're already set by collect_datasets
+            let service: ServiceSvo = match change_tpe {
+                CONFERENCE_USER_JOINED => {
+                    let (_inviting_user_name_or_email, payload) = read_sized_chunk(payload)?;
+                    let num_invited_user_names = read_u32_le(payload, 0) as usize;
+
+                    let mut payload = &payload[4..];
+                    for _ in 0..num_invited_user_names {
+                        let (_name_bytes, payload2) = read_sized_chunk(payload)?;
+                        payload = payload2;
+                    }
+
+                    let num_invited_user_emails = read_u32_le(payload, 0) as usize;
+                    let mut emails = Vec::with_capacity(num_invited_user_emails);
+                    let mut payload = &payload[4..];
+                    for _ in 0..num_invited_user_names {
+                        let (email_bytes, payload2) = read_sized_chunk(payload)?;
+                        payload = payload2;
+                        emails.push(WStr::from_utf16le(email_bytes)?.to_utf8());
+                    }
+                    require_format!(payload.is_empty());
+
+                    let members = emails.iter().map(|e| users[e].pretty_name()).collect_vec();
+                    ServiceSvo::GroupInviteMembers(MessageServiceGroupInviteMembers { members })
+                }
+                CONFERENCE_USER_LEFT => {
+                    let (_name_bytes, payload) = read_sized_chunk(payload)?;
+                    let (email_bytes, payload) = read_sized_chunk(payload)?;
+                    require_format!(payload.is_empty());
+
+                    let email = WStr::from_utf16le(email_bytes)?.to_utf8();
+                    let members = vec![users[&email].pretty_name()];
+                    ServiceSvo::GroupRemoveMembers(MessageServiceGroupRemoveMembers { members })
+                }
+                etc => bail!("Unexpected {tpe:?} change type {etc}")
+            };
+
+            (vec![], Typed::Service(MessageService { sealed_value_optional: Some(service) }))
+        }
+        MraMessageType::MicroblogRecordBroadcast |
+        MraMessageType::MicroblogRecordDirected => {
+            let payload = mra_msg.payload;
+            // Text duplication
+            let mut payload = validate_skip_chunk(payload, mra_msg.text.as_bytes())?;
+            let target_name = if tpe == MraMessageType::MicroblogRecordDirected {
+                let (target_name_bytes, payload2) = read_sized_chunk(payload)?;
+                payload = payload2;
+                Some(WStr::from_utf16le(target_name_bytes)?.to_utf8())
+            } else { None };
+            // Next 8 bytes as some timestamp we don't really care about.
+            let payload = &payload[8..];
+            require_format!(payload.is_empty());
+
+            let text = replace_smiles_with_emojis(&text);
+            let text = format!("{}{}", target_name.map(|n| format!("(To {n})\n")).unwrap_or_default(), text);
+            (vec![RichText::make_plain(text)], Typed::Service(MessageService {
+                sealed_value_optional: Some(ServiceSvo::StatusTextChanged(MessageServiceStatusTextChanged {}))
+            }))
+        }
+        MraMessageType::ConferenceMessagePlaintext => {
+            let payload = mra_msg.payload;
+            // Text duplication
+            let payload = validate_skip_chunk(payload, mra_msg.text.as_bytes())?;
+            // Author email
+            let (author_email_bytes, payload) = read_sized_chunk(payload)?;
+            from_username = String::from_utf8(author_email_bytes.to_vec())?;
+            require_format!(payload.is_empty());
+
+            let text = replace_smiles_with_emojis(&text);
+            (vec![RichText::make_plain(text)], Typed::Regular(Default::default()))
+        }
+        MraMessageType::ConferenceMessageRtf => {
+            let payload = mra_msg.payload;
+            // RTF
+            let (rtf_bytes, payload) = read_sized_chunk(payload)?;
+            let rtf_utf16 = WStr::from_utf16le(rtf_bytes)?;
+            let rtf = rtf_utf16.to_utf8();
+            // RGBA bytes, ignoring
+            let payload = &payload[4..];
+            // Author email (only present for others' messages)
+            require!(payload.is_empty() == mra_msg.is_from_me()?,
+                             "Expected message payload to be empty for self messages only!");
+            if !mra_msg.is_from_me()? {
+                let (author_email_bytes, payload) = read_sized_chunk(payload)?;
+                require_format!(payload.is_empty());
+                from_username = String::from_utf8(author_email_bytes.to_vec())?
+            };
+
+            let rtes = parse_rtf(&rtf)?;
+            (rtes, Typed::Regular(Default::default()))
+        }
+        MraMessageType::LocationChange => {
+            // Payload format: <name_len_u32><name><lat_len_u32><lat><lon_len_u32><lon><...>
+            let payload = mra_msg.payload;
+            // We observe that location name is exactly the same as the message text
+            let payload = validate_skip_chunk(payload, mra_msg.text.as_bytes())?;
+            // Lattitude
+            let (lat_bytes, payload) = read_sized_chunk(payload)?;
+            let lat_str = String::from_utf8(lat_bytes.to_vec())?;
+            // Longitude
+            let (lon_bytes, _payload) = read_sized_chunk(payload)?;
+            let lon_str = String::from_utf8(lon_bytes.to_vec())?;
+
+            let location = ContentLocation {
+                title_option: None,
+                address_option: Some(text),
+                lat_str,
+                lon_str,
+                duration_sec_option: None,
+            };
+            (vec![RichText::make_plain("(Location changed)".to_owned())],
+             Typed::Regular(MessageRegular {
+                 content_option: Some(Content {
+                     sealed_value_optional: Some(ContentSvo::Location(location))
+                 }),
+                 ..Default::default()
+             }))
+        }
+    };
+
+    let user = &users[&from_username];
+    Ok(Some(Message::new(
+        internal_id,
+        source_id_option,
+        timestamp,
+        user.id(),
+        text,
+        typed,
+    )))
 }
 
 //
@@ -943,7 +955,7 @@ fn read_4_bytes(bytes: &[u8], shift: usize) -> [u8; 4] {
 }
 
 /// Assumes the next 4 payload bytes to specify the size of the chunk. Read and return it, and the rest of the payload.
-fn read_sized_chunk<'a>(payload: &'a [u8]) -> Result<(&'a [u8], &'a [u8])> {
+fn read_sized_chunk(payload: &[u8]) -> Result<(&[u8], &[u8])> {
     let len = read_u32_le(payload, 0) as usize;
     Ok(payload[4..].split_at(len))
 }
@@ -974,8 +986,7 @@ fn filetime_to_timestamp(ft: u64) -> i64 {
     const TICKS_PER_SECOND: u64 = 10_000_000;
     const SECONSDS_TO_UNIX_EPOCH: i64 = 11_644_473_600;
     let time = ft / TICKS_PER_SECOND;
-    let time = time as i64 - SECONSDS_TO_UNIX_EPOCH;
-    time
+    time as i64 - SECONSDS_TO_UNIX_EPOCH
 }
 
 fn find_first_position<T: PartialEq>(source: &[T], to_find: &[T], step: usize) -> Option<usize> {
@@ -988,7 +999,7 @@ fn find_first_position<T: PartialEq>(source: &[T], to_find: &[T], step: usize) -
 /// input cases.
 fn inner_find_positions_of<T: PartialEq>(source: &[T], to_find: &[T], step: usize, find_one: bool) -> Vec<usize> {
     assert!(to_find.len() % step == 0, "to_find sequence length is not a multiplier of {step}!");
-    if to_find.len() == 0 { panic!("to_find slice was empty!"); }
+    if to_find.is_empty() { panic!("to_find slice was empty!"); }
     let max_i = source.len() as i64 - to_find.len() as i64 + 1;
     if max_i <= 0 { return vec![]; }
     let max_i = max_i as usize;
@@ -1061,7 +1072,7 @@ fn parse_rtf(rtf: &str) -> Result<Vec<RichTextElement>> {
         if let Some(text) = text.take() {
             let trimmed = text.trim();
             if !trimmed.is_empty() {
-                let text = replace_smiles_with_emojis(&trimmed);
+                let text = replace_smiles_with_emojis(trimmed);
                 result.push(make_rich_text(text, state));
             }
         }
