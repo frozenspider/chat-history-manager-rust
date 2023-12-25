@@ -247,7 +247,7 @@ fn collect_datasets<'a>(
         let myself_username = conv_w_msgs.conv.myself_name.to_utf8();
         let conv_username = conv_w_msgs.conv.other_name.to_utf8();
 
-        let entry = result.entry(myself_username.clone()).or_insert_with(|| {
+        result.entry(myself_username.clone()).or_insert_with(|| {
             let ds_uuid = PbUuid::random();
             let myself = User {
                 ds_uuid: Some(ds_uuid.clone()),
@@ -266,10 +266,10 @@ fn collect_datasets<'a>(
         });
 
         for mra_msg in conv_w_msgs.msgs.iter().rev() {
-            let from_me = mra_msg.header.is_from_me()?;
+            let from_me = mra_msg.is_from_me()?;
             let mut from_username = if from_me { myself_username.clone() } else { conv_username.clone() };
 
-            let tpe = mra_msg.header.get_tpe()?;
+            let tpe = mra_msg.get_tpe()?;
             macro_rules! require_format {
                 ($cond:expr) => { require!($cond, "Unexpected {:?} message payload format!", tpe) };
             }
@@ -290,9 +290,9 @@ fn collect_datasets<'a>(
                     // RGBA bytes
                     let payload = &payload[4..];
                     // Author email (only present for others' messages)
-                    require!(payload.is_empty() == mra_msg.header.is_from_me()?,
+                    require!(payload.is_empty() == mra_msg.is_from_me()?,
                              "Expected message payload to be empty for self messages only!");
-                    if !mra_msg.header.is_from_me()? {
+                    if !mra_msg.is_from_me()? {
                         let (author_email_bytes, payload) = read_sized_chunk(payload)?;
                         require_format!(payload.is_empty());
                         from_username = String::from_utf8(author_email_bytes.to_vec())?
@@ -330,7 +330,7 @@ fn collect_datasets<'a>(
 
         upsert_user(entry, from_username, mra_msg.author.to_utf8());
 
-        let tpe = mra_msg.header.get_tpe()?;
+        let tpe = mra_msg.get_tpe()?;
         macro_rules! require_format {
             ($cond:expr) => { require!($cond, "Unexpected {:?} message payload format!", tpe) };
         }
@@ -390,7 +390,7 @@ fn collect_datasets<'a>(
 fn convert_messages<'a>(
     convs_with_msgs: &[MraConversationWithMessages<'a>],
     mut dataset_map: HashMap<String, MraDatasetEntry>,
-    dbs_bytes: &'a [u8],
+    _dbs_bytes: &'a [u8],
 ) -> Result<Vec<DatasetEntry>> {
     for conv_w_msgs in convs_with_msgs.iter() {
         let myself_username = conv_w_msgs.conv.myself_name.to_utf8();
@@ -415,10 +415,10 @@ fn convert_messages<'a>(
             // within a chat.
             let source_id_option = Some((mra_msg.header.time / 2) as i64);
 
-            let from_me = mra_msg.header.is_from_me()?;
+            let from_me = mra_msg.is_from_me()?;
             let mut from_username = if from_me { myself_username.clone() } else { conv_username.clone() };
 
-            let tpe = mra_msg.header.get_tpe()?;
+            let tpe = mra_msg.get_tpe()?;
             macro_rules! require_format {
                 ($cond:expr) => { require!($cond, "Unexpected {:?} message payload format!", tpe) };
             }
@@ -672,9 +672,9 @@ fn convert_messages<'a>(
                     // RGBA bytes, ignoring
                     let payload = &payload[4..];
                     // Author email (only present for others' messages)
-                    require!(payload.is_empty() == mra_msg.header.is_from_me()?,
+                    require!(payload.is_empty() == mra_msg.is_from_me()?,
                              "Expected message payload to be empty for self messages only!");
-                    if !mra_msg.header.is_from_me()? {
+                    if !mra_msg.is_from_me()? {
                         let (author_email_bytes, payload) = read_sized_chunk(payload)?;
                         require_format!(payload.is_empty());
                         from_username = String::from_utf8(author_email_bytes.to_vec())?
@@ -791,6 +791,7 @@ fn convert_messages<'a>(
 // Structs and enums
 //
 
+#[allow(dead_code)]
 struct MraConversation<'a> {
     /// Offset at which data begins
     offset: usize,
@@ -859,21 +860,6 @@ struct MraMessageHeader {
     _unknown4: u32,
 }
 
-impl MraMessageHeader {
-    fn get_tpe(&self) -> Result<MraMessageType> {
-        let tpe_u32 = self.tpe_u32;
-        FromPrimitive::from_u32(tpe_u32).with_context(|| format!("Unknown message type: {}", tpe_u32))
-    }
-
-    fn is_from_me(&self) -> Result<bool> {
-        match self.flag_outgoing {
-            0 => Ok(false),
-            1 => Ok(true),
-            x => err!("Invalid flag_incoming value {x}"),
-        }
-    }
-}
-
 struct MraMessage<'a> {
     /// Offset at which header begins
     offset: usize,
@@ -889,7 +875,7 @@ impl Debug for MraMessage<'_> {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         let mut formatter = formatter.debug_struct("MraMessage");
         formatter.field("offset", &format!("{:#010x}", self.offset));
-        match self.header.get_tpe() {
+        match self.get_tpe() {
             Ok(tpe) =>
                 formatter.field("type", &tpe),
             Err(_) => {
@@ -906,7 +892,22 @@ impl Debug for MraMessage<'_> {
 }
 
 impl MraMessage<'_> {
-    pub fn debug_format_bytes(&self, file_bytes: &[u8]) -> String {
+    fn get_tpe(&self) -> Result<MraMessageType> {
+        let tpe_u32 = self.header.tpe_u32;
+        FromPrimitive::from_u32(tpe_u32)
+            .with_context(|| format!("Unknown message type: {}\nMessage: {:?}", tpe_u32, self))
+    }
+
+    fn is_from_me(&self) -> Result<bool> {
+        match self.header.flag_outgoing {
+            0 => Ok(false),
+            1 => Ok(true),
+            x => err!("Invalid flag_incoming value {x}\nMessage: {:?}", self),
+        }
+    }
+
+    #[allow(dead_code)]
+    fn debug_format_bytes(&self, file_bytes: &[u8]) -> String {
         const COLUMNS: usize = 32;
         const ROWS_TO_TAKE: usize = 10;
         let upper_bound = self.offset + ROWS_TO_TAKE * COLUMNS;
@@ -977,16 +978,37 @@ fn filetime_to_timestamp(ft: u64) -> i64 {
     time
 }
 
+fn find_first_position<T: PartialEq>(source: &[T], to_find: &[T], step: usize) -> Option<usize> {
+    inner_find_positions_of(source, to_find, step, true).first().cloned()
+}
+
 /// Efficiently find all indexes of the given sequence occurrence within a longer source sequence.
 /// Does not return indexes that overlap matches found earlier.
 /// Works in O(n) of the source length, assuming to_find length to be negligible and not accounting for degenerate
 /// input cases.
-fn find_positions<T: PartialEq>(source: &[T], to_find: &[T], step: usize) -> Vec<usize> {
-    inner_find_positions_of(source, to_find, step, false)
-}
-
-fn find_first_position<T: PartialEq>(source: &[T], to_find: &[T], step: usize) -> Option<usize> {
-    inner_find_positions_of(source, to_find, step, true).first().cloned()
+fn inner_find_positions_of<T: PartialEq>(source: &[T], to_find: &[T], step: usize, find_one: bool) -> Vec<usize> {
+    assert!(to_find.len() % step == 0, "to_find sequence length is not a multiplier of {step}!");
+    if to_find.len() == 0 { panic!("to_find slice was empty!"); }
+    let max_i = source.len() as i64 - to_find.len() as i64 + 1;
+    if max_i <= 0 { return vec![]; }
+    let max_i = max_i as usize;
+    let mut res = vec![];
+    let mut i = 0_usize;
+    'outer: while i < max_i {
+        for j in 0..to_find.len() {
+            if source[i + j] != to_find[j] {
+                i += step;
+                continue 'outer;
+            }
+        }
+        // Match found
+        res.push(i);
+        if find_one {
+            return res;
+        }
+        i += to_find.len();
+    }
+    res
 }
 
 fn get_null_terminated_utf16le_slice(bs: &[u8]) -> Result<&[u8]> {
@@ -1245,29 +1267,4 @@ fn smiley_to_emoji(smiley: &str) -> Option<String> {
             None
         }
     }.map(|s| s.to_owned())
-}
-
-fn inner_find_positions_of<T: PartialEq>(source: &[T], to_find: &[T], step: usize, find_one: bool) -> Vec<usize> {
-    assert!(to_find.len() % step == 0, "to_find sequence length is not a multiplier of {step}!");
-    if to_find.len() == 0 { panic!("to_find slice was empty!"); }
-    let max_i = source.len() as i64 - to_find.len() as i64 + 1;
-    if max_i <= 0 { return vec![]; }
-    let max_i = max_i as usize;
-    let mut res = vec![];
-    let mut i = 0_usize;
-    'outer: while i < max_i {
-        for j in 0..to_find.len() {
-            if source[i + j] != to_find[j] {
-                i += step;
-                continue 'outer;
-            }
-        }
-        // Match found
-        res.push(i);
-        if find_one {
-            return res;
-        }
-        i += to_find.len();
-    }
-    res
 }
