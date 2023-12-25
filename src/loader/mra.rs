@@ -488,9 +488,21 @@ fn convert_message(
 ) -> Result<Option<Message>> {
     let timestamp = filetime_to_timestamp(mra_msg.header.time);
 
-    // For a source message ID, let's use message time as it's precise enough for us to expect it to be unique
-    // within a chat.
-    let source_id_option = Some((mra_msg.header.time / 2) as i64);
+    // For a source message ID, we're using message time.
+    // It's SUPPOSED to be precise enough to be unique within a chat, but in practice it's too rounded.
+    // To work around that, we increment source IDs when it's duplicated.
+    let source_id_option = {
+        let source_id = (mra_msg.header.time / 2) as i64;
+        Some(if let Some(last_source_id) = prev_msgs.last().and_then(|m| m.source_id_option) {
+            if last_source_id >= source_id {
+                last_source_id + 1
+            } else {
+                source_id
+            }
+        } else {
+            source_id
+        })
+    };
 
     let from_me = mra_msg.is_from_me()?;
     let mut from_username = (if from_me { myself_username } else { conv_username }).to_owned();
