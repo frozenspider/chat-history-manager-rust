@@ -455,7 +455,7 @@ fn convert_messages<'a>(
         });
     }
 
-    Ok(dataset_map.into_values().map(|mut entry| {
+    Ok(dataset_map.into_values().sorted_by_key(|e| e.ds.alias.clone()).map(|mut entry| {
         // Now that we know all user names, rename chats accordingly
         for cwm in entry.cwms.values_mut() {
             if let Some(ref mut chat) = cwm.chat {
