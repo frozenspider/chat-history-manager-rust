@@ -31,6 +31,9 @@ const MRA_DBS: &str = "mra.dbs";
 const DATASETS_DIR_NAME: &str = "_datasets";
 const MSG_HEADER_MAGIC_NUMBER: u32 = 0x38;
 
+const CONFERENCE_USER_JOINED: u32 = 0x03;
+const CONFERENCE_USER_LEFT: u32 = 0x05;
+
 /// Using a first legal ID (i.e. "1") for myself
 const MYSELF_ID: UserId = UserId(UserId::INVALID.0 + 1);
 
@@ -74,8 +77,8 @@ fn load_mra_dbs(path: &Path, dao_name: String) -> Result<Box<InMemoryDao>> {
     // Read the whole file into the memory.
     let dbs_bytes = fs::read(path)?;
 
-    // We'll be loading chats in two phases.
-    // Phase 1: Read conversations in an inner format, mapped to file bytes.
+    // We'll be loading chats in three phases.
+    // Phase 1: Read conversations in an MRA inner format, mapped to file bytes.
     const OFFSETS_TABLE_OFFSE: usize = 0x10;
 
     let offsets_table_addr = read_u32_le(&dbs_bytes, OFFSETS_TABLE_OFFSE) as usize;
@@ -94,18 +97,11 @@ fn load_mra_dbs(path: &Path, dao_name: String) -> Result<Box<InMemoryDao>> {
     let convs = load_conversations(&dbs_bytes, offsets_table)?;
     let convs_with_msgs = load_messages(&dbs_bytes, offsets_table, convs)?;
 
-    // // Instead of bothering to traverse hash table and linked list relations, find all messages by a simple linear scan.
-    // // "mrahistory_" UTF-16 (LE) bytes
-    // let mrahistory_footprint = "mrahistory_".as_bytes().iter().flat_map(|&b| vec![b, 0x00u8]).collect_vec();
-    // println!("{:?}", mrahistory_footprint);
-    //
-    // let mrahistory_record_addrs = find_positions_of(&dbs_bytes, &mrahistory_footprint);
-    // println!("{:#010x?}", mrahistory_record_addrs.iter().map(|usz| *usz as u32).collect_vec());
-    // println!("{}", mrahistory_record_addrs.len());
+    // Phase 2: Populate datasets and users with latest values, usernames being emails.
+    let dataset_map = collect_datasets(&convs_with_msgs, &storage_path)?;
 
-    // Phase 2: Convert conversations to our format.
-
-    let data = convert(&convs_with_msgs, &dbs_bytes, &storage_path)?;
+    // Phase 3: Convert conversations to our format.
+    let data = convert_messages(&convs_with_msgs, dataset_map, &dbs_bytes)?;
 
     Ok(Box::new(InMemoryDao::new(
         dao_name,
@@ -241,21 +237,17 @@ fn load_messages<'a>(
     Ok(result)
 }
 
-fn convert<'a>(
+fn collect_datasets<'a>(
     convs_with_msgs: &[MraConversationWithMessages<'a>],
-    dbs_bytes: &'a [u8],
     storage_path: &Path,
-) -> Result<Vec<DatasetEntry>> {
+) -> Result<HashMap::<String, MraDatasetEntry>> {
     let mut result = HashMap::<String, MraDatasetEntry>::new();
 
+    // Collecting all messages together sorted by timestamp to make sure we only deal with the last possible state
+    let mut msgs_with_context = Vec::with_capacity(convs_with_msgs.iter().map(|c| c.msgs.len()).sum());
     for conv_w_msgs in convs_with_msgs.iter() {
         let myself_username = conv_w_msgs.conv.myself_name.to_utf8();
         let conv_username = conv_w_msgs.conv.other_name.to_utf8();
-
-        if conv_w_msgs.msgs.is_empty() {
-            log::debug!("Skipping conversation between {} and {} with no messages", myself_username, conv_username);
-            continue;
-        }
 
         let entry = result.entry(myself_username.clone()).or_insert_with(|| {
             let ds_uuid = PbUuid::random();
@@ -277,10 +269,55 @@ fn convert<'a>(
             }
         });
 
-        /// Resolve a user by username, possibly setting a first name if it's not an email too.
-        fn resolve_user(entry: &mut MraDatasetEntry,
-                        username: String,
-                        first_name_or_email: String) -> &mut User {
+        for mra_msg in conv_w_msgs.msgs.iter().rev() {
+            let from_me = mra_msg.header.is_from_me()?;
+            let mut from_username = if from_me { myself_username.clone() } else { conv_username.clone() };
+
+            let tpe = mra_msg.header.get_tpe()?;
+            macro_rules! require_format {
+                ($cond:expr) => { require!($cond, "Unexpected {:?} message payload format!", tpe) };
+            }
+            match tpe {
+                MraMessageType::ConferenceMessagePlaintext => {
+                    let payload = mra_msg.payload;
+                    // Text duplication
+                    let payload = validate_skip_chunk(payload, mra_msg.text.as_bytes())?;
+                    // Author email
+                    let (author_email_bytes, payload) = read_sized_chunk(payload)?;
+                    require_format!(payload.is_empty());
+                    from_username = String::from_utf8(author_email_bytes.to_vec())?;
+                }
+                MraMessageType::ConferenceMessageRtf => {
+                    let payload = mra_msg.payload;
+                    // RTF
+                    let (_rtf_bytes, payload) = read_sized_chunk(payload)?;
+                    // RGBA bytes
+                    let payload = &payload[4..];
+                    // Author email (only present for others' messages)
+                    require!(payload.is_empty() == mra_msg.header.is_from_me()?,
+                             "Expected message payload to be empty for self messages only!");
+                    if !mra_msg.header.is_from_me()? {
+                        let (author_email_bytes, payload) = read_sized_chunk(payload)?;
+                        require_format!(payload.is_empty());
+                        from_username = String::from_utf8(author_email_bytes.to_vec())?
+                    };
+                }
+                _ => { /* NOOP */ }
+            }
+
+            msgs_with_context.push((mra_msg, myself_username.clone(), from_username));
+        }
+    }
+    msgs_with_context.sort_unstable_by_key(|mwc| mwc.0.header.time);
+
+    // Iterating from the end to work on the last state
+    for (mra_msg, dataset_key, from_username) in msgs_with_context.into_iter().rev() {
+        let entry = result.get_mut(&dataset_key).unwrap();
+
+        /// Create or update user by username, possibly setting a first name if it's not an email too.
+        fn upsert_user(entry: &mut MraDatasetEntry,
+                       username: String,
+                       first_name_or_email: String) {
             let user = entry.users.entry(username.clone()).or_insert_with(|| User {
                 ds_uuid: entry.ds.uuid.clone(),
                 id: hash_to_id(&username),
@@ -293,9 +330,82 @@ fn convert<'a>(
             if user.first_name_option.is_none() && first_name_or_email != username {
                 user.first_name_option = Some(first_name_or_email);
             }
-
-            user
         }
+
+        upsert_user(entry, from_username, mra_msg.author.to_utf8());
+
+        let tpe = mra_msg.header.get_tpe()?;
+        macro_rules! require_format {
+            ($cond:expr) => { require!($cond, "Unexpected {:?} message payload format!", tpe) };
+        }
+        match tpe {
+            MraMessageType::ConferenceUsersChange => {
+                let payload = mra_msg.payload;
+                // All payload is a single chunk
+                let change_tpe = read_u32_le(payload, 0);
+                let payload = &payload[4..];
+
+                match change_tpe {
+                    CONFERENCE_USER_JOINED => {
+                        let (_inviting_user_name_or_email, payload) = read_sized_chunk(payload)?;
+                        let num_invited_user_names = read_u32_le(payload, 0) as usize;
+                        let mut names = Vec::with_capacity(num_invited_user_names);
+                        let mut emails = Vec::with_capacity(num_invited_user_names);
+
+                        let mut payload = &payload[4..];
+                        for _ in 0..num_invited_user_names {
+                            let (name_bytes, payload2) = read_sized_chunk(payload)?;
+                            payload = payload2;
+                            names.push(WStr::from_utf16le(name_bytes)?.to_utf8());
+                        }
+                        let num_invited_user_emails = read_u32_le(payload, 0) as usize;
+                        require_format!(num_invited_user_names == num_invited_user_emails);
+
+                        let mut payload = &payload[4..];
+                        for _ in 0..num_invited_user_names {
+                            let (email_bytes, payload2) = read_sized_chunk(payload)?;
+                            payload = payload2;
+                            emails.push(WStr::from_utf16le(email_bytes)?.to_utf8());
+                        }
+                        require_format!(payload.is_empty());
+
+                        for (email, name_or_email) in emails.into_iter().zip(names.into_iter()) {
+                            upsert_user(entry, email, name_or_email);
+                        }
+                    }
+                    CONFERENCE_USER_LEFT => {
+                        let (name_bytes, payload) = read_sized_chunk(payload)?;
+                        let (email_bytes, payload) = read_sized_chunk(payload)?;
+                        require_format!(payload.is_empty());
+
+                        upsert_user(entry,
+                                    WStr::from_utf16le(email_bytes)?.to_utf8(),
+                                    WStr::from_utf16le(name_bytes)?.to_utf8());
+                    }
+                    etc => bail!("Unexpected {tpe:?} change type {etc}")
+                };
+            }
+            _ => { /* NOOP */ }
+        }
+    }
+    Ok(result)
+}
+
+fn convert_messages<'a>(
+    convs_with_msgs: &[MraConversationWithMessages<'a>],
+    mut dataset_map: HashMap<String, MraDatasetEntry>,
+    dbs_bytes: &'a [u8],
+) -> Result<Vec<DatasetEntry>> {
+    for conv_w_msgs in convs_with_msgs.iter() {
+        let myself_username = conv_w_msgs.conv.myself_name.to_utf8();
+        let conv_username = conv_w_msgs.conv.other_name.to_utf8();
+
+        if conv_w_msgs.msgs.is_empty() {
+            log::debug!("Skipping conversation between {} and {} with no messages", myself_username, conv_username);
+            continue;
+        }
+
+        let entry = dataset_map.get_mut(&myself_username).unwrap();
 
         let mut internal_id = 0;
 
@@ -486,33 +596,20 @@ fn convert<'a>(
                     let change_tpe = read_u32_le(payload, 0);
                     let payload = &payload[4..];
 
-                    fn resolve_members(entry: &mut MraDatasetEntry,
-                                       emails: Vec<String>,
-                                       names_or_emails: Vec<String>) -> Vec<String> {
-                        emails.into_iter().zip(names_or_emails.into_iter())
-                            .map(|(email, name_or_email)|
-                                resolve_user(entry, email, name_or_email).pretty_name()
-                            ).collect_vec()
-                    }
-
-                    const USER_JOINED: u32 = 0x03;
-                    const USER_LEFT: u32 = 0x05;
+                    // We don't care about user names here because they're already set by collect_datasets
                     let service: ServiceSvo = match change_tpe {
-                        USER_JOINED => {
+                        CONFERENCE_USER_JOINED => {
                             let (_inviting_user_name_or_email, payload) = read_sized_chunk(payload)?;
                             let num_invited_user_names = read_u32_le(payload, 0) as usize;
-                            let mut names = Vec::with_capacity(num_invited_user_names);
-                            let mut emails = Vec::with_capacity(num_invited_user_names);
 
                             let mut payload = &payload[4..];
                             for _ in 0..num_invited_user_names {
-                                let (name_bytes, payload2) = read_sized_chunk(payload)?;
+                                let (_name_bytes, payload2) = read_sized_chunk(payload)?;
                                 payload = payload2;
-                                names.push(WStr::from_utf16le(name_bytes)?.to_utf8());
                             }
-                            let num_invited_user_emails = read_u32_le(payload, 0) as usize;
-                            require_format!(num_invited_user_names == num_invited_user_emails);
 
+                            let num_invited_user_emails = read_u32_le(payload, 0) as usize;
+                            let mut emails = Vec::with_capacity(num_invited_user_emails);
                             let mut payload = &payload[4..];
                             for _ in 0..num_invited_user_names {
                                 let (email_bytes, payload2) = read_sized_chunk(payload)?;
@@ -521,17 +618,16 @@ fn convert<'a>(
                             }
                             require_format!(payload.is_empty());
 
-                            let members = resolve_members(entry, emails, names);
+                            let members = emails.iter().map(|e| entry.users[e].pretty_name()).collect_vec();
                             ServiceSvo::GroupInviteMembers(MessageServiceGroupInviteMembers { members })
                         }
-                        USER_LEFT => {
-                            let (name_bytes, payload) = read_sized_chunk(payload)?;
+                        CONFERENCE_USER_LEFT => {
+                            let (_name_bytes, payload) = read_sized_chunk(payload)?;
                             let (email_bytes, payload) = read_sized_chunk(payload)?;
                             require_format!(payload.is_empty());
 
-                            let members = resolve_members(entry,
-                                                          vec![WStr::from_utf16le(email_bytes)?.to_utf8()],
-                                                          vec![WStr::from_utf16le(name_bytes)?.to_utf8()]);
+                            let email = WStr::from_utf16le(email_bytes)?.to_utf8();
+                            let members = vec![entry.users[&email].pretty_name()];
                             ServiceSvo::GroupRemoveMembers(MessageServiceGroupRemoveMembers { members })
                         }
                         etc => bail!("Unexpected {tpe:?} change type {etc}")
@@ -620,7 +716,7 @@ fn convert<'a>(
                 }
             };
 
-            let user = resolve_user(entry, from_username, mra_msg.author.to_utf8());
+            let user = &entry.users[&from_username];
 
             interlocutor_ids.insert(user.id());
 
@@ -664,7 +760,7 @@ fn convert<'a>(
         });
     }
 
-    Ok(result.into_values().map(|mut entry| {
+    Ok(dataset_map.into_values().map(|mut entry| {
         // Now that we know all user names, rename chats accordingly
         for cwm in entry.cwms.values_mut() {
             if let Some(ref mut chat) = cwm.chat {
