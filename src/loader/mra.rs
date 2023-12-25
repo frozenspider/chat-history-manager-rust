@@ -1,6 +1,7 @@
 #![allow(clippy::reversed_empty_ranges)]
 
 use std::{cmp, fmt, fs, mem, slice};
+use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::path::PathBuf;
@@ -17,11 +18,14 @@ use crate::protobuf::history::*;
 
 use super::*;
 
-/// Old versions of Mail.Ru Agent stored data in unknown DBMS format storage, with strings formatted as UTF-16 LE.
+/// Old versions of Mail.Ru Agent (up to 2014-08-28) stored data in unknown DBMS format storage, with strings formatted
+/// as UTF-16 LE. Afterwards, storage moved to a new separate .db files and mra.dbs was left as-is until 2015-03-17
+/// when all conversations were deleted from it.
 ///
 /// Known issues:
 /// * Some smile types are not converted and left as-is since there's no reference too see how they looked like.
 /// * Only a limited RTF support has been added - just bold, italic and underline styles, and only one per substring.
+/// * In rare cases, Russian text is double-encoded as cp1251 within UTF-16 LE. Distorted text is passed as-is.
 ///
 /// Following references were helpful in reverse engineering the format (in Russian):
 /// * https://xakep.ru/2012/11/30/mailru-agent-hack/
@@ -509,13 +513,15 @@ fn convert_message(
 
     let tpe = mra_msg.get_tpe()?;
     macro_rules! require_format {
-                ($cond:expr) => { require!($cond, "Unexpected {:?} message payload format!", tpe) };
-            }
+        ($cond:expr) => { require!($cond, "Unexpected {tpe:?} message payload format!\nMessage: {mra_msg:?}") };
+    }
 
+    // TODO: Sometimes text might come encoded as cp1251 characters (wrapped in normal UTF-16 LE) seemingly at random.
+    //       However, so far I observed it only once in a microblog entry, and handling this trivially didn't work.
     let text = mra_msg.text.to_utf8();
-    use crate::protobuf::history::message::Typed;
-    use crate::protobuf::history::content::SealedValueOptional as ContentSvo;
-    use crate::protobuf::history::message_service::SealedValueOptional as ServiceSvo;
+    use message::Typed;
+    use message_service::SealedValueOptional as ServiceSvo;
+    use content::SealedValueOptional as ContentSvo;
     let (text, typed) = match tpe {
         MraMessageType::AuthorizationRequest |
         MraMessageType::RegularPlaintext |
@@ -526,22 +532,27 @@ fn convert_message(
                 let (rtf_bytes, payload) = read_sized_chunk(payload)?;
                 let rtf = WStr::from_utf16le(rtf_bytes)?.to_utf8();
                 // RGBA bytes, ignoring
-                let mut payload = &payload[4..];
+                let payload = &payload[4..];
+                // Might be followed by empty bytes
+                require_format!(payload.iter().all(|b| *b == 0));
 
-                if !from_me {
-                    // Expecting 4 more empty bytes.
-                    let zeros = read_u32_le(payload, 0);
-                    require_format!(zeros == 0);
-                    payload = &payload[4..];
-                }
-
-                require_format!(payload.is_empty());
                 parse_rtf(&rtf)?
             } else {
                 let text = replace_smiles_with_emojis(&text);
                 vec![RichText::make_plain(text)]
             };
 
+            (rtes, Typed::Regular(Default::default()))
+        }
+        MraMessageType::ActionNeedsNewerApp => {
+            let payload = mra_msg.payload;
+            let (rtf_bytes, payload) = read_sized_chunk(payload)?;
+            let rtf = WStr::from_utf16le(rtf_bytes)?.to_utf8();
+            // RGBA bytes, ignoring
+            let payload = &payload[4..];
+            require_format!(payload.is_empty());
+
+            let rtes = parse_rtf(&rtf)?;
             (rtes, Typed::Regular(Default::default()))
         }
         MraMessageType::FileTransfer => {
@@ -581,6 +592,7 @@ fn convert_message(
 
             const BEGIN_CONNECTING: &str = "Устанавливается соединение...";
             const BEGIN_I_CALL: &str = "Звонок от вашего собеседника";
+            const BEGIN_I_VCALL: &str = "Видеозвонок от вашего собеседника";
             const BEGIN_O_CALL: &str = "Вы звоните собеседнику. Ожидание ответа...";
             const BEGIN_STARTED: &str = "Начался разговор";
 
@@ -588,13 +600,15 @@ fn convert_message(
             const END_VHANG: &str = "Видеозвонок завершен";
             const END_CONN_FAILED: &str = "Не удалось установить соединение. Попробуйте позже.";
             const END_I_CANCELLED: &str = "Вы отменили звонок";
+            const END_I_CANCELLED_2: &str = "Вы отклонили звонок";
             const END_I_VCANCELLED: &str = "Вы отменили видеозвонок";
+            const END_I_VCANCELLED_2: &str = "Вы отклонили видеозвонок"; // This one might not be real
             const END_O_CANCELLED: &str = "Собеседник отменил звонок";
             const END_O_VCANCELLED: &str = "Собеседник отменил видеозвонок";
 
             // MRA is not very rigid in propagating all the statuses.
             match text.as_str() {
-                BEGIN_CONNECTING | BEGIN_I_CALL | BEGIN_O_CALL | BEGIN_STARTED => {
+                BEGIN_CONNECTING | BEGIN_I_CALL | BEGIN_I_VCALL | BEGIN_O_CALL | BEGIN_STARTED => {
                     if ongoing_call_msg_id.is_some_and(|id| internal_id - id <= 5) {
                         // If call is already (recently) marked, do nothing
                         return Ok(None);
@@ -605,7 +619,7 @@ fn convert_message(
                 }
                 END_HANG | END_VHANG |
                 END_CONN_FAILED |
-                END_I_CANCELLED | END_I_VCANCELLED |
+                END_I_CANCELLED | END_I_CANCELLED_2 | END_I_VCANCELLED | END_I_VCANCELLED_2 |
                 END_O_CANCELLED | END_O_VCANCELLED => {
                     if ongoing_call_msg_id.is_some_and(|id| internal_id - id <= 50) {
                         let msg_id = ongoing_call_msg_id.unwrap();
@@ -614,7 +628,7 @@ fn convert_message(
                         let discard_reason_option = match text.as_str() {
                             END_HANG | END_VHANG => None,
                             END_CONN_FAILED => Some("Failed to connect"),
-                            END_I_CANCELLED | END_I_VCANCELLED => Some("Declined by you"),
+                            END_I_CANCELLED | END_I_CANCELLED_2 | END_I_VCANCELLED | END_I_VCANCELLED_2 => Some("Declined by you"),
                             END_O_CANCELLED | END_O_VCANCELLED => Some("Declined by user"),
                             _ => unreachable!()
                         };
@@ -623,14 +637,14 @@ fn convert_message(
                                 call.duration_sec_option = Some((timestamp - start_time) as i32);
                                 call.discard_reason_option = discard_reason_option.map(|s| s.to_owned());
                             }
-                            etc => bail!("Unexpected ongoing call type: {etc:?}")
+                            etc => bail!("Unexpected ongoing call type: {etc:?}\nMessage: {mra_msg:?}")
                         };
                         *ongoing_call_msg_id = None;
                     }
                     // Either way, this message itself isn't supposed to have a separate entry.
                     return Ok(None);
                 }
-                etc => bail!("Unrecognized call message: {etc}"),
+                etc => bail!("Unrecognized call message: {etc}\nMessage: {mra_msg:?}"),
             }
 
             (vec![], Typed::Service(MessageService {
@@ -714,7 +728,7 @@ fn convert_message(
                     let members = vec![users[&email].pretty_name()];
                     ServiceSvo::GroupRemoveMembers(MessageServiceGroupRemoveMembers { members })
                 }
-                etc => bail!("Unexpected {tpe:?} change type {etc}")
+                etc => bail!("Unexpected {tpe:?} change type {etc}\nMessage: {mra_msg:?}")
             };
 
             (vec![], Typed::Service(MessageService { sealed_value_optional: Some(service) }))
@@ -729,7 +743,7 @@ fn convert_message(
                 payload = payload2;
                 Some(WStr::from_utf16le(target_name_bytes)?.to_utf8())
             } else { None };
-            // Next 8 bytes as some timestamp we don't really care about.
+            // Next 8 bytes is some timestamp we don't really care about
             let payload = &payload[8..];
             require_format!(payload.is_empty());
 
@@ -755,13 +769,12 @@ fn convert_message(
             let payload = mra_msg.payload;
             // RTF
             let (rtf_bytes, payload) = read_sized_chunk(payload)?;
-            let rtf_utf16 = WStr::from_utf16le(rtf_bytes)?;
-            let rtf = rtf_utf16.to_utf8();
+            let rtf = WStr::from_utf16le(rtf_bytes)?.to_utf8();
             // RGBA bytes, ignoring
             let payload = &payload[4..];
             // Author email (only present for others' messages)
             require!(payload.is_empty() == mra_msg.is_from_me()?,
-                             "Expected message payload to be empty for self messages only!");
+                     "Expected message payload to be empty for self messages only!\nMessage: {mra_msg:?}");
             if !mra_msg.is_from_me()? {
                 let (author_email_bytes, payload) = read_sized_chunk(payload)?;
                 require_format!(payload.is_empty());
@@ -834,6 +847,7 @@ struct MraConversation<'a> {
 enum MraMessageType {
     RegularPlaintext = 0x02,
     AuthorizationRequest = 0x04,
+    ActionNeedsNewerApp = 0x06,
     RegularRtf = 0x07,
     FileTransfer = 0x0A,
     /// Call status change - initiated, cancelled, connecting, done, etc.
@@ -1065,12 +1079,37 @@ fn parse_rtf(rtf: &str) -> Result<Vec<RichTextElement>> {
 
     let tokens = rtf_grimoire::tokenizer::parse_finished(rtf.as_bytes())
         .map_err(|_e| anyhow!("Unable to parse RTF {rtf}"))?;
+    if tokens.is_empty() { return Ok(vec![]); }
 
+    // \fcharset0 is cp1252
+    require!(tokens.iter().any(|t|
+                matches!(t, Token::ControlWord { name, arg: Some(arg) }
+                            if name == "ansicpg" || (name == "fcharset" && *arg == 0) )
+             ), "RTF is not ANSI-encoded!\nRTF: {rtf}");
+
+    // Text of current styled section
     let mut curr_text: Option<String> = None;
-    macro_rules! curr_text { () => { curr_text.get_or_insert_with(|| "".to_owned()) }; }
 
+    // Bytes of currently constructed UTF-16 LE string
+    let mut unicode_bytes: Vec<u8> = vec![];
+
+    // Returned text is mutable and should be appended.
+    // Calling this will flush Unicode string under construction (if any).
+    macro_rules! flush_and_get_curr_text {
+        () => {{
+            let text = curr_text.get_or_insert_with(|| "".to_owned());
+            // Flush the existing unicode string, if any
+            if !unicode_bytes.is_empty() {
+                let string = WStr::from_utf16le(&unicode_bytes)?.to_utf8();
+                text.push_str(&string);
+                unicode_bytes.clear();
+            }
+            text
+        }};
+    }
+
+    // If multiple styles are set, last one set will override the others
     enum Style { Plain, Bold, Italic, Underline }
-    // If multiple styles are set, last one is used.
     let mut style = Style::Plain;
 
     fn make_rich_text(src: String, style: &Style) -> RichTextElement {
@@ -1081,54 +1120,63 @@ fn parse_rtf(rtf: &str) -> Result<Vec<RichTextElement>> {
             Style::Underline => RichText::make_underline(src),
         }
     }
-    fn commit(text: &mut Option<String>, state: &Style, result: &mut Vec<RichTextElement>) {
-        if let Some(text) = text.take() {
-            let trimmed = text.trim();
-            if !trimmed.is_empty() {
-                let text = replace_smiles_with_emojis(trimmed);
-                result.push(make_rich_text(text, state));
-            }
-        }
-    }
-    let mut skip_next_char = false;
 
     let mut result: Vec<RichTextElement> = vec![];
+
+    // Commits current styled section to a result, clearing current text.
+    macro_rules! commit_section {
+        () => {
+            let text = flush_and_get_curr_text!();
+            let text = text.trim();
+            if !text.is_empty() {
+                let text = replace_smiles_with_emojis(text);
+                result.push(make_rich_text(text, &style));
+            }
+            curr_text.take();
+        };
+    }
+
+    // Unicode control words are followed by a "backup" plaintext char in case client doesn't speak Unicode.
+    // We do, so we skip that char.
+    let mut skip_next_char = false;
+
+    // We don't care about styling header, so we're skipping it.
     let colortbl = Token::ControlWord { name: "colortbl".to_owned(), arg: None };
     for token in tokens.into_iter().skip_while(|t| *t != colortbl).skip_while(|t| *t != Token::EndGroup) {
-        let get_new_state = |arg: Option<i32>, desired: Style| -> Result<Style>{
+        let get_new_state = |arg: Option<i32>, desired: Style| -> Result<Style> {
             match arg {
                 None => Ok(desired),
                 Some(0) => Ok(Style::Plain),
-                Some(_) => err!("Unknown RTF token {token:?}")
+                Some(_) => err!("Unknown RTF token {token:?}\nRTF: {rtf}")
             }
         };
         match token {
             Token::ControlWord { ref name, arg } if name == "i" => {
-                commit(&mut curr_text, &style, &mut result);
+                commit_section!();
                 style = get_new_state(arg, Style::Italic)?;
             }
             Token::ControlWord { ref name, arg } if name == "b" => {
-                commit(&mut curr_text, &style, &mut result);
+                commit_section!();
                 style = get_new_state(arg, Style::Bold)?;
             }
             Token::ControlWord { ref name, arg } if name == "ul" => {
-                commit(&mut curr_text, &style, &mut result);
+                commit_section!();
                 style = get_new_state(arg, Style::Underline)?;
             }
             Token::ControlWord { ref name, arg } if name == "ulnone" => {
-                commit(&mut curr_text, &style, &mut result);
+                commit_section!();
                 style = get_new_state(arg, Style::Plain)?;
             }
             Token::ControlWord { name, arg: Some(arg) } if name == "'" && arg >= 0 => {
                 // Mail.Ru RTF seems to be hardcoded to use cp1251 even if \ansicpg says otherwise
-                curr_text!().push(cp1251_to_utf8(arg as u16)?);
+                flush_and_get_curr_text!().push(cp1251_to_utf8_char(arg as u16)?);
             }
             Token::ControlWord { name, arg: Some(arg) } if name == "u" => {
-                // UTF-16 character
-                let string = WStr::from_utf16le(&arg.to_le_bytes())?.to_utf8();
-                // String is zero-terminated, we don't need that
-                let str = string.as_str().trim_end_matches(char::from(0));
-                curr_text!().push_str(str);
+                // As per spec, "Unicode values greater than 32767 must be expressed as negative numbers",
+                // but Mail.Ru doesn't seem to care.
+                require!(arg >= 0, "Unexpected Unicode value!\nRTF: {rtf}");
+                let arg = arg as u16;
+                unicode_bytes.extend_from_slice(&arg.to_le_bytes());
                 skip_next_char = true;
             }
             Token::Text(t) => {
@@ -1138,35 +1186,42 @@ fn parse_rtf(rtf: &str) -> Result<Vec<RichTextElement>> {
                     str = &str[1..];
                     skip_next_char = false;
                 }
-                curr_text!().push_str(str);
+                if !str.is_empty() {
+                    flush_and_get_curr_text!().push_str(str);
+                }
             }
             Token::Newline(_) => {
-                curr_text!().push('\n');
+                flush_and_get_curr_text!().push('\n');
             }
             Token::ControlSymbol(c) => {
-                curr_text!().push(c);
+                flush_and_get_curr_text!().push(c);
             }
             Token::ControlBin(_) =>
                 bail!("Unexpected RTF token {token:?} in {rtf}"),
             _ => {}
         }
     }
-    commit(&mut curr_text, &style, &mut result);
+    commit_section!();
     Ok(result)
 }
 
-fn cp1251_to_utf8(u: u16) -> Result<char> {
-    use encoding_rs::*;
+fn cp1251_to_utf8_char(u: u16) -> Result<char> {
     let bytes = u.to_le_bytes();
+    let res = cp1251_to_utf8(&bytes)?;
+    let mut chars = res.chars();
+    let result = Ok(chars.next().unwrap());
+    assert!(chars.next() == Some('\0'));
+    result
+}
+
+fn cp1251_to_utf8(bytes: &[u8]) -> Result<Cow<str>> {
+    use encoding_rs::*;
     let enc = WINDOWS_1251;
     let (res, had_errors) = enc.decode_without_bom_handling(&bytes);
     if !had_errors {
-        let mut chars = res.chars();
-        let result = Ok(chars.next().unwrap());
-        assert!(chars.next() == Some('\0'));
-        result
+        Ok(res)
     } else {
-        err!("Couldn't decode {u}")
+        err!("Couldn't decode {bytes:02x?}")
     }
 }
 
@@ -1209,7 +1264,7 @@ fn smiley_to_emoji(smiley: &str) -> Option<String> {
         ":Не-а:" | ":Нет!:" => Some("👎"),
         ":Отлично!:" => Some("💯"),
         ":Жжёшь!:" => Some("🔥"),
-        ":Радуюсь:" | ":Радость:" | ":Улыбка до ушей:" | ":Смеюсь:" => Some("😁"),
+        ":Радуюсь:" | ":Радость:" | ":Улыбка до ушей:" | ":Улыбка_до_ушей:" | ":Смеюсь:" | "[:-D" => Some("😁"),
         ":Улыбаюсь:" => Some("🙂"),
         ":Лопну от смеха:" => Some("😂"),
         ":Хихикаю:" => Some("🤭"),
@@ -1249,7 +1304,7 @@ fn smiley_to_emoji(smiley: &str) -> Option<String> {
         ":Свирепствую:" => Some("🤬"),
         ":Чертовски злюсь:" => Some("👿"),
         ":Отвали!:" => Some("🖕"),
-        ":Побью:" | ":Побили:" | ":В атаку!:" => Some("👊"),
+        ":Побью:" | ":Побили:" | ":В атаку!:" | ":Атакую:" => Some("👊"),
         ":Задолбал!:" => Some("😒"),
         ":Сплю:" => Some("😴"),
         ":Мечтаю:" => Some("😌"),
@@ -1267,8 +1322,8 @@ fn smiley_to_emoji(smiley: &str) -> Option<String> {
         ":Кондитер:" => Some("👨‍🍳"),
         ":Головой об стену:" => Some("🤕"),
         ":Слушаю музыку:" => Some("🎵"),
-        ":Кушаю:" => Some("😋"),
-        ":Дарю цветочек:" | ":Не опаздывай:" => Some("🌷"),
+        ":Кушаю:" | ":Жую:" => Some("😋"),
+        ":Дарю цветочек:" | ":Заяц с цветком:" | ":Не опаздывай:" => Some("🌷"),
         ":Пошалим?:" | ":Хочу тебя:" => Some("😏"),
         ":Ревность:" => Some("😤"),
         ":Внимание!:" => Some("⚠️"),
@@ -1285,6 +1340,7 @@ fn smiley_to_emoji(smiley: &str) -> Option<String> {
         ":Пёс:" => Some("🐕"),
         ":Выпей яду:" => Some("☠️"),
         ":Серьёзен как никогда, ага:" => Some("😐️"),
+        "[:-|" => Some("🗿"),
         other => {
             // Might also mean this is not a real smiley
             log::warn!("No emoji known for a smiley {other}");
