@@ -39,15 +39,32 @@ impl<'a, T: 'a> Tup<'a, T> {
     }
 }
 
-impl<'a, T: 'a> PracticalEq for Tup<'a, Option<T>> where for<'b> Tup<'a, T>: PracticalEq {
+/// Since equality for String is equality for path, two missing paths are equal even if one of them is None
+impl<'a, > PracticalEq for Tup<'a, Option<String>> {
     fn practically_equals(&self, other: &Self) -> Result<bool> {
-        match (self.v, other.v) {
-            (None, None) => Ok(true),
-            (Some(v1), Some(v2)) => self.with(v1).practically_equals(&other.with(v2)),
-            _ => Ok(false),
-        }
+        let missing = "[MISSING]".to_owned();
+        let lhs = self.with(self.v.as_ref().unwrap_or(&missing));
+        let rhs = other.with(other.v.as_ref().unwrap_or(&missing));
+        lhs.practically_equals(&rhs)
     }
 }
+
+macro_rules! default_option_equality {
+    ($T:ident) => {
+        impl<'a> PracticalEq for Tup<'a, Option<$T>> {
+            fn practically_equals(&self, other: &Self) -> Result<bool> {
+                match (self.v, other.v) {
+                    (None, None) => Ok(true),
+                    (Some(v1), Some(v2)) => self.with(v1).practically_equals(&other.with(v2)),
+                    _ => Ok(false),
+                }
+            }
+        }
+    };
+}
+
+default_option_equality!(Content);
+default_option_equality!(ContentPhoto);
 
 macro_rules! cloned_equals_without {
     ($v1:expr, $v2:expr, $T:ident, $($key:ident : $val:expr),+) => {
@@ -163,7 +180,7 @@ impl<'a> PracticalEq for Tup<'a, Content> {
     }
 }
 
-/// Treating String as Relative Path here.
+/// Treating String as a relative path here.
 /// (Cannot use newtype idiom - there's nobody to own the value)
 impl<'a> PracticalEq for Tup<'a, String> {
     fn practically_equals(&self, other: &Self) -> Result<bool> {
