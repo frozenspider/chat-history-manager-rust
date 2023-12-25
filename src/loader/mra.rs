@@ -20,7 +20,6 @@ use super::*;
 /// Known issues:
 /// * Some smile types are not converted and left as-is since there's no reference too see how they looked like.
 /// * Only a limited RTF support has been added - just bold, italic and underline styles, and only one per substring.
-/// * TODO: Users changing names isn't handled
 ///
 /// Following references were helpful in reverse engineering the format (in Russian):
 /// * https://xakep.ru/2012/11/30/mailru-agent-hack/
@@ -28,7 +27,6 @@ use super::*;
 pub struct MailRuAgentDataLoader;
 
 const MRA_DBS: &str = "mra.dbs";
-const DATASETS_DIR_NAME: &str = "_datasets";
 const MSG_HEADER_MAGIC_NUMBER: u32 = 0x38;
 
 const CONFERENCE_USER_JOINED: u32 = 0x03;
@@ -259,11 +257,9 @@ fn collect_datasets<'a>(
                 username_option: Some(myself_username.clone()),
                 phone_number_option: None,
             };
-            let ds_root = storage_path.join(DATASETS_DIR_NAME).join(myself_username.as_str());
-            fs::create_dir_all(&ds_root).unwrap();
             MraDatasetEntry {
                 ds: Dataset { uuid: Some(ds_uuid), alias: myself_username.clone() },
-                ds_root,
+                ds_root: storage_path.to_path_buf(),
                 users: HashMap::from([(myself_username.clone(), myself)]),
                 cwms: HashMap::new(),
             }
@@ -744,6 +740,15 @@ fn convert_messages<'a>(
             ChatType::Personal
         };
 
+        const AVATARS_DIR_NAME: &str = "Avatars";
+        const AVATAR_FILE_NAME: &str = "avatar.jpg";
+        // ICQ avatar are stored in folders with suffix ###ICQ
+        let avatar_dir_name = if conv_username.chars().all(|c| c.is_numeric()) {
+            format!("{conv_username}###ICQ")
+        } else {
+            conv_username.clone()
+        };
+
         entry.cwms.insert(conv_username.clone(), ChatWithMessages {
             chat: Some(Chat {
                 ds_uuid: entry.ds.uuid.clone(),
@@ -751,7 +756,7 @@ fn convert_messages<'a>(
                 name_option: Some(conv_username), // Will be changed later
                 source_type: SourceType::Mra as i32,
                 tpe: chat_type as i32,
-                img_path_option: None,
+                img_path_option: Some(format!("{AVATARS_DIR_NAME}/{avatar_dir_name}/{AVATAR_FILE_NAME}")),
                 member_ids,
                 msg_count: msgs.len() as i32,
                 main_chat_id: None,
@@ -962,7 +967,7 @@ fn u32_ptr_to_option(int: u32) -> Option<u32> {
 }
 
 fn filetime_to_timestamp(ft: u64) -> i64 {
-    // FIXME: Timezone seems off?
+    // TODO: Timezone are maybe off, even though both are UTC?
     // WinApi FILETIME epoch starts 1601-01-01T00:00:00Z, which is 11644473600 seconds before the
     // UNIX/Linux epoch (1970-01-01T00:00:00Z). FILETIME ticks are also in in 100 nanoseconds.
     const TICKS_PER_SECOND: u64 = 10_000_000;
