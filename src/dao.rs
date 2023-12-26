@@ -192,7 +192,7 @@ pub trait MutableChatHistoryDao: ChatHistoryDao {
     /// Copies image (if any) from dataset root.
     fn insert_chat(&mut self, chat: Chat, src_ds_root: &DatasetRoot) -> Result<Chat>;
 
-    /// Note that chat members and image won't be changed!
+    /// Note that chat members won't be changed and image won't be copied/deleted.
     fn update_chat(&mut self, chat: Chat) -> Result<Chat>;
 
     /// Delete a chat, as well as orphan users. Deleted files will be moved to backup folder.

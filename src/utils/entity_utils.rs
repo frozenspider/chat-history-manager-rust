@@ -215,6 +215,11 @@ impl Chat {
     pub fn member_ids(&self) -> impl Iterator<Item=UserId> + '_ {
         self.member_ids.iter().map(|id| UserId(*id))
     }
+
+    // img_path_option() is a name conflict
+    pub fn get_img_path_option(&self, ds_root: &DatasetRoot) -> Option<PathBuf> {
+        self.img_path_option.as_ref().map(|p| ds_root.to_absolute(p))
+    }
 }
 
 pub trait EnumResolve: Sized {
