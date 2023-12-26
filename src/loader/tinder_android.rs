@@ -98,7 +98,7 @@ impl<H: HttpClient + 'static> TinderAndroidDataLoader<H> {
 
                 let timestamp = row.get::<_, i64>("sent_date")? / 1000;
 
-                let from_id = if &row.get::<_, String>("from_id")? == key { user.id } else { *MYSELF_ID };
+                let from_id = if &row.get::<_, String>("from_id")? == key { user.id() } else { MYSELF_ID };
 
                 let text = row.get::<_, String>("text")?;
                 let (text, content_option) = if text.starts_with("https://media.tenor.com/") {

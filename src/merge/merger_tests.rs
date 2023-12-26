@@ -824,7 +824,7 @@ fn members_test_helper(clue: &str,
                 *NO_INTERNAL_ID,
                 Some(100 + idx as i64),
                 BASE_DATE.timestamp(),
-                users[idx].id,
+                users[idx].id(),
                 vec![RichText::make_plain(format!("Message for a group service message {}", idx + 1))],
                 message::Typed::Service(MessageService { sealed_value_optional: Some(typed) }),
             )

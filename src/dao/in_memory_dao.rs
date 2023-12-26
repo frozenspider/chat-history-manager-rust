@@ -27,23 +27,23 @@ pub struct InMemoryDao {
 
 impl InMemoryDao {
     pub fn new_single(name: String,
-                      dataset: Dataset,
+                      ds: Dataset,
                       ds_root: PathBuf,
                       myself_id: UserId,
                       users: Vec<User>,
                       cwms: Vec<ChatWithMessages>) -> Self {
-        Self::new(name, ds_root.clone(), vec![(dataset, ds_root, (myself_id, users), cwms)])
+        Self::new(name, ds_root.clone(), vec![DatasetEntry { ds, ds_root, myself_id, users, cwms }])
     }
 
     pub fn new(name: String,
                storage_path: PathBuf,
-               data: Vec<(Dataset, PathBuf, (UserId, Vec<User>), Vec<ChatWithMessages>)>) -> Self {
+               data: Vec<DatasetEntry>) -> Self {
         let cache = DaoCache::new();
         let mut ds_roots = HashMap::new();
         let mut cwms_map = HashMap::new();
         let mut cache_inner = (*cache.inner).borrow_mut();
         cache_inner.initialized = true;
-        for (ds, ds_root, (myself_id, users), cwms) in data {
+        for DatasetEntry { ds, ds_root, myself_id, users, cwms } in data {
             assert!(users.iter().any(|u| u.id() == myself_id));
             let ds_uuid = ds.uuid().clone();
             cache_inner.datasets.push(ds);
@@ -243,6 +243,15 @@ impl ShiftableChatHistoryDao for InMemoryDao {
         }
         Ok(())
     }
+}
+
+
+pub struct DatasetEntry {
+    pub ds: Dataset,
+    pub ds_root: PathBuf,
+    pub myself_id: UserId,
+    pub users: Vec<User>,
+    pub cwms: Vec<ChatWithMessages>,
 }
 
 fn cutout<T: Clone>(slice: &[T], start_inc: usize, end_exc: usize) -> Vec<T> {

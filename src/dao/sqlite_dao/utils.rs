@@ -61,7 +61,8 @@ impl_enum_serialization!(SourceType, {
     Telegram    => "telegram",
     WhatsappDb  => "whatsapp",
     TinderDb    => "tinder",
-    BadooDb     => "badoo"
+    BadooDb     => "badoo",
+    Mra         => "mra"
 });
 
 impl_enum_serialization!(ChatType, {
@@ -476,6 +477,10 @@ pub mod message {
                     is_blocked: Some(serialize_bool(v.is_blocked)),
                     ..Default::default()
                 })),
+            StatusTextChanged(_) =>
+                ("status_text_changed", None),
+            Notice(_) =>
+                ("notice", None),
             GroupCreate(v) =>
                 ("group_create", Some(RawMessageContent {
                     title: Some(v.title.clone()),
@@ -590,7 +595,7 @@ pub mod message {
             raw.m.internal_id.expect("Message has no internal ID!"),
             raw.m.source_id,
             raw.m.time_sent,
-            raw.m.from_id,
+            UserId(raw.m.from_id),
             text,
             typed,
         ))
@@ -722,6 +727,10 @@ pub mod message {
                     is_blocked: deserialize_bool(get_or_bail!(raw.is_blocked)),
                 })
             }
+            "status_text_changed" =>
+                StatusTextChanged(MessageServiceStatusTextChanged {}),
+            "notice" =>
+                Notice(MessageServiceNotice {}),
             "group_create" => {
                 let raw = raw_or_bail!();
                 GroupCreate(MessageServiceGroupCreate {

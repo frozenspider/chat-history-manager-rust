@@ -10,6 +10,7 @@ use crate::*;
 use crate::dao::ChatHistoryDao;
 use crate::dao::sqlite_dao::SqliteDao;
 use crate::loader::badoo_android::BadooAndroidDataLoader;
+use crate::loader::mra::MailRuAgentDataLoader;
 use crate::loader::telegram::TelegramDataLoader;
 use crate::loader::tinder_android::TinderAndroidDataLoader;
 use crate::loader::whatsapp_android::WhatsAppAndroidDataLoader;
@@ -21,6 +22,7 @@ mod tinder_android;
 mod whatsapp_android;
 mod whatsapp_text;
 mod badoo_android;
+mod mra;
 
 trait DataLoader {
     fn name(&self) -> &'static str;
@@ -71,6 +73,7 @@ impl Loader {
                 Box::new(WhatsAppTextDataLoader),
                 Box::new(TinderAndroidDataLoader { http_client }),
                 Box::new(BadooAndroidDataLoader),
+                Box::new(MailRuAgentDataLoader),
             ],
             myself_chooser,
         }

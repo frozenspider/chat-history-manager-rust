@@ -130,12 +130,16 @@ impl User {
     pub fn id(&self) -> UserId { UserId(self.id) }
 
     pub fn pretty_name_option(&self) -> Option<String> {
-        match (self.first_name_option.as_ref(), self.last_name_option.as_ref(), self.phone_number_option.as_ref()) {
-            (Some(first_name), Some(last_name), _) => Some(format!("{first_name} {last_name}")),
-            (Some(first_name), None, _) => Some(first_name.clone()),
-            (None, Some(last_name), _) => Some(last_name.clone()),
-            (None, None, Some(phone_number)) => Some(phone_number.clone()),
-            (None, None, None) => None
+        match (self.first_name_option.as_ref(),
+               self.last_name_option.as_ref(),
+               self.phone_number_option.as_ref(),
+               self.username_option.as_ref()) {
+            (Some(first_name), Some(last_name), _, _) => Some(format!("{first_name} {last_name}")),
+            (Some(first_name), None, _, _) => Some(first_name.clone()),
+            (None, Some(last_name), _, _) => Some(last_name.clone()),
+            (None, None, Some(phone_number), _) => Some(phone_number.clone()),
+            (None, None, None, Some(username)) => Some(username.clone()),
+            (None, None, None, None) => None
         }
     }
 
@@ -237,7 +241,7 @@ impl Message {
     pub fn new(internal_id: i64,
                source_id_option: Option<i64>,
                timestamp: i64,
-               from_id: i64,
+               from_id: UserId,
                text: Vec<RichTextElement>,
                typed: message::Typed) -> Self {
         let searchable_string = make_searchable_string(&text, &typed);
@@ -245,7 +249,7 @@ impl Message {
             internal_id,
             source_id_option,
             timestamp,
-            from_id,
+            from_id: *from_id,
             text,
             searchable_string,
             typed: Some(typed),
@@ -292,6 +296,8 @@ impl Message {
                     Some(PinMessage(_)) => vec![],
                     Some(ClearHistory(_)) => vec![],
                     Some(BlockUser(_)) => vec![],
+                    Some(StatusTextChanged(_)) => vec![],
+                    Some(Notice(_)) => vec![],
                     Some(GroupCreate(_)) => vec![],
                     Some(GroupEditTitle(_)) => vec![],
                     Some(GroupEditPhoto(v)) => vec![v.photo.as_ref().and_then(|p| p.path_option.as_deref())],

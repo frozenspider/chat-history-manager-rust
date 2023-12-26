@@ -424,13 +424,13 @@ fn update_user() -> EmptyRes {
         .map(|i| dao.insert_user(create_user(&ZERO_PB_UUID, i as i64), i == 1))
         .try_collect()?;
 
-    fn make_hello_message(internal_id: i64, from_id: i64) -> Message {
+    fn make_hello_message(internal_id: i64, from_id: UserId) -> Message {
         Message::new(
             internal_id,
             Some(internal_id),
             dt("2023-12-03 12:00:00", None).timestamp() + internal_id,
             from_id,
-            vec![RichText::make_plain(format!("Hello there from u#{from_id}!"))],
+            vec![RichText::make_plain(format!("Hello there from u#{}!", *from_id))],
             MESSAGE_REGULAR_NO_CONTENT.clone(),
         )
     }
@@ -444,7 +444,7 @@ fn update_user() -> EmptyRes {
                                            vec![1, 2, 3], 123456789);
     let group_chat_msgs = vec![
         Message::new(
-            1, Some(1), dt("2023-12-03 12:00:00", None).timestamp(), 1,
+            1, Some(1), dt("2023-12-03 12:00:00", None).timestamp(), UserId(1),
             vec![],
             Typed::Service(MessageService {
                 sealed_value_optional: Some(GroupCreate(MessageServiceGroupCreate {
@@ -453,9 +453,9 @@ fn update_user() -> EmptyRes {
                 }))
             }),
         ),
-        make_hello_message(2, 1),
-        make_hello_message(3, 2),
-        make_hello_message(4, 3),
+        make_hello_message(2, UserId(1)),
+        make_hello_message(3, UserId(2)),
+        make_hello_message(4, UserId(3)),
     ];
     group_chat.msg_count = group_chat_msgs.len() as i32;
     let group_chat = dao.insert_chat(group_chat, &no_ds_root)?;
@@ -464,7 +464,7 @@ fn update_user() -> EmptyRes {
     // Personal chats
 
     let personal_chat_u2_msgs = vec![
-        make_hello_message(1, 2),
+        make_hello_message(1, UserId(2)),
     ];
     let personal_chat_u2 = create_personal_chat(&ZERO_PB_UUID, 2, &users[1], vec![1, 2], personal_chat_u2_msgs.len());
     let personal_chat_u2 = dao.insert_chat(personal_chat_u2, &no_ds_root)?;
