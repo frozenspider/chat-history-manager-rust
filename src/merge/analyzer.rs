@@ -117,6 +117,7 @@ impl<'a> DatasetDiffAnalyzer<'a> {
                     let (mm, sm) = cx.advance_both()?;
                     let mm_internal_id = mm.typed_id();
                     let sm_internal_id = sm.typed_id();
+                    log::debug!("Conflict started:\nWas    {:?}\nBecame {:?}", *mm, *sm);
                     state = InProgress(Conflict {
                         first_master_msg_id: mm_internal_id,
                         first_slave_msg_id: sm_internal_id,
