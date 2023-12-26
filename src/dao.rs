@@ -288,12 +288,14 @@ pub fn ensure_datasets_are_equal(master_dao: &dyn ChatHistoryDao,
 
         for (i, (master_cwd, slave_cwd)) in master_chats.iter().zip(slave_chats.iter()).enumerate() {
             measure(|| {
-                let mut slave_cwd = slave_cwd.clone();
-                slave_cwd.chat.ds_uuid = Some(master_ds_uuid.clone());
+                {
+                    let mut slave_cwd = slave_cwd.clone();
+                    slave_cwd.chat.ds_uuid = Some(master_ds_uuid.clone());
 
-                require!(PracticalEqTuple::new(&master_cwd.chat, &master_ds_root, master_cwd).practically_equals(
-                        &PracticalEqTuple::new(&slave_cwd.chat, &slave_ds_root, &slave_cwd))?,
-                         "Chat #{i} differs:\nWas    {:?}\nBecame {:?}", master_cwd.chat, slave_cwd.chat);
+                    require!(PracticalEqTuple::new(&master_cwd.chat, &master_ds_root, master_cwd).practically_equals(
+                            &PracticalEqTuple::new(&slave_cwd.chat, &slave_ds_root, &slave_cwd))?,
+                             "Chat #{i} differs:\nWas    {:?}\nBecame {:?}", master_cwd.chat, slave_cwd.chat);
+                }
 
                 let msg_count = master_cwd.chat.msg_count as usize;
                 let mut offset: usize = 0;
