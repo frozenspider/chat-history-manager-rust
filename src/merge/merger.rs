@@ -96,6 +96,8 @@ fn merge_inner(
         match cm {
             ChatMergeDecision::Retain { master_chat_id } =>
                 Some((master.cwds[&master_chat_id].clone(), &master_ds_root, cm)),
+            ChatMergeDecision::DontMerge { chat_id } =>
+                Some((master.cwds[&chat_id].clone(), &master_ds_root, cm)),
             ChatMergeDecision::Add { slave_chat_id } =>
                 Some((slave.cwds[&slave_chat_id].clone(), &slave_ds_root, cm)),
             ChatMergeDecision::DontAdd { .. } =>
@@ -170,6 +172,10 @@ fn merge_inner(
         let mut msg_count = 0;
         match cm {
             ChatMergeDecision::Retain { .. } =>
+                msg_count += copy_all_messages(master.dao, master_cwd!(),
+                                               &master_ds_root, new_dao, &new_chat,
+                                               &final_users)?,
+            ChatMergeDecision::DontMerge { .. } =>
                 msg_count += copy_all_messages(master.dao, master_cwd!(),
                                                &master_ds_root, new_dao, &new_chat,
                                                &final_users)?,
@@ -400,6 +406,8 @@ pub enum ChatMergeDecision {
     DontAdd { slave_chat_id: ChatId },
     /// Exists in both, act according to message merge decisions
     Merge { chat_id: ChatId, message_merges: Vec<MessagesMergeDecision> },
+    /// Exists in both, keep master
+    DontMerge { chat_id: ChatId },
 }
 
 impl ChatMergeDecision {
@@ -409,6 +417,7 @@ impl ChatMergeDecision {
             ChatMergeDecision::Add { .. } => None,
             ChatMergeDecision::DontAdd { .. } => None,
             ChatMergeDecision::Merge { chat_id, .. } => Some(*chat_id),
+            ChatMergeDecision::DontMerge { chat_id } => Some(*chat_id),
         }
     }
 
@@ -418,6 +427,7 @@ impl ChatMergeDecision {
             ChatMergeDecision::Add { slave_chat_id } => Some(*slave_chat_id),
             ChatMergeDecision::DontAdd { slave_chat_id } => Some(*slave_chat_id),
             ChatMergeDecision::Merge { chat_id, .. } => Some(*chat_id),
+            ChatMergeDecision::DontMerge { chat_id } => Some(*chat_id),
         }
     }
 }

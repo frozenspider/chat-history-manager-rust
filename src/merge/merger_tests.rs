@@ -773,6 +773,15 @@ fn merge_chats_group_messages_with_members_should_adapt_to_renames() -> EmptyRes
         ],
     )?;
 
+    members_test_helper(
+        "Entire chat is kept",
+        ChatCreationState::CreateWithMessages,
+        ChatCreationState::CreateWithMessages,
+        |helper| vec![
+            ChatMergeDecision::DontMerge { chat_id: helper.m.cwd().id() }
+        ],
+    )?;
+
     Ok(())
 }
 

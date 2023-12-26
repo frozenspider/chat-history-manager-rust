@@ -85,6 +85,7 @@ impl MergeService for Arc<Mutex<ChatHistoryManagerServer>> {
             let chat_merges = req.chat_merges.iter().map(|cm|
                 Ok::<_, anyhow::Error>(match ChatMergeType::try_from(cm.tpe)? {
                     ChatMergeType::Retain => ChatMergeDecision::Retain { master_chat_id: ChatId(cm.chat_id) },
+                    ChatMergeType::DontMerge => ChatMergeDecision::DontMerge { chat_id: ChatId(cm.chat_id) },
                     ChatMergeType::Add => ChatMergeDecision::Add { slave_chat_id: ChatId(cm.chat_id) },
                     ChatMergeType::DontAdd => ChatMergeDecision::DontAdd { slave_chat_id: ChatId(cm.chat_id) },
                     ChatMergeType::Merge => {

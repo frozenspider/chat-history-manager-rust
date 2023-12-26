@@ -763,6 +763,8 @@ enum ChatMergeType{
   CHAT_MERGE_TYPE_DONT_ADD = 2;
   // Exists in both, act according to message merge decisions
   CHAT_MERGE_TYPE_MERGE = 3;
+  // Exists in both, keep master
+  CHAT_MERGE_TYPE_DONT_MERGE = 4;
 }
 message MessageMerge {
   MessageMergeType tpe = 1;
