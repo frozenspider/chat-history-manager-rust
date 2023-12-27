@@ -29,7 +29,9 @@ const MRA_DBS: &str = "mra.dbs";
 const MYSELF_ID: UserId = UserId(UserId::INVALID.0 + 1);
 
 lazy_static! {
-    // Expected entries are @mail.ru, @bk.ru and @uin.icq.
+    static ref DB_FILE_DIRS: Vec<&'static str> = vec!["Agent", "ICQ"];
+
+    // Expected entries are @mail.ru, @bk.ru, @inbox.ru and @uin.icq.
     // Could also be @chat.agent, which indicates a group chat.
     static ref EMAIL_REGEX: Regex = Regex::new(r"^[a-zA-Z0-9._-]+@([a-z-]+\.)+[a-z]+$").unwrap();
 
@@ -60,6 +62,16 @@ impl DataLoader for MailRuAgentDataLoader {
 
 fn load_mra_dbs(path: &Path, dao_name: String) -> Result<Box<InMemoryDao>> {
     let mut storage_path = path.parent().expect("Database file has no parent!");
+
+    for subdir in DB_FILE_DIRS.iter() {
+        let path = storage_path.join(subdir);
+        if path.exists() {
+            db::do_the_thing(&path)?;
+        }
+    }
+
+    return Ok(Box::new(InMemoryDao::new(dao_name, storage_path.to_path_buf(), vec![])));
+
     if path_file_name(storage_path)? == "Base" {
         storage_path = storage_path.parent().expect(r#""Base" directory has no parent!"#);
     }
@@ -85,6 +97,17 @@ fn load_mra_dbs(path: &Path, dao_name: String) -> Result<Box<InMemoryDao>> {
     )))
 }
 
+fn convert_microblog_record(
+    raw_text: &str,
+    target_name: Option<&str>,
+) -> (Vec<RichTextElement>, message::Typed) {
+    let text = replace_smiles_with_emojis(&raw_text);
+    let text = format!("{}{}", target_name.map(|n| format!("(To {n})\n")).unwrap_or_default(), text);
+    (vec![RichText::make_plain(text)], message::Typed::Service(MessageService {
+        sealed_value_optional: Some(message_service::SealedValueOptional::StatusTextChanged(MessageServiceStatusTextChanged {}))
+    }))
+}
+
 //
 // Structs and enums
 //
@@ -102,26 +125,39 @@ struct MraDatasetEntry {
 // Helper functions
 //
 
-fn read_u32_le(bytes: &[u8], shift: usize) -> u32 {
-    u32::from_le_bytes(read_4_bytes(bytes, shift))
+// All read functions read in Little Endian
+
+fn read_n_bytes<const N: usize>(bytes: &[u8], shift: usize) -> [u8; N] {
+    bytes[shift..(shift + N)].try_into().unwrap()
 }
 
-fn read_4_bytes(bytes: &[u8], shift: usize) -> [u8; 4] {
-    bytes[shift..(shift + 4)].try_into().unwrap()
+fn read_u32(bytes: &[u8], shift: usize) -> u32 {
+    u32::from_le_bytes(read_n_bytes(bytes, shift))
+}
+
+fn next_n_bytes<const N: usize>(bytes: &[u8]) -> ([u8; N], &[u8]) {
+    (bytes[..N].try_into().unwrap(), &bytes[N..])
+}
+
+fn next_u32(bytes: &[u8]) -> (u32, &[u8]) {
+    (read_u32(bytes, 0), &bytes[4..])
+}
+
+fn next_u32_size(bytes: &[u8]) -> (usize, &[u8]) {
+    (read_u32(bytes, 0) as usize, &bytes[4..])
 }
 
 /// Assumes the next 4 payload bytes to specify the size of the chunk. Read and return it, and the rest of the payload.
-fn read_sized_chunk(payload: &[u8]) -> Result<(&[u8], &[u8])> {
-    let len = read_u32_le(payload, 0) as usize;
-    Ok(payload[4..].split_at(len))
+fn next_sized_chunk(payload: &[u8]) -> Result<(&[u8], &[u8])> {
+    let (len, rest) = next_u32_size(payload);
+    Ok(rest.split_at(len))
 }
 
 /// In the next <N_u32><...N bytes...> validate that N bytes correspond to the expected bytes provided
 fn validate_skip_chunk<'a>(payload: &'a [u8], expected_bytes: &[u8]) -> Result<&'a [u8]> {
-    let len = read_u32_le(payload, 0) as usize;
+    let (len, payload) = next_u32_size(payload);
     require!(len == expected_bytes.len(),
              "Unexpected message payload format!");
-    let payload = &payload[4..];
     let (actual, rest) = payload.split_at(len);
     require!(actual == expected_bytes,
              "Unexpected message payload format!");

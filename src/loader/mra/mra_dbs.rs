@@ -27,7 +27,7 @@ pub(super) fn load_convs_with_msgs<'a>(dbs_bytes: &'a [u8]) -> Result<Vec<MraLeg
 fn load_offsets_table(dbs_bytes: &[u8]) -> Result<&[u32]> {
     const OFFSETS_TABLE_OFFSET: usize = 0x10;
     const OFFSETS_MAGIC_NUMBER: u32 = 0x04;
-    let offsets_table_addr = read_u32_le(&dbs_bytes, OFFSETS_TABLE_OFFSET) as usize;
+    let offsets_table_addr = read_u32(&dbs_bytes, OFFSETS_TABLE_OFFSET) as usize;
     let offsets_table: &[u32] = {
         let u8_slice = &dbs_bytes[offsets_table_addr..];
         require!(offsets_table_addr % 4 == 0 && u8_slice.len() % 4 == 0,
@@ -54,8 +54,8 @@ fn load_conversations<'a>(dbs_bytes: &'a [u8], offsets_table: &[u32]) -> Result<
     let mrahistory_footprint: &[u8] =
         &"mrahistory_".as_bytes().iter().flat_map(|&b| vec![b, 0x00u8]).collect_vec();
 
-    let expected_convs_count = read_u32_le(dbs_bytes, offsets_table[1] as usize + CONVERSATIONS_COUNT_OFFSET);
-    let mut conv_id = read_u32_le(dbs_bytes, offsets_table[1] as usize + LAST_CONVERSATION_OFFSET);
+    let expected_convs_count = read_u32(dbs_bytes, offsets_table[1] as usize + CONVERSATIONS_COUNT_OFFSET);
+    let mut conv_id = read_u32(dbs_bytes, offsets_table[1] as usize + LAST_CONVERSATION_OFFSET);
 
     let mut result = vec![];
 
@@ -65,9 +65,9 @@ fn load_conversations<'a>(dbs_bytes: &'a [u8], offsets_table: &[u32]) -> Result<
         let current_offset = offsets_table[conv_id as usize] as usize;
         assert!(current_offset < dbs_bytes.len());
 
-        let len = read_u32_le(dbs_bytes, current_offset) as usize;
-        let prev_conv_id = read_u32_le(dbs_bytes, current_offset + CONVERSATION_IDS_OFFSET);
-        let next_conv_id = read_u32_le(dbs_bytes, current_offset + CONVERSATION_IDS_OFFSET + 4);
+        let len = read_u32(dbs_bytes, current_offset) as usize;
+        let prev_conv_id = read_u32(dbs_bytes, current_offset + CONVERSATION_IDS_OFFSET);
+        let next_conv_id = read_u32(dbs_bytes, current_offset + CONVERSATION_IDS_OFFSET + 4);
 
         require!(prev_conv_id == last_processed_conv_id,
                  "Conversations linked list is broken!");
@@ -93,8 +93,8 @@ fn load_conversations<'a>(dbs_bytes: &'a [u8], offsets_table: &[u32]) -> Result<
                 offset: current_offset,
                 myself_name: WStr::from_utf16le(myself_name_utf16)?,
                 other_name: WStr::from_utf16le(other_name_utf16)?,
-                msg_id1: u32_ptr_to_option(read_u32_le(dbs_bytes, current_offset + MESSAGE_IDS_OFFSET)),
-                msg_id2: u32_ptr_to_option(read_u32_le(dbs_bytes, current_offset + MESSAGE_IDS_OFFSET + 4)),
+                msg_id1: u32_ptr_to_option(read_u32(dbs_bytes, current_offset + MESSAGE_IDS_OFFSET)),
+                msg_id2: u32_ptr_to_option(read_u32(dbs_bytes, current_offset + MESSAGE_IDS_OFFSET + 4)),
                 raw: &dbs_bytes[current_offset..(current_offset + len)],
             };
 
@@ -208,26 +208,26 @@ pub(super) fn collect_datasets(
                 ($cond:expr) => { require!($cond, "Unexpected {:?} message payload format!", tpe) };
             }
             match tpe {
-                MraLegacyMessageType::ConferenceMessagePlaintext => {
+                MraMessageType::ConferenceMessagePlaintext => {
                     let payload = mra_msg.payload;
                     // Text duplication
                     let payload = validate_skip_chunk(payload, mra_msg.text.as_bytes())?;
                     // Author email
-                    let (author_email_bytes, payload) = read_sized_chunk(payload)?;
+                    let (author_email_bytes, payload) = next_sized_chunk(payload)?;
                     require_format!(payload.is_empty());
                     from_username = String::from_utf8(author_email_bytes.to_vec())?;
                 }
-                MraLegacyMessageType::ConferenceMessageRtf => {
+                MraMessageType::ConferenceMessageRtf => {
                     let payload = mra_msg.payload;
                     // RTF
-                    let (_rtf_bytes, payload) = read_sized_chunk(payload)?;
+                    let (_rtf_bytes, payload) = next_sized_chunk(payload)?;
                     // RGBA bytes
                     let payload = &payload[4..];
                     // Author email (only present for others' messages)
                     require!(payload.is_empty() == mra_msg.is_from_me()?,
                              "Expected message payload to be empty for self messages only!");
                     if !mra_msg.is_from_me()? {
-                        let (author_email_bytes, payload) = read_sized_chunk(payload)?;
+                        let (author_email_bytes, payload) = next_sized_chunk(payload)?;
                         require_format!(payload.is_empty());
                         from_username = String::from_utf8(author_email_bytes.to_vec())?
                     };
@@ -269,31 +269,28 @@ pub(super) fn collect_datasets(
             ($cond:expr) => { require!($cond, "Unexpected {:?} message payload format!", tpe) };
         }
         match tpe {
-            MraLegacyMessageType::ConferenceUsersChange => {
+            MraMessageType::ConferenceUsersChange => {
                 let payload = mra_msg.payload;
                 // All payload is a single chunk
-                let change_tpe = read_u32_le(payload, 0);
-                let payload = &payload[4..];
+                let (change_tpe, payload) = next_u32(payload);
 
                 match change_tpe {
                     CONFERENCE_USER_JOINED => {
-                        let (_inviting_user_name_or_email, payload) = read_sized_chunk(payload)?;
-                        let num_invited_user_names = read_u32_le(payload, 0) as usize;
+                        let (_inviting_user_name_or_email, payload) = next_sized_chunk(payload)?;
+                        let (num_invited_user_names, mut payload) = next_u32_size(payload);
                         let mut names = Vec::with_capacity(num_invited_user_names);
                         let mut emails = Vec::with_capacity(num_invited_user_names);
 
-                        let mut payload = &payload[4..];
                         for _ in 0..num_invited_user_names {
-                            let (name_bytes, payload2) = read_sized_chunk(payload)?;
+                            let (name_bytes, payload2) = next_sized_chunk(payload)?;
                             payload = payload2;
                             names.push(WStr::from_utf16le(name_bytes)?.to_utf8());
                         }
-                        let num_invited_user_emails = read_u32_le(payload, 0) as usize;
+                        let (num_invited_user_emails, mut payload) = next_u32_size(payload);
                         require_format!(num_invited_user_names == num_invited_user_emails);
 
-                        let mut payload = &payload[4..];
                         for _ in 0..num_invited_user_names {
-                            let (email_bytes, payload2) = read_sized_chunk(payload)?;
+                            let (email_bytes, payload2) = next_sized_chunk(payload)?;
                             payload = payload2;
                             emails.push(WStr::from_utf16le(email_bytes)?.to_utf8());
                         }
@@ -304,8 +301,8 @@ pub(super) fn collect_datasets(
                         }
                     }
                     CONFERENCE_USER_LEFT => {
-                        let (name_bytes, payload) = read_sized_chunk(payload)?;
-                        let (email_bytes, payload) = read_sized_chunk(payload)?;
+                        let (name_bytes, payload) = next_sized_chunk(payload)?;
+                        let (email_bytes, payload) = next_sized_chunk(payload)?;
                         require_format!(payload.is_empty());
 
                         upsert_user(entry,
@@ -451,13 +448,13 @@ fn convert_message(
     use message_service::SealedValueOptional as ServiceSvo;
     use content::SealedValueOptional as ContentSvo;
     let (text, typed) = match tpe {
-        MraLegacyMessageType::AuthorizationRequest |
-        MraLegacyMessageType::RegularPlaintext |
-        MraLegacyMessageType::RegularRtf |
-        MraLegacyMessageType::Sms => {
-            let rtes = if tpe == MraLegacyMessageType::RegularRtf {
+        MraMessageType::AuthorizationRequest |
+        MraMessageType::RegularPlaintext |
+        MraMessageType::RegularRtf |
+        MraMessageType::Sms => {
+            let rtes = if tpe == MraMessageType::RegularRtf {
                 let payload = mra_msg.payload;
-                let (rtf_bytes, payload) = read_sized_chunk(payload)?;
+                let (rtf_bytes, payload) = next_sized_chunk(payload)?;
                 let rtf = WStr::from_utf16le(rtf_bytes)?.to_utf8();
                 // RGBA bytes, ignoring
                 let payload = &payload[4..];
@@ -472,9 +469,9 @@ fn convert_message(
 
             (rtes, Typed::Regular(Default::default()))
         }
-        MraLegacyMessageType::ActionNeedsNewerApp => {
+        MraMessageType::ActionNeedsNewerApp => {
             let payload = mra_msg.payload;
-            let (rtf_bytes, payload) = read_sized_chunk(payload)?;
+            let (rtf_bytes, payload) = next_sized_chunk(payload)?;
             let rtf = WStr::from_utf16le(rtf_bytes)?.to_utf8();
             // RGBA bytes, ignoring
             let payload = &payload[4..];
@@ -483,7 +480,7 @@ fn convert_message(
             let rtes = parse_rtf(&rtf)?;
             (rtes, Typed::Regular(Default::default()))
         }
-        MraLegacyMessageType::FileTransfer => {
+        MraMessageType::FileTransfer => {
             // We can get file names from the outgoing messages.
             // Mail.Ru allowed us to send several files in one message, so we unite them here.
             let text_parts = text.split('\n').collect_vec();
@@ -510,8 +507,8 @@ fn convert_message(
                 ..Default::default()
             }))
         }
-        MraLegacyMessageType::Call |
-        MraLegacyMessageType::VideoCall => {
+        MraMessageType::Call |
+        MraMessageType::VideoCall => {
             // Payload format: <text_len_u32><text>
             // It does not carry call information per se.
             let payload = mra_msg.payload;
@@ -582,7 +579,7 @@ fn convert_message(
                 }))
             }))
         }
-        MraLegacyMessageType::BirthdayReminder => {
+        MraMessageType::BirthdayReminder => {
             let payload = mra_msg.payload;
             let payload = validate_skip_chunk(payload, mra_msg.text.as_bytes())?;
             require_format!(payload.is_empty());
@@ -591,10 +588,10 @@ fn convert_message(
                 sealed_value_optional: Some(ServiceSvo::Notice(MessageServiceNotice {}))
             }))
         }
-        MraLegacyMessageType::Cartoon | MraLegacyMessageType::CartoonType2 => {
+        MraMessageType::Cartoon | MraMessageType::CartoonType2 => {
             let payload = mra_msg.payload;
             // Source is a <SMILE> tag
-            let (src_bytes, payload) = read_sized_chunk(payload)?;
+            let (src_bytes, payload) = next_sized_chunk(payload)?;
             require_format!(payload.is_empty());
             let src = WStr::from_utf16le(src_bytes)?.to_utf8();
             let (_id, emoji_option) = match SMILE_TAG_REGEX.captures(&src) {
@@ -616,29 +613,26 @@ fn convert_message(
                 ..Default::default()
             }))
         }
-        MraLegacyMessageType::ConferenceUsersChange => {
+        MraMessageType::ConferenceUsersChange => {
             let payload = mra_msg.payload;
             // All payload is a single chunk
-            let change_tpe = read_u32_le(payload, 0);
-            let payload = &payload[4..];
+            let (change_tpe, payload) = next_u32(payload);
 
             // We don't care about user names here because they're already set by collect_datasets
             let service: ServiceSvo = match change_tpe {
                 CONFERENCE_USER_JOINED => {
-                    let (_inviting_user_name_or_email, payload) = read_sized_chunk(payload)?;
-                    let num_invited_user_names = read_u32_le(payload, 0) as usize;
+                    let (_inviting_user_name_or_email, payload) = next_sized_chunk(payload)?;
+                    let (num_invited_user_names, mut payload) = next_u32_size(payload);
 
-                    let mut payload = &payload[4..];
                     for _ in 0..num_invited_user_names {
-                        let (_name_bytes, payload2) = read_sized_chunk(payload)?;
+                        let (_name_bytes, payload2) = next_sized_chunk(payload)?;
                         payload = payload2;
                     }
 
-                    let num_invited_user_emails = read_u32_le(payload, 0) as usize;
+                    let (num_invited_user_emails, mut payload) = next_u32_size(payload);
                     let mut emails = Vec::with_capacity(num_invited_user_emails);
-                    let mut payload = &payload[4..];
                     for _ in 0..num_invited_user_names {
-                        let (email_bytes, payload2) = read_sized_chunk(payload)?;
+                        let (email_bytes, payload2) = next_sized_chunk(payload)?;
                         payload = payload2;
                         emails.push(WStr::from_utf16le(email_bytes)?.to_utf8());
                     }
@@ -648,8 +642,8 @@ fn convert_message(
                     ServiceSvo::GroupInviteMembers(MessageServiceGroupInviteMembers { members })
                 }
                 CONFERENCE_USER_LEFT => {
-                    let (_name_bytes, payload) = read_sized_chunk(payload)?;
-                    let (email_bytes, payload) = read_sized_chunk(payload)?;
+                    let (_name_bytes, payload) = next_sized_chunk(payload)?;
+                    let (email_bytes, payload) = next_sized_chunk(payload)?;
                     require_format!(payload.is_empty());
 
                     let email = WStr::from_utf16le(email_bytes)?.to_utf8();
@@ -661,42 +655,37 @@ fn convert_message(
 
             (vec![], Typed::Service(MessageService { sealed_value_optional: Some(service) }))
         }
-        MraLegacyMessageType::MicroblogRecordBroadcast |
-        MraLegacyMessageType::MicroblogRecordDirected => {
+        MraMessageType::MicroblogRecordBroadcast |
+        MraMessageType::MicroblogRecordDirected => {
             let payload = mra_msg.payload;
             // Text duplication
             let mut payload = validate_skip_chunk(payload, mra_msg.text.as_bytes())?;
-            let target_name = if tpe == MraLegacyMessageType::MicroblogRecordDirected {
-                let (target_name_bytes, payload2) = read_sized_chunk(payload)?;
+            let target_name = if tpe == MraMessageType::MicroblogRecordDirected {
+                let (target_name_bytes, payload2) = next_sized_chunk(payload)?;
                 payload = payload2;
                 Some(WStr::from_utf16le(target_name_bytes)?.to_utf8())
             } else { None };
             // Next 8 bytes is some timestamp we don't really care about
             let payload = &payload[8..];
             require_format!(payload.is_empty());
-
-            let text = replace_smiles_with_emojis(&text);
-            let text = format!("{}{}", target_name.map(|n| format!("(To {n})\n")).unwrap_or_default(), text);
-            (vec![RichText::make_plain(text)], Typed::Service(MessageService {
-                sealed_value_optional: Some(ServiceSvo::StatusTextChanged(MessageServiceStatusTextChanged {}))
-            }))
+            convert_microblog_record(&text, target_name.as_deref())
         }
-        MraLegacyMessageType::ConferenceMessagePlaintext => {
+        MraMessageType::ConferenceMessagePlaintext => {
             let payload = mra_msg.payload;
             // Text duplication
             let payload = validate_skip_chunk(payload, mra_msg.text.as_bytes())?;
             // Author email
-            let (author_email_bytes, payload) = read_sized_chunk(payload)?;
+            let (author_email_bytes, payload) = next_sized_chunk(payload)?;
             from_username = String::from_utf8(author_email_bytes.to_vec())?;
             require_format!(payload.is_empty());
 
             let text = replace_smiles_with_emojis(&text);
             (vec![RichText::make_plain(text)], Typed::Regular(Default::default()))
         }
-        MraLegacyMessageType::ConferenceMessageRtf => {
+        MraMessageType::ConferenceMessageRtf => {
             let payload = mra_msg.payload;
             // RTF
-            let (rtf_bytes, payload) = read_sized_chunk(payload)?;
+            let (rtf_bytes, payload) = next_sized_chunk(payload)?;
             let rtf = WStr::from_utf16le(rtf_bytes)?.to_utf8();
             // RGBA bytes, ignoring
             let payload = &payload[4..];
@@ -704,7 +693,7 @@ fn convert_message(
             require!(payload.is_empty() == mra_msg.is_from_me()?,
                      "Expected message payload to be empty for self messages only!\nMessage: {mra_msg:?}");
             if !mra_msg.is_from_me()? {
-                let (author_email_bytes, payload) = read_sized_chunk(payload)?;
+                let (author_email_bytes, payload) = next_sized_chunk(payload)?;
                 require_format!(payload.is_empty());
                 from_username = String::from_utf8(author_email_bytes.to_vec())?
             };
@@ -712,16 +701,16 @@ fn convert_message(
             let rtes = parse_rtf(&rtf)?;
             (rtes, Typed::Regular(Default::default()))
         }
-        MraLegacyMessageType::LocationChange => {
+        MraMessageType::LocationChange => {
             // Payload format: <name_len_u32><name><lat_len_u32><lat><lon_len_u32><lon><...>
             let payload = mra_msg.payload;
             // We observe that location name is exactly the same as the message text
             let payload = validate_skip_chunk(payload, mra_msg.text.as_bytes())?;
             // Lattitude
-            let (lat_bytes, payload) = read_sized_chunk(payload)?;
+            let (lat_bytes, payload) = next_sized_chunk(payload)?;
             let lat_str = String::from_utf8(lat_bytes.to_vec())?;
             // Longitude
-            let (lon_bytes, _payload) = read_sized_chunk(payload)?;
+            let (lon_bytes, _payload) = next_sized_chunk(payload)?;
             let lon_str = String::from_utf8(lon_bytes.to_vec())?;
 
             let location = ContentLocation {
@@ -798,7 +787,7 @@ struct MraLegacyMessageHeader {
 
 #[repr(u32)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, FromPrimitive)]
-enum MraLegacyMessageType {
+enum MraMessageType {
     RegularPlaintext = 0x02,
     AuthorizationRequest = 0x04,
     ActionNeedsNewerApp = 0x06,
@@ -841,12 +830,12 @@ impl Debug for MraLegacyMessage<'_> {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         let mut formatter = formatter.debug_struct("MraMessage");
         formatter.field("offset", &format!("{:#010x}", self.offset));
-        let tpe_option: Option<MraLegacyMessageType> = FromPrimitive::from_u32(self.header.tpe_u32);
+        let tpe_u32 = self.header.tpe_u32;
+        let tpe_option: Option<MraMessageType> = FromPrimitive::from_u32(tpe_u32);
         match tpe_option {
             Some(tpe) =>
                 formatter.field("type", &tpe),
             None => {
-                let tpe_u32 = self.header.tpe_u32;
                 formatter.field("type", &format!("UNKNOWN ({tpe_u32:#04x})"))
             }
         };
@@ -859,7 +848,7 @@ impl Debug for MraLegacyMessage<'_> {
 }
 
 impl MraLegacyMessage<'_> {
-    fn get_tpe(&self) -> Result<MraLegacyMessageType> {
+    fn get_tpe(&self) -> Result<MraMessageType> {
         let tpe_u32 = self.header.tpe_u32;
         FromPrimitive::from_u32(tpe_u32)
             .with_context(|| format!("Unknown message type: {}\nMessage: {:?}", tpe_u32, self))
