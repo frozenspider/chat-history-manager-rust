@@ -7,14 +7,22 @@ use super::*;
 
 const MSG_HEADER_MAGIC_NUMBER: u32 = 0x2D;
 
-pub(super) fn do_the_thing(path: &Path) -> EmptyRes {
+pub(super) fn do_the_thing(path: &Path, storage_path: &Path) -> EmptyRes {
+    let mut dataset_map = HashMap::<String, MraDatasetEntry>::new();
     for dir_entry in fs::read_dir(path)? {
         let dir_entry = dir_entry?;
         let meta = dir_entry.metadata()?;
         let path = dir_entry.path();
         let name = path_file_name(&path)?;
         if meta.is_dir() {
-            process_account(name, &path)?;
+            let ds_uuid = PbUuid::random();
+            let users = process_account(name, &path, &ds_uuid)?;
+            dataset_map.insert(name.to_owned(), MraDatasetEntry {
+                ds: Dataset { uuid: Some(ds_uuid), alias: name.to_owned() },
+                ds_root: storage_path.to_path_buf(),
+                users,
+                cwms: HashMap::new(),
+            });
         } else {
             log::warn!("{} is not a directory, ignored", name);
         }
@@ -22,7 +30,22 @@ pub(super) fn do_the_thing(path: &Path) -> EmptyRes {
     Ok(())
 }
 
-fn process_account(my_account_name: &str, path: &Path) -> EmptyRes {
+fn process_account(
+    my_account_name: &str,
+    path: &Path,
+    ds_uuid: &PbUuid,
+) -> Result<(HashMap<String, User>)> {
+    let myself = User {
+        ds_uuid: Some(ds_uuid.clone()),
+        id: *MYSELF_ID,
+        first_name_option: None,
+        last_name_option: None,
+        username_option: Some(my_account_name.to_owned()),
+        phone_number_option: None,
+    };
+
+    // Read whole files into the memory
+    let mut files_content: Vec<(String, Vec<u8>)> = vec![];
     for db_file in list_all_files(path, false)?
         .into_iter()
         .filter(|p| p.extension().and_then(|s| s.to_str()).is_some_and(|s| s == "db"))
@@ -32,100 +55,126 @@ fn process_account(my_account_name: &str, path: &Path) -> EmptyRes {
         // if user_account_name.starts_with("unreads") {
         let index_file = db_file.parent().unwrap().join(format!("{user_account_name}.index"));
         require!(index_file.exists(), "Index file for {user_account_name} does not exist!");
-        process_conversation(&db_file, &index_file, my_account_name, &user_account_name)?;
-        // }
+
+        let db_bytes = fs::read(db_file)?;
+        let index_bytes = fs::read(index_file)?;
+
+        files_content.push((user_account_name, db_bytes));
     }
+    let files_content = files_content;
+
+    let db_msgs_map: HashMap<String, Vec<DbMessage>> =
+        files_content
+            .iter()
+            .map(|(k, v)| get_conversation_messages(v).map(|v| (k.clone(), v)))
+            .try_collect()?;
+
+    let mut result = HashMap::from([(my_account_name.to_owned(), myself)]);
+    for (user_account_name, db_msgs) in db_msgs_map.iter() {
+        collect_users(ds_uuid, user_account_name, db_msgs, &mut result)?;
+    }
+
+    for (user_account_name, _) in files_content.iter() {
+        let db_msgs = &db_msgs_map[user_account_name];
+        process_conversation(db_msgs, my_account_name, &user_account_name, &result)?;
+    }
+    Ok(result)
+}
+
+fn get_conversation_messages<'a>(db_bytes: &'a [u8]) -> Result<Vec<DbMessage<'a>>> {
+    let mut result = vec![];
+    let mut db_bytes = db_bytes;
+    let mut offset = 0;
+    while !db_bytes.is_empty() {
+        let (message_bytes, rest_bytes) = next_sized_chunk(db_bytes)?;
+        let (message_len_again, rest_bytes) = next_u32_size(rest_bytes);
+        require!(message_len_again == message_bytes.len(),
+                 "Message was not followed by duplicated length!\nMessage bytes: {message_bytes:02X?}");
+
+        let message_bytes = {
+            let (wrapped_bytes, remaining_bytes) = next_sized_chunk(message_bytes)?;
+            require!(remaining_bytes.len() == 4);
+            require!(read_u32(remaining_bytes, 0) as usize == wrapped_bytes.len());
+            wrapped_bytes
+        };
+
+        // This is inherently unsafe. The only thing we can do is to check a magic number right after.
+        let header = unsafe {
+            let header_ptr = message_bytes.as_ptr() as *const DbMessageHeader;
+            header_ptr.as_ref::<'a>().unwrap()
+        };
+        require!(header.magic_number == MSG_HEADER_MAGIC_NUMBER && header.magic_value_one == 1 && header.padding2 == 0,
+                 "Incorrect header for message at offset {offset:#010x}: {header:?}");
+
+        let bytes = &message_bytes[mem::size_of::<DbMessageHeader>()..];
+        let (payload, bytes) = next_sized_chunk(bytes)?;
+
+        let db_msg = DbMessage { offset, header, payload };
+        db_msg.require_format_clue(bytes.is_empty(), "incorrect remainder")?;
+        result.push(db_msg);
+
+        offset += message_bytes.len() + 8;
+        db_bytes = rest_bytes;
+    }
+    Ok(result)
+}
+
+fn collect_users(
+    ds_uuid: &PbUuid,
+    user_account_name: &str,
+    msgs: &[DbMessage],
+    users: &mut HashMap<String, User>,
+) -> EmptyRes {
+    // FIXME
+    users.insert(user_account_name.to_owned(), User {
+        ds_uuid: Some(ds_uuid.clone()),
+        id: hash_to_id(user_account_name),
+        first_name_option: None,
+        last_name_option: None,
+        username_option: Some(user_account_name.to_owned()),
+        phone_number_option: None,
+    });
+
     Ok(())
 }
 
 fn process_conversation(
-    db_file: &Path,
-    index_file: &Path,
+    db_msgs: &[DbMessage],
     my_account_name: &str,
     user_account_name: &str,
+    users: &HashMap<String, User>,
 ) -> EmptyRes {
-    println!("{}", user_account_name);
-
-    // Read whole files into the memory.
-    let db_bytes = fs::read(db_file)?;
-    let index_bytes = fs::read(index_file)?;
-
-    let mut slice = db_bytes.as_slice();
-    let mut offset = 0;
-    while !slice.is_empty() {
-        let (message_bytes, rest_bytes) = next_sized_chunk(slice)?;
-        process_message(message_bytes, offset, my_account_name, user_account_name)?;
-        let (message_len_again, rest_bytes) = next_u32_size(rest_bytes);
-        require!(message_len_again == message_bytes.len(),
-                 "Message was not followed by duplicated length!\nMessage: TODO");
-        offset += message_bytes.len() + 8;
-        slice = rest_bytes;
+    for db_msg in db_msgs {
+        process_message(db_msg, user_account_name, users)?;
     }
-
     Ok(())
 }
 
-fn process_message<'a>(
-    bytes: &'a [u8],
-    global_offset: usize,
-    my_account_name: &str,
+fn process_message(
+    mra_msg: &DbMessage,
     user_account_name: &str,
+    users: &HashMap<String, User>,
 ) -> EmptyRes {
-    let bytes = {
-        let (wrapped_bytes, remaining_bytes) = next_sized_chunk(bytes)?;
-        require!(remaining_bytes.len() == 4);
-        require!(read_u32(remaining_bytes, 0) as usize == wrapped_bytes.len());
-        wrapped_bytes
-    };
-
-    // This is inherently unsafe. The only thing we can do is to check a magic number right after.
-    let header = unsafe {
-        let header_ptr = bytes.as_ptr() as *const DbMessageHeader;
-        header_ptr.as_ref::<'a>().unwrap()
-    };
-    require!(header.magic_number == MSG_HEADER_MAGIC_NUMBER && header.magic_value_one == 1 && header.padding2 == 0,
-             "Incorrect header for message at offset {global_offset:#010x}: {header:?}");
-
-    let bytes = &bytes[mem::size_of::<DbMessageHeader>()..];
-    let (payload, bytes) = next_sized_chunk(bytes)?;
-
-    let db_msg = DbMessage { offset: global_offset, header, payload };
-
-    process_message_payload(user_account_name, db_msg)?;
-
-    require!(bytes.is_empty(),
-             "Incorrect remainder for message at offset {global_offset:#010x}!");
-    Ok(())
-}
-
-fn process_message_payload(
-    user_account_name: &str,
-    db_msg: DbMessage,
-) -> EmptyRes {
-    macro_rules! require_format {
-        ($cond:expr, $msg:expr) => {
-            require!($cond, "Unexpected message payload format: {}\nMessage: {db_msg:?}", $msg)
-        };
-    }
     // println!("{global_offset:#010x}, {header:?}, {payload:02X?}");
-    let timestamp = match filetime_to_timestamp(db_msg.header.filetime) {
-        0 => db_msg.header.some_timestamp_or_0 as i64,
+    let timestamp = match filetime_to_timestamp(mra_msg.header.filetime) {
+        0 => mra_msg.header.some_timestamp_or_0 as i64,
         v => v
     };
-    require_format!(timestamp != 0, "timestamp is not known");
+    mra_msg.require_format_clue(timestamp != 0, "timestamp is not known")?;
 
-    require_format!(db_msg.payload[0] == 1, "first byte of payload wasn't 0x01");
+    mra_msg.require_format_clue(mra_msg.payload[0] == 1, "first byte of payload wasn't 0x01")?;
 
-    let tpe = db_msg.get_tpe()?;
+    let tpe = mra_msg.get_tpe()?;
 
     // Not really sure what is the meaning of this, but empty messages can be identified by this signature.
     // They could have different "types", and this signature doesn't seem obviously meaningful for non-empty messages.
-    if &db_msg.header._unknown1[3..=4] == &[0x4A, 0x00] {
-        require_format!(db_msg.payload == vec![1, 0, 0, 0, 0], "unexpected empty message payload");
+    if &mra_msg.header._unknown1[3..=4] == &[0x4A, 0x00] {
+        mra_msg.require_format(mra_msg.payload == vec![1, 0, 0, 0, 0])?;
     } else {
-        require_format!(db_msg.payload.len() > 13, "payload is too short");
-        let (_unknown, mut payload) = next_n_bytes::<5>(db_msg.payload);
+        mra_msg.require_format_clue(mra_msg.payload.len() > 13, "payload is too short")?;
+        let (_unknown, mut payload) = next_n_bytes::<5>(mra_msg.payload);
 
+        // This is message author, which could be a system placeholder user
         let mut author_name: Option<String> = None;
         let mut plaintext: Option<String> = None;
         let mut my_account: Option<String> = None;
@@ -137,8 +186,9 @@ fn process_message_payload(
                 let new_value = $new_value;
                 if !new_value.is_empty() {
                     if let Some(ref old_value) = $holder {
-                        require_format!(old_value == &new_value,
-                                        format!("unexpected {} value: {old_value} vs {new_value}", stringify!($holder)));
+                        mra_msg.require_format_with_clue(
+                            old_value == &new_value,
+                            || format!("unexpected {} value: {old_value} vs {new_value}", stringify!($holder)))?;
                     } else {
                         $holder = Some(new_value)
                     }
@@ -170,17 +220,8 @@ fn process_message_payload(
                     MessageSectionType::OtherAccount => {
                         set_option!(user_account, String::from_utf8(section.to_vec())?);
                     }
-                    MessageSectionType::Content if tpe == DbMessageType::ConferenceUsersChange => {
-                        let (subsection, rest) = next_u32(section);
-                        assert!(subsection == 0x05); // FIXME
-                        let (text_bytes, rest) = next_sized_chunk(rest)?;
-                        let (text_bytes_2, rest) = next_sized_chunk(rest)?;
-                        require_format!(rest.is_empty(), "unexpected conference user change content format");
-                        require_format!(text_bytes == text_bytes_2, "unexpected conference user change content format");
-
-                        let text_utf16 = WStr::from_utf16le(text_bytes)?;
-                        let text_utf8 = text_utf16.to_utf8();
-                        set_option!(user_account, text_utf8);
+                    MessageSectionType::Content if tpe == MraMessageType::ConferenceUsersChange => {
+                        convert_conference_user_changed_record(mra_msg, users, section)?;
                     }
                     MessageSectionType::Content => {
                         let (text, rest) = {
@@ -189,68 +230,106 @@ fn process_message_payload(
                             (text_utf16.to_utf8(), rest)
                         };
                         match tpe {
-                            DbMessageType::Plaintext |
-                            DbMessageType::File |
-                            DbMessageType::Call |
-                            DbMessageType::Birthday |
-                            DbMessageType::Cartoon |
-                            DbMessageType::VCall => {
-                                require_format!(rest.is_empty(), "unexpected plaintext text format");
+                            MraMessageType::RegularPlaintext |
+                            MraMessageType::FileTransfer |
+                            MraMessageType::Call |
+                            MraMessageType::BirthdayReminder |
+                            MraMessageType::Sms |
+                            MraMessageType::Cartoon |
+                            MraMessageType::CartoonType2 |
+                            MraMessageType::VideoCall => {
+                                mra_msg.require_format(rest.is_empty())?;
                                 // FIXME
                                 set_option!(rte, text);
                             }
-                            DbMessageType::Rtf => {
+                            MraMessageType::RegularRtf => {
                                 // Color followed by an optional unknown 4-bytes.
                                 let (_color, rest) = next_u32(rest);
-                                require_format!(rest.is_empty() || rest.len() == 4,
-                                                format!("unexpected follow-up to UTF-16 text section: {rest:02X?}"));
+                                mra_msg.require_format_with_clue(
+                                    rest.is_empty() || rest.len() == 4,
+                                    || format!("follow-up to UTF-16 text section: {rest:02X?}"))?;
                                 set_option!(rte, text);
                             }
-                            DbMessageType::MicroblogRecordBroadcast => {
+                            MraMessageType::MicroblogRecordBroadcast => {
                                 // Color followed by an optional unknown 4-bytes.
                                 let (_color, rest) = next_u32(rest);
-                                require_format!(rest.is_empty() || rest.len() == 4,
-                                                format!("unexpected follow-up to UTF-16 text section: {rest:02X?}"));
+                                mra_msg.require_format_with_clue(
+                                    rest.is_empty() || rest.len() == 4,
+                                    || format!("follow-up to UTF-16 text section: {rest:02X?}"))?;
                                 convert_microblog_record(&text, None);
                                 set_option!(plaintext, text);
                             }
-                            DbMessageType::MicroblogRecordDirected => {
+                            MraMessageType::MicroblogRecordDirected => {
                                 let (target_name_bytes, rest) = next_sized_chunk(rest)?;
                                 let target_name = WStr::from_utf16le(target_name_bytes)?;
                                 let target_name = target_name.to_utf8();
-                                require_format!(rest.len() == 8,
-                                                format!("unexpected follow-up to directed microblog payload: {rest:02X?}"));
+                                mra_msg.require_format_with_clue(
+                                    rest.len() == 8,
+                                    || format!("follow-up to UTF-16 text section: {rest:02X?}"))?;
                                 convert_microblog_record(&text, Some(&target_name));
                                 set_option!(plaintext, text);
                             }
-                            DbMessageType::ConferenceMessageRtf => {
+                            MraMessageType::ConferenceMessagePlaintext => {
+                                // If no more bytes, author is self
+                                if !rest.is_empty() {
+                                    let (author_bytes, rest) = next_sized_chunk(rest)?;
+                                    let author = String::from_utf8(author_bytes.to_vec())?;
+                                    mra_msg.require_format(rest.is_empty())?;
+
+                                    set_option!(user_account, author);
+                                }
+                                set_option!(plaintext, text);
+                            }
+                            MraMessageType::ConferenceMessageRtf => {
                                 let (_color, rest) = next_u32(rest);
                                 // If no more bytes, author is self
                                 if !rest.is_empty() {
                                     let (author_bytes, rest) = next_sized_chunk(rest)?;
                                     let author = String::from_utf8(author_bytes.to_vec())?;
-                                    require_format!(rest.is_empty(), "");
+                                    mra_msg.require_format(rest.is_empty())?;
 
                                     set_option!(user_account, author);
                                 }
                                 set_option!(rte, text);
                             }
-                            DbMessageType::ConferenceUsersChange => {
+                            MraMessageType::ConferenceUsersChange => {
                                 println!("CCCC!!!!");
                                 //
                             }
-                            DbMessageType::AuthRequest => {
+                            MraMessageType::AuthorizationRequest => {
                                 // Account (email) followed by message, both in UTF-16 LE
                                 set_option!(user_account, text);
                                 let (text_bytes, rest) = next_sized_chunk(rest)?;
                                 set_option!(plaintext, WStr::from_utf16le(text_bytes)?.to_utf8());
-                                require_format!(rest.is_empty(), "unexpected auth request text format");
+                                mra_msg.require_format(rest.is_empty())?;
                             }
-                            DbMessageType::Location => {
+                            MraMessageType::AntispamTriggered => {
+                                mra_msg.require_format(rest.len() == 4)?;
+                                // FIXME: make system message
+                                // "Ваш аккаунт был заблокирован системой антиспама. Пожалуйста, смените пароль от вашего почтового ящика, пройдя по ссылке:
+                                // http://e.mail.ru/cgi-bin/editpass?fromagent='MRA'"
+                                rte = Some(text);
+                            }
+                            MraMessageType::LocationChange => {
                                 // FIXME
                                 rte = Some(text);
                             }
-                            _ => require_format!(false, "text was not expected for this message type"),
+                            MraMessageType::Sticker => {
+                                mra_msg.require_format(rest.is_empty())?;
+                                // Contains SMILE tag like <SMILE>id='ext:MYNUMBER:sticker:MYNUMBER'</SMILE>,
+                                // but I don't have a reference to retrieve them.
+                                let _id = match SMILE_TAG_REGEX.captures(&text) {
+                                    Some(captures) if captures.name("alt").is_none() => captures.name("id").unwrap(),
+                                    _ => {
+                                        mra_msg.require_format_clue(false, "unknown sticker ID format")?;
+                                        unreachable!()
+                                    }
+                                };
+                                rte = Some(text);
+                            }
+                            MraMessageType::Empty => {
+                                mra_msg.require_format_clue(false, "text was not expected for this message type")?;
+                            }
                         }
                     }
                 }
@@ -273,8 +352,8 @@ struct DbMessage<'a> {
     payload: &'a [u8],
 }
 
-impl DbMessage<'_> {
-    fn get_tpe(&self) -> Result<DbMessageType> {
+impl MraMessage for DbMessage<'_> {
+    fn get_tpe(&self) -> Result<MraMessageType> {
         let tpe_u8 = self.header.tpe_u8;
         FromPrimitive::from_u8(tpe_u8)
             .with_context(|| format!("Unknown message type: {:#04x}\nMessage hedaer: {:?}", tpe_u8, self))
@@ -286,7 +365,7 @@ impl Debug for DbMessage<'_> {
         let mut formatter = formatter.debug_struct("DbMessage");
         formatter.field("offset", &format!("{:#010x}", self.offset));
         let tpe_u8 = self.header.tpe_u8;
-        let tpe_option: Option<DbMessageType> = FromPrimitive::from_u8(tpe_u8);
+        let tpe_option: Option<MraMessageType> = FromPrimitive::from_u8(tpe_u8);
         match tpe_option {
             Some(tpe) =>
                 formatter.field("type", &tpe),
@@ -307,7 +386,7 @@ struct DbMessageHeader {
     magic_number: u32,
     /// == 1
     magic_value_one: u8,
-    /// Known variants are listed in DbMessageType
+    /// Known variants are listed in MraMessageType
     tpe_u8: u8,
     _unknown1: [u8; 11],
     /// WinApi FILETIME
@@ -334,26 +413,6 @@ impl Debug for DbMessageHeader {
         formatter.finish()
     }
 }
-
-#[repr(u8)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq, FromPrimitive)]
-enum DbMessageType {
-    Empty = 0x00,
-    Plaintext = 0x02,
-    AuthRequest = 0x04,
-    Rtf = 0x07,
-    File = 0x0A,
-    Call = 0x0C,
-    Birthday = 0x0D,
-    Cartoon = 0x1A,
-    VCall = 0x1E,
-    MicroblogRecordBroadcast = 0x23,
-    ConferenceMessageRtf = 0x25,
-    ConferenceUsersChange = 0x22,
-    MicroblogRecordDirected = 0x29,
-    Location = 0x2e, // FIXME
-}
-
 
 #[repr(u32)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, FromPrimitive)]

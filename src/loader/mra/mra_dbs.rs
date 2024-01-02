@@ -15,9 +15,6 @@ use super::*;
 
 const MSG_HEADER_MAGIC_NUMBER: u32 = 0x38;
 
-const CONFERENCE_USER_JOINED: u32 = 0x03;
-const CONFERENCE_USER_LEFT: u32 = 0x05;
-
 pub(super) fn load_convs_with_msgs<'a>(dbs_bytes: &'a [u8]) -> Result<Vec<MraLegacyConversationWithMessages<'a>>> {
     let offsets_table: &[u32] = load_offsets_table(&dbs_bytes)?;
     let convs = load_conversations(&dbs_bytes, offsets_table)?;
@@ -437,16 +434,11 @@ fn convert_message(
     let mut from_username = (if from_me { myself_username } else { conv_username }).to_owned();
 
     let tpe = mra_msg.get_tpe()?;
-    macro_rules! require_format {
-        ($cond:expr) => { require!($cond, "Unexpected {tpe:?} message payload format!\nMessage: {mra_msg:?}") };
-    }
 
     // TODO: Sometimes text might come encoded as cp1251 characters (wrapped in normal UTF-16 LE) seemingly at random.
     //       However, so far I observed it only once in a microblog entry, and handling this trivially didn't work.
     let text = mra_msg.text.to_utf8();
     use message::Typed;
-    use message_service::SealedValueOptional as ServiceSvo;
-    use content::SealedValueOptional as ContentSvo;
     let (text, typed) = match tpe {
         MraMessageType::AuthorizationRequest |
         MraMessageType::RegularPlaintext |
@@ -459,7 +451,7 @@ fn convert_message(
                 // RGBA bytes, ignoring
                 let payload = &payload[4..];
                 // Might be followed by empty bytes
-                require_format!(payload.iter().all(|b| *b == 0));
+                mra_msg.require_format(payload.iter().all(|b| *b == 0))?;
 
                 parse_rtf(&rtf)?
             } else {
@@ -469,16 +461,19 @@ fn convert_message(
 
             (rtes, Typed::Regular(Default::default()))
         }
-        MraMessageType::ActionNeedsNewerApp => {
+        MraMessageType::AntispamTriggered => {
+            // For outdated MRA clients, this will be "action needs newer app" message
             let payload = mra_msg.payload;
             let (rtf_bytes, payload) = next_sized_chunk(payload)?;
             let rtf = WStr::from_utf16le(rtf_bytes)?.to_utf8();
             // RGBA bytes, ignoring
             let payload = &payload[4..];
-            require_format!(payload.is_empty());
+            mra_msg.require_format(payload.is_empty())?;
 
             let rtes = parse_rtf(&rtf)?;
-            (rtes, Typed::Regular(Default::default()))
+            (rtes, Typed::Service(MessageService {
+                sealed_value_optional: Some(ServiceSvo::Notice(MessageServiceNotice {}))
+            }))
         }
         MraMessageType::FileTransfer => {
             // We can get file names from the outgoing messages.
@@ -513,7 +508,7 @@ fn convert_message(
             // It does not carry call information per se.
             let payload = mra_msg.payload;
             let payload = validate_skip_chunk(payload, mra_msg.text.as_bytes())?;
-            require_format!(payload.is_empty());
+            mra_msg.require_format(payload.is_empty())?;
 
             const BEGIN_CONNECTING: &str = "Устанавливается соединение...";
             const BEGIN_I_CALL: &str = "Звонок от вашего собеседника";
@@ -582,7 +577,7 @@ fn convert_message(
         MraMessageType::BirthdayReminder => {
             let payload = mra_msg.payload;
             let payload = validate_skip_chunk(payload, mra_msg.text.as_bytes())?;
-            require_format!(payload.is_empty());
+            mra_msg.require_format(payload.is_empty())?;
 
             (vec![RichText::make_plain(text)], Typed::Service(MessageService {
                 sealed_value_optional: Some(ServiceSvo::Notice(MessageServiceNotice {}))
@@ -592,7 +587,7 @@ fn convert_message(
             let payload = mra_msg.payload;
             // Source is a <SMILE> tag
             let (src_bytes, payload) = next_sized_chunk(payload)?;
-            require_format!(payload.is_empty());
+            mra_msg.require_format(payload.is_empty())?;
             let src = WStr::from_utf16le(src_bytes)?.to_utf8();
             let (_id, emoji_option) = match SMILE_TAG_REGEX.captures(&src) {
                 Some(captures) => (captures.name("id").unwrap().as_str(),
@@ -614,46 +609,7 @@ fn convert_message(
             }))
         }
         MraMessageType::ConferenceUsersChange => {
-            let payload = mra_msg.payload;
-            // All payload is a single chunk
-            let (change_tpe, payload) = next_u32(payload);
-
-            // We don't care about user names here because they're already set by collect_datasets
-            let service: ServiceSvo = match change_tpe {
-                CONFERENCE_USER_JOINED => {
-                    let (_inviting_user_name_or_email, payload) = next_sized_chunk(payload)?;
-                    let (num_invited_user_names, mut payload) = next_u32_size(payload);
-
-                    for _ in 0..num_invited_user_names {
-                        let (_name_bytes, payload2) = next_sized_chunk(payload)?;
-                        payload = payload2;
-                    }
-
-                    let (num_invited_user_emails, mut payload) = next_u32_size(payload);
-                    let mut emails = Vec::with_capacity(num_invited_user_emails);
-                    for _ in 0..num_invited_user_names {
-                        let (email_bytes, payload2) = next_sized_chunk(payload)?;
-                        payload = payload2;
-                        emails.push(WStr::from_utf16le(email_bytes)?.to_utf8());
-                    }
-                    require_format!(payload.is_empty());
-
-                    let members = emails.iter().map(|e| users[e].pretty_name()).collect_vec();
-                    ServiceSvo::GroupInviteMembers(MessageServiceGroupInviteMembers { members })
-                }
-                CONFERENCE_USER_LEFT => {
-                    let (_name_bytes, payload) = next_sized_chunk(payload)?;
-                    let (email_bytes, payload) = next_sized_chunk(payload)?;
-                    require_format!(payload.is_empty());
-
-                    let email = WStr::from_utf16le(email_bytes)?.to_utf8();
-                    let members = vec![users[&email].pretty_name()];
-                    ServiceSvo::GroupRemoveMembers(MessageServiceGroupRemoveMembers { members })
-                }
-                etc => bail!("Unexpected {tpe:?} change type {etc}\nMessage: {mra_msg:?}")
-            };
-
-            (vec![], Typed::Service(MessageService { sealed_value_optional: Some(service) }))
+            convert_conference_user_changed_record(mra_msg, users, mra_msg.payload)?
         }
         MraMessageType::MicroblogRecordBroadcast |
         MraMessageType::MicroblogRecordDirected => {
@@ -667,7 +623,7 @@ fn convert_message(
             } else { None };
             // Next 8 bytes is some timestamp we don't really care about
             let payload = &payload[8..];
-            require_format!(payload.is_empty());
+            mra_msg.require_format(payload.is_empty())?;
             convert_microblog_record(&text, target_name.as_deref())
         }
         MraMessageType::ConferenceMessagePlaintext => {
@@ -677,7 +633,7 @@ fn convert_message(
             // Author email
             let (author_email_bytes, payload) = next_sized_chunk(payload)?;
             from_username = String::from_utf8(author_email_bytes.to_vec())?;
-            require_format!(payload.is_empty());
+            mra_msg.require_format(payload.is_empty())?;
 
             let text = replace_smiles_with_emojis(&text);
             (vec![RichText::make_plain(text)], Typed::Regular(Default::default()))
@@ -694,7 +650,7 @@ fn convert_message(
                      "Expected message payload to be empty for self messages only!\nMessage: {mra_msg:?}");
             if !mra_msg.is_from_me()? {
                 let (author_email_bytes, payload) = next_sized_chunk(payload)?;
-                require_format!(payload.is_empty());
+                mra_msg.require_format(payload.is_empty())?;
                 from_username = String::from_utf8(author_email_bytes.to_vec())?
             };
 
@@ -727,6 +683,9 @@ fn convert_message(
                  }),
                  ..Default::default()
              }))
+        }
+        MraMessageType::Empty | MraMessageType::Sticker => {
+            bail!("mra.dbs contains message type assumed to be exclusive to newer app version: {tpe:?}")
         }
     };
 
@@ -785,36 +744,6 @@ struct MraLegacyMessageHeader {
     _unknown4: u32,
 }
 
-#[repr(u32)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq, FromPrimitive)]
-enum MraMessageType {
-    RegularPlaintext = 0x02,
-    AuthorizationRequest = 0x04,
-    ActionNeedsNewerApp = 0x06,
-    RegularRtf = 0x07,
-    FileTransfer = 0x0A,
-    /// Call status change - initiated, cancelled, connecting, done, etc.
-    /// Note: some call statuses might be missing!
-    Call = 0x0C,
-    BirthdayReminder = 0x0D,
-    /// Not sure about that one
-    Sms = 0x11,
-    Cartoon = 0x1A,
-    /// Call status change - initiated, cancelled, connecting, done, etc.
-    /// Note: some call statuses might be missing!
-    VideoCall = 0x1E,
-    /// User was invited or left the conference
-    ConferenceUsersChange = 0x22,
-    MicroblogRecordBroadcast = 0x23,
-    ConferenceMessagePlaintext = 0x24,
-    ConferenceMessageRtf = 0x25,
-    /// Not sure what's the difference with a regular cartoon
-    CartoonType2 = 0x27,
-    /// Payload has a name of the user this is directed to
-    MicroblogRecordDirected = 0x29,
-    LocationChange = 0x2E,
-}
-
 struct MraLegacyMessage<'a> {
     /// Offset at which header begins
     offset: usize,
@@ -824,6 +753,33 @@ struct MraLegacyMessage<'a> {
     payload_offset: usize,
     /// Exact interpretation depends on the message type
     payload: &'a [u8],
+}
+
+impl MraLegacyMessage<'_> {
+    fn is_from_me(&self) -> Result<bool> {
+        match self.header.flag_outgoing {
+            0 => Ok(false),
+            1 => Ok(true),
+            x => err!("Invalid flag_incoming value {x}\nMessage: {:?}", self),
+        }
+    }
+
+    #[allow(dead_code)]
+    fn debug_format_bytes(&self, file_bytes: &[u8]) -> String {
+        const COLUMNS: usize = 32;
+        const ROWS_TO_TAKE: usize = 10;
+        let upper_bound = self.offset + ROWS_TO_TAKE * COLUMNS;
+        let upper_bound = cmp::min(upper_bound, file_bytes.len());
+        bytes_to_pretty_string(&file_bytes[self.offset..upper_bound], COLUMNS)
+    }
+}
+
+impl MraMessage for MraLegacyMessage<'_> {
+    fn get_tpe(&self) -> Result<MraMessageType> {
+        let tpe_u32 = self.header.tpe_u32;
+        FromPrimitive::from_u32(tpe_u32)
+            .with_context(|| format!("Unknown message type: {}\nMessage: {:?}", tpe_u32, self))
+    }
 }
 
 impl Debug for MraLegacyMessage<'_> {
@@ -844,31 +800,6 @@ impl Debug for MraLegacyMessage<'_> {
         formatter.field("payload_offset", &format!("{:#010x}", self.payload_offset));
         formatter.field("payload", &bytes_to_pretty_string(self.payload, usize::MAX));
         formatter.finish()
-    }
-}
-
-impl MraLegacyMessage<'_> {
-    fn get_tpe(&self) -> Result<MraMessageType> {
-        let tpe_u32 = self.header.tpe_u32;
-        FromPrimitive::from_u32(tpe_u32)
-            .with_context(|| format!("Unknown message type: {}\nMessage: {:?}", tpe_u32, self))
-    }
-
-    fn is_from_me(&self) -> Result<bool> {
-        match self.header.flag_outgoing {
-            0 => Ok(false),
-            1 => Ok(true),
-            x => err!("Invalid flag_incoming value {x}\nMessage: {:?}", self),
-        }
-    }
-
-    #[allow(dead_code)]
-    fn debug_format_bytes(&self, file_bytes: &[u8]) -> String {
-        const COLUMNS: usize = 32;
-        const ROWS_TO_TAKE: usize = 10;
-        let upper_bound = self.offset + ROWS_TO_TAKE * COLUMNS;
-        let upper_bound = cmp::min(upper_bound, file_bytes.len());
-        bytes_to_pretty_string(&file_bytes[self.offset..upper_bound], COLUMNS)
     }
 }
 

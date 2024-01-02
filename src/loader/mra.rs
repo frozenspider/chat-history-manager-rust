@@ -11,6 +11,9 @@ use num_traits::FromPrimitive;
 use regex::{Captures, Regex};
 use utf16string::{LE, WStr};
 
+use content::SealedValueOptional as ContentSvo;
+use message_service::SealedValueOptional as ServiceSvo;
+
 use crate::*;
 use crate::dao::in_memory_dao::{DatasetEntry, InMemoryDao};
 use crate::loader::DataLoader;
@@ -22,6 +25,9 @@ mod mra_dbs;
 mod db;
 
 pub struct MailRuAgentDataLoader;
+
+const CONFERENCE_USER_JOINED: u32 = 0x03;
+const CONFERENCE_USER_LEFT: u32 = 0x05;
 
 const MRA_DBS: &str = "mra.dbs";
 
@@ -66,7 +72,7 @@ fn load_mra_dbs(path: &Path, dao_name: String) -> Result<Box<InMemoryDao>> {
     for subdir in DB_FILE_DIRS.iter() {
         let path = storage_path.join(subdir);
         if path.exists() {
-            db::do_the_thing(&path)?;
+            db::do_the_thing(&path, &storage_path)?;
         }
     }
 
@@ -104,8 +110,53 @@ fn convert_microblog_record(
     let text = replace_smiles_with_emojis(&raw_text);
     let text = format!("{}{}", target_name.map(|n| format!("(To {n})\n")).unwrap_or_default(), text);
     (vec![RichText::make_plain(text)], message::Typed::Service(MessageService {
-        sealed_value_optional: Some(message_service::SealedValueOptional::StatusTextChanged(MessageServiceStatusTextChanged {}))
+        sealed_value_optional: Some(ServiceSvo::StatusTextChanged(MessageServiceStatusTextChanged {}))
     }))
+}
+
+/// Turns out this format is shared exactly between old and new formats
+fn convert_conference_user_changed_record<MT: MraMessage>(
+    mra_msg: &MT,
+    users: &HashMap<String, User>,
+    payload: &[u8],
+) -> Result<(Vec<RichTextElement>, message::Typed)> {
+    let (change_tpe, payload) = next_u32(payload);
+    // We don't care about user names here because they're already set by collect_datasets
+    let service = match change_tpe {
+        CONFERENCE_USER_JOINED => {
+            let (_inviting_user_name_or_email, payload) = next_sized_chunk(payload)?;
+            let (num_invited_user_names, mut payload) = next_u32_size(payload);
+
+            for _ in 0..num_invited_user_names {
+                let (_name_bytes, payload2) = next_sized_chunk(payload)?;
+                payload = payload2;
+            }
+
+            let (num_invited_user_emails, mut payload) = next_u32_size(payload);
+            let mut emails = Vec::with_capacity(num_invited_user_emails);
+            for _ in 0..num_invited_user_names {
+                let (email_bytes, payload2) = next_sized_chunk(payload)?;
+                payload = payload2;
+                emails.push(WStr::from_utf16le(email_bytes)?.to_utf8());
+            }
+            mra_msg.require_format(payload.is_empty())?;
+
+            let members = emails.iter().map(|e| users[e].pretty_name()).collect_vec();
+            ServiceSvo::GroupInviteMembers(MessageServiceGroupInviteMembers { members })
+        }
+        CONFERENCE_USER_LEFT => {
+            let (_name_bytes, payload) = next_sized_chunk(payload)?;
+            let (email_bytes, payload) = next_sized_chunk(payload)?;
+            mra_msg.require_format(payload.is_empty())?;
+
+            let email = WStr::from_utf16le(email_bytes)?.to_utf8();
+            let members = vec![users[&email].pretty_name()];
+            ServiceSvo::GroupRemoveMembers(MessageServiceGroupRemoveMembers { members })
+        }
+        etc => bail!("Unexpected {:?} change type {etc}\nMessage: {mra_msg:?}", mra_msg.get_tpe()?)
+    };
+
+    Ok((vec![], message::Typed::Service(MessageService { sealed_value_optional: Some(service) })))
 }
 
 //
@@ -119,6 +170,72 @@ struct MraDatasetEntry {
     users: HashMap<String, User>,
     /// Key is conversation name (in most cases, email or email-like name)
     cwms: HashMap<String, ChatWithMessages>,
+}
+
+#[repr(u32)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, FromPrimitive)]
+enum MraMessageType {
+    Empty = 0x00,
+    RegularPlaintext = 0x02,
+    AuthorizationRequest = 0x04,
+    AntispamTriggered = 0x06,
+    RegularRtf = 0x07,
+    FileTransfer = 0x0A,
+    /// Call status change - initiated, cancelled, connecting, done, etc.
+    /// Note: some call statuses might be missing!
+    Call = 0x0C,
+    BirthdayReminder = 0x0D,
+    /// Not sure about that one
+    Sms = 0x11,
+    Cartoon = 0x1A,
+    /// Call status change - initiated, cancelled, connecting, done, etc.
+    /// Note: some call statuses might be missing!
+    VideoCall = 0x1E,
+    /// User was invited or left the conference
+    ConferenceUsersChange = 0x22,
+    MicroblogRecordBroadcast = 0x23,
+    ConferenceMessagePlaintext = 0x24,
+    ConferenceMessageRtf = 0x25,
+    /// Not sure what's the difference with a regular cartoon
+    CartoonType2 = 0x27,
+    /// Payload has a name of the user this is directed to
+    MicroblogRecordDirected = 0x29,
+    LocationChange = 0x2E,
+
+    //
+    // Encountered in newer MRA only
+    //
+
+    Sticker = 0x40,
+}
+
+
+trait MraMessage: Debug {
+    fn get_tpe(&self) -> Result<MraMessageType>;
+
+    fn require_format(&self, cond: bool) -> EmptyRes {
+        if cond {
+            Ok(())
+        } else {
+            err!("Unexpected {:?} message payload format\nMessage: {self:?}", self.get_tpe()?)
+        }
+    }
+
+    fn require_format_clue(&self, cond: bool, clue: &str) -> EmptyRes {
+        if cond {
+            Ok(())
+        } else {
+            err!("Unexpected {:?} message payload format: {clue}\nMessage: {self:?}", self.get_tpe()?)
+        }
+    }
+
+    fn require_format_with_clue(&self, cond: bool, clue: impl Fn() -> String) -> EmptyRes {
+        if cond {
+            Ok(())
+        } else {
+            err!("Unexpected {:?} message payload format: {}\nMessage: {self:?}", self.get_tpe()?, clue())
+        }
+    }
 }
 
 //
