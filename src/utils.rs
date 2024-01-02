@@ -191,7 +191,7 @@ macro_rules! require {
 }
 
 pub fn error_to_string(e: &anyhow::Error) -> String {
-    format!("{:#}", e)
+    format!("{:?}", e)
 }
 
 pub trait ToResult<T> {

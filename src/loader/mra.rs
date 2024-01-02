@@ -115,10 +115,66 @@ fn convert_microblog_record(
 }
 
 /// Turns out this format is shared exactly between old and new formats
-fn convert_conference_user_changed_record<MT: MraMessage>(
-    mra_msg: &MT,
-    users: &HashMap<String, User>,
+fn collect_users_from_conference_user_changed_record(
+    users: &mut HashMap<String, User>,
+    ds_uuid: &PbUuid,
+    conv_name: &str,
+    mra_msg: &impl MraMessage,
     payload: &[u8],
+) -> EmptyRes {
+    // All payload is a single chunk
+    let (change_tpe, payload) = next_u32(payload);
+
+    match change_tpe {
+        CONFERENCE_USER_JOINED => {
+            let (_inviting_user_name_or_email, payload) = next_sized_chunk(payload)?;
+            let (num_invited_user_names, mut payload) = next_u32_size(payload);
+            let mut names = Vec::with_capacity(num_invited_user_names);
+            let mut usernames = Vec::with_capacity(num_invited_user_names);
+
+            for _ in 0..num_invited_user_names {
+                let (name_bytes, payload2) = next_sized_chunk(payload)?;
+                payload = payload2;
+                names.push(WStr::from_utf16le(name_bytes)?.to_utf8());
+            }
+            let (num_invited_user_emails, mut payload) = next_u32_size(payload);
+            require_format(num_invited_user_names == num_invited_user_emails, mra_msg, conv_name)?;
+
+            for _ in 0..num_invited_user_names {
+                let (username_bytes, payload2) = next_sized_chunk(payload)?;
+                payload = payload2;
+                usernames.push(WStr::from_utf16le(username_bytes)?.to_utf8());
+            }
+            require_format(payload.is_empty(), mra_msg, conv_name)?;
+
+            for (username, name_or_email) in usernames.into_iter().zip(names.into_iter()) {
+                upsert_user(users, ds_uuid, &username, Some(name_or_email));
+            }
+        }
+        CONFERENCE_USER_LEFT => {
+            let (name_bytes, payload) = next_sized_chunk(payload)?;
+            let (email_bytes, payload) = next_sized_chunk(payload)?;
+            require_format(payload.is_empty(), mra_msg, conv_name)?;
+
+            upsert_user(users,
+                        ds_uuid,
+                        &WStr::from_utf16le(email_bytes)?.to_utf8(),
+                        Some(WStr::from_utf16le(name_bytes)?.to_utf8()));
+        }
+        etc => {
+            require_format_clue(false, mra_msg, conv_name,
+                                &format!("Unexpected conference user change type {etc}"))?;
+        }
+    };
+    Ok(())
+}
+
+/// Turns out this format is shared exactly between old and new formats
+fn convert_conference_user_changed_record(
+    conv_name: &str,
+    mra_msg: &impl MraMessage,
+    payload: &[u8],
+    users: &HashMap<String, User>,
 ) -> Result<(Vec<RichTextElement>, message::Typed)> {
     let (change_tpe, payload) = next_u32(payload);
     // We don't care about user names here because they're already set by collect_datasets
@@ -139,7 +195,7 @@ fn convert_conference_user_changed_record<MT: MraMessage>(
                 payload = payload2;
                 emails.push(WStr::from_utf16le(email_bytes)?.to_utf8());
             }
-            mra_msg.require_format(payload.is_empty())?;
+            require_format(payload.is_empty(), mra_msg, conv_name)?;
 
             let members = emails.iter().map(|e| users[e].pretty_name()).collect_vec();
             ServiceSvo::GroupInviteMembers(MessageServiceGroupInviteMembers { members })
@@ -147,7 +203,7 @@ fn convert_conference_user_changed_record<MT: MraMessage>(
         CONFERENCE_USER_LEFT => {
             let (_name_bytes, payload) = next_sized_chunk(payload)?;
             let (email_bytes, payload) = next_sized_chunk(payload)?;
-            mra_msg.require_format(payload.is_empty())?;
+            require_format(payload.is_empty(), mra_msg, conv_name)?;
 
             let email = WStr::from_utf16le(email_bytes)?.to_utf8();
             let members = vec![users[&email].pretty_name()];
@@ -213,35 +269,54 @@ trait MraMessage: Debug {
     fn get_tpe(&self) -> Result<MraMessageType>;
 
     fn is_from_me(&self) -> Result<bool>;
+}
 
-    fn require_format(&self, cond: bool) -> EmptyRes {
-        if cond {
-            Ok(())
-        } else {
-            err!("Unexpected {:?} message payload format\nMessage: {self:?}", self.get_tpe()?)
-        }
-    }
+//
+// Assertions
+//
 
-    fn require_format_clue(&self, cond: bool, clue: &str) -> EmptyRes {
-        if cond {
-            Ok(())
-        } else {
-            err!("Unexpected {:?} message payload format: {clue}\nMessage: {self:?}", self.get_tpe()?)
-        }
-    }
 
-    fn require_format_with_clue(&self, cond: bool, clue: impl Fn() -> String) -> EmptyRes {
-        if cond {
-            Ok(())
-        } else {
-            err!("Unexpected {:?} message payload format: {}\nMessage: {self:?}", self.get_tpe()?, clue())
-        }
-    }
+fn context(mra_msg: &impl MraMessage, conv_name: &str) -> String {
+    format!("Unexpected {:?} message format\nConversation: {conv_name}, message: {mra_msg:?}", mra_msg.get_tpe().unwrap())
+}
+
+fn require_format(cond: bool, mra_msg: &impl MraMessage, conv_name: &str) -> EmptyRes {
+    require!(cond, "Unexpected {:?} message format\nConversation: {conv_name}, message: {mra_msg:?}", mra_msg.get_tpe()?);
+    Ok(())
+}
+
+fn require_format_clue(cond: bool, mra_msg: &impl MraMessage, conv_name: &str, clue: &str) -> EmptyRes {
+    require!(cond, "Unexpected {:?} message format: {clue}\nConversation: {conv_name}, message: {mra_msg:?}", mra_msg.get_tpe()?);
+    Ok(())
+}
+
+fn require_format_with_clue(cond: bool, mra_msg: &impl MraMessage, conv_name: &str, clue: impl Fn() -> String) -> EmptyRes {
+    require!(cond, "Unexpected {:?} message format: {}\nConversation: {conv_name}, message: {mra_msg:?}", mra_msg.get_tpe()?, clue());
+    Ok(())
 }
 
 //
 // Helper functions
 //
+
+/// Create or update user by username, possibly setting a first name if it's not an email too.
+fn upsert_user(users: &mut HashMap<String, User>,
+               ds_uuid: &PbUuid,
+               username: &str,
+               first_name_or_email: Option<String>) {
+    let user = users.entry(username.to_owned()).or_insert_with(|| User {
+        ds_uuid: Some(ds_uuid.clone()),
+        id: hash_to_id(username),
+        first_name_option: None,
+        last_name_option: None,
+        username_option: Some(username.to_owned()),
+        phone_number_option: None,
+    });
+
+    if user.first_name_option.is_none() && first_name_or_email.as_ref().is_some_and(|v| v != username) {
+        user.first_name_option = first_name_or_email;
+    }
+}
 
 // All read functions read in Little Endian
 

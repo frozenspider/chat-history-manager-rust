@@ -66,8 +66,7 @@ fn load_conversations<'a>(dbs_bytes: &'a [u8], offsets_table: &[u32]) -> Result<
         let prev_conv_id = read_u32(dbs_bytes, current_offset + CONVERSATION_IDS_OFFSET);
         let next_conv_id = read_u32(dbs_bytes, current_offset + CONVERSATION_IDS_OFFSET + 4);
 
-        require!(prev_conv_id == last_processed_conv_id,
-                 "Conversations linked list is broken!");
+        require!(prev_conv_id == last_processed_conv_id, "Conversations linked list is broken!");
 
         let mrahistory_loc = current_offset + MRAHISTORY_FOOTPRINT_OFFSET;
         if &dbs_bytes[mrahistory_loc..][0..mrahistory_footprint.len()] == mrahistory_footprint {
@@ -201,9 +200,6 @@ pub(super) fn collect_datasets(
             let mut from_username = if from_me { myself_username.clone() } else { conv_username.clone() };
 
             let tpe = mra_msg.get_tpe()?;
-            macro_rules! require_format {
-                ($cond:expr) => { require!($cond, "Unexpected {:?} message payload format!", tpe) };
-            }
             match tpe {
                 MraMessageType::ConferenceMessagePlaintext => {
                     let payload = mra_msg.payload;
@@ -211,7 +207,7 @@ pub(super) fn collect_datasets(
                     let payload = validate_skip_chunk(payload, mra_msg.text.as_bytes())?;
                     // Author email
                     let (author_email_bytes, payload) = next_sized_chunk(payload)?;
-                    require_format!(payload.is_empty());
+                    require_format(payload.is_empty(), mra_msg, &conv_username)?;
                     from_username = String::from_utf8(author_email_bytes.to_vec())?;
                 }
                 MraMessageType::ConferenceMessageRtf => {
@@ -221,11 +217,12 @@ pub(super) fn collect_datasets(
                     // RGBA bytes
                     let payload = &payload[4..];
                     // Author email (only present for others' messages)
-                    require!(payload.is_empty() == mra_msg.is_from_me()?,
-                             "Expected message payload to be empty for self messages only!");
+                    require_format_clue(payload.is_empty() == mra_msg.is_from_me()?,
+                                        mra_msg, &conv_username,
+                                        "expected message payload to be empty for self messages only")?;
                     if !mra_msg.is_from_me()? {
                         let (author_email_bytes, payload) = next_sized_chunk(payload)?;
-                        require_format!(payload.is_empty());
+                        require_format(payload.is_empty(), mra_msg, &conv_username)?;
                         from_username = String::from_utf8(author_email_bytes.to_vec())?
                     };
                 }
@@ -241,74 +238,13 @@ pub(super) fn collect_datasets(
     for (mra_msg, dataset_key, from_username) in msgs_with_context.into_iter().rev() {
         let entry = result.get_mut(&dataset_key).unwrap();
 
-        /// Create or update user by username, possibly setting a first name if it's not an email too.
-        fn upsert_user(entry: &mut MraDatasetEntry,
-                       username: String,
-                       first_name_or_email: String) {
-            let user = entry.users.entry(username.clone()).or_insert_with(|| User {
-                ds_uuid: entry.ds.uuid.clone(),
-                id: hash_to_id(&username),
-                first_name_option: None,
-                last_name_option: None,
-                username_option: Some(username.clone()),
-                phone_number_option: None,
-            });
-
-            if user.first_name_option.is_none() && first_name_or_email != username {
-                user.first_name_option = Some(first_name_or_email);
-            }
-        }
-
-        upsert_user(entry, from_username, mra_msg.author.to_utf8());
+        upsert_user(&mut entry.users, entry.ds.uuid(), &from_username, Some(mra_msg.author.to_utf8()));
 
         let tpe = mra_msg.get_tpe()?;
-        macro_rules! require_format {
-            ($cond:expr) => { require!($cond, "Unexpected {:?} message payload format!", tpe) };
-        }
         match tpe {
-            MraMessageType::ConferenceUsersChange => {
-                let payload = mra_msg.payload;
-                // All payload is a single chunk
-                let (change_tpe, payload) = next_u32(payload);
-
-                match change_tpe {
-                    CONFERENCE_USER_JOINED => {
-                        let (_inviting_user_name_or_email, payload) = next_sized_chunk(payload)?;
-                        let (num_invited_user_names, mut payload) = next_u32_size(payload);
-                        let mut names = Vec::with_capacity(num_invited_user_names);
-                        let mut emails = Vec::with_capacity(num_invited_user_names);
-
-                        for _ in 0..num_invited_user_names {
-                            let (name_bytes, payload2) = next_sized_chunk(payload)?;
-                            payload = payload2;
-                            names.push(WStr::from_utf16le(name_bytes)?.to_utf8());
-                        }
-                        let (num_invited_user_emails, mut payload) = next_u32_size(payload);
-                        require_format!(num_invited_user_names == num_invited_user_emails);
-
-                        for _ in 0..num_invited_user_names {
-                            let (email_bytes, payload2) = next_sized_chunk(payload)?;
-                            payload = payload2;
-                            emails.push(WStr::from_utf16le(email_bytes)?.to_utf8());
-                        }
-                        require_format!(payload.is_empty());
-
-                        for (email, name_or_email) in emails.into_iter().zip(names.into_iter()) {
-                            upsert_user(entry, email, name_or_email);
-                        }
-                    }
-                    CONFERENCE_USER_LEFT => {
-                        let (name_bytes, payload) = next_sized_chunk(payload)?;
-                        let (email_bytes, payload) = next_sized_chunk(payload)?;
-                        require_format!(payload.is_empty());
-
-                        upsert_user(entry,
-                                    WStr::from_utf16le(email_bytes)?.to_utf8(),
-                                    WStr::from_utf16le(name_bytes)?.to_utf8());
-                    }
-                    etc => bail!("Unexpected {tpe:?} change type {etc}")
-                };
-            }
+            MraMessageType::ConferenceUsersChange =>
+                collect_users_from_conference_user_changed_record(
+                    &mut entry.users, entry.ds.uuid(), &from_username, mra_msg, mra_msg.payload)?,
             _ => { /* NOOP */ }
         }
     }
@@ -407,7 +343,7 @@ fn convert_message(
     mra_msg: &MraLegacyMessage<'_>,
     internal_id: i64,
     myself_username: &str,
-    conv_username: &str,
+    conv_name: &str,
     users: &HashMap<String, User>,
     prev_msgs: &mut [Message],
     ongoing_call_msg_id: &mut Option<i64>,
@@ -431,7 +367,7 @@ fn convert_message(
     };
 
     let from_me = mra_msg.is_from_me()?;
-    let mut from_username = (if from_me { myself_username } else { conv_username }).to_owned();
+    let mut from_username = (if from_me { myself_username } else { conv_name }).to_owned();
 
     let tpe = mra_msg.get_tpe()?;
 
@@ -451,7 +387,7 @@ fn convert_message(
                 // RGBA bytes, ignoring
                 let payload = &payload[4..];
                 // Might be followed by empty bytes
-                mra_msg.require_format(payload.iter().all(|b| *b == 0))?;
+                require_format(payload.iter().all(|b| *b == 0), mra_msg, conv_name)?;
 
                 parse_rtf(&rtf)?
             } else {
@@ -468,7 +404,7 @@ fn convert_message(
             let rtf = WStr::from_utf16le(rtf_bytes)?.to_utf8();
             // RGBA bytes, ignoring
             let payload = &payload[4..];
-            mra_msg.require_format(payload.is_empty())?;
+            require_format(payload.is_empty(), mra_msg, conv_name)?;
 
             let rtes = parse_rtf(&rtf)?;
             (rtes, Typed::Service(MessageService {
@@ -508,7 +444,7 @@ fn convert_message(
             // It does not carry call information per se.
             let payload = mra_msg.payload;
             let payload = validate_skip_chunk(payload, mra_msg.text.as_bytes())?;
-            mra_msg.require_format(payload.is_empty())?;
+            require_format(payload.is_empty(), mra_msg, conv_name)?;
 
             const BEGIN_CONNECTING: &str = "Устанавливается соединение...";
             const BEGIN_I_CALL: &str = "Звонок от вашего собеседника";
@@ -577,7 +513,7 @@ fn convert_message(
         MraMessageType::BirthdayReminder => {
             let payload = mra_msg.payload;
             let payload = validate_skip_chunk(payload, mra_msg.text.as_bytes())?;
-            mra_msg.require_format(payload.is_empty())?;
+            require_format(payload.is_empty(), mra_msg, conv_name)?;
 
             (vec![RichText::make_plain(text)], Typed::Service(MessageService {
                 sealed_value_optional: Some(ServiceSvo::Notice(MessageServiceNotice {}))
@@ -587,7 +523,7 @@ fn convert_message(
             let payload = mra_msg.payload;
             // Source is a <SMILE> tag
             let (src_bytes, payload) = next_sized_chunk(payload)?;
-            mra_msg.require_format(payload.is_empty())?;
+            require_format(payload.is_empty(), mra_msg, conv_name)?;
             let src = WStr::from_utf16le(src_bytes)?.to_utf8();
             let (_id, emoji_option) = match SMILE_TAG_REGEX.captures(&src) {
                 Some(captures) => (captures.name("id").unwrap().as_str(),
@@ -609,7 +545,7 @@ fn convert_message(
             }))
         }
         MraMessageType::ConferenceUsersChange => {
-            convert_conference_user_changed_record(mra_msg, users, mra_msg.payload)?
+            convert_conference_user_changed_record(conv_name, mra_msg, mra_msg.payload, users)?
         }
         MraMessageType::MicroblogRecordBroadcast |
         MraMessageType::MicroblogRecordDirected => {
@@ -623,7 +559,7 @@ fn convert_message(
             } else { None };
             // Next 8 bytes is some timestamp we don't really care about
             let payload = &payload[8..];
-            mra_msg.require_format(payload.is_empty())?;
+            require_format(payload.is_empty(), mra_msg, conv_name)?;
             convert_microblog_record(&text, target_name.as_deref())
         }
         MraMessageType::ConferenceMessagePlaintext => {
@@ -633,7 +569,7 @@ fn convert_message(
             // Author email
             let (author_email_bytes, payload) = next_sized_chunk(payload)?;
             from_username = String::from_utf8(author_email_bytes.to_vec())?;
-            mra_msg.require_format(payload.is_empty())?;
+            require_format(payload.is_empty(), mra_msg, conv_name)?;
 
             let text = replace_smiles_with_emojis(&text);
             (vec![RichText::make_plain(text)], Typed::Regular(Default::default()))
@@ -646,11 +582,13 @@ fn convert_message(
             // RGBA bytes, ignoring
             let payload = &payload[4..];
             // Author email (only present for others' messages)
-            require!(payload.is_empty() == mra_msg.is_from_me()?,
-                     "Expected message payload to be empty for self messages only!\nMessage: {mra_msg:?}");
+            require_format_clue(
+                payload.is_empty() == mra_msg.is_from_me()?,
+                mra_msg, conv_name,
+                "Expected message payload to be empty for self messages only!\nMessage: {mra_msg:?}")?;
             if !mra_msg.is_from_me()? {
                 let (author_email_bytes, payload) = next_sized_chunk(payload)?;
-                mra_msg.require_format(payload.is_empty())?;
+                require_format(payload.is_empty(), mra_msg, conv_name)?;
                 from_username = String::from_utf8(author_email_bytes.to_vec())?
             };
 
