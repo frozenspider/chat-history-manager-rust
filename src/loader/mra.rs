@@ -209,9 +209,10 @@ enum MraMessageType {
     Sticker = 0x40,
 }
 
-
 trait MraMessage: Debug {
     fn get_tpe(&self) -> Result<MraMessageType>;
+
+    fn is_from_me(&self) -> Result<bool>;
 
     fn require_format(&self, cond: bool) -> EmptyRes {
         if cond {

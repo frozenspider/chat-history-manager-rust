@@ -7,6 +7,8 @@ use super::*;
 
 const MSG_HEADER_MAGIC_NUMBER: u32 = 0x2D;
 
+const FLAG_INCOMING: u8 = 0b100;
+
 pub(super) fn do_the_thing(path: &Path, storage_path: &Path) -> EmptyRes {
     let mut dataset_map = HashMap::<String, MraDatasetEntry>::new();
     for dir_entry in fs::read_dir(path)? {
@@ -114,7 +116,7 @@ fn get_conversation_messages<'a>(db_bytes: &'a [u8]) -> Result<Vec<DbMessage<'a>
 
         // Not really sure what is the meaning of this, but empty messages can be identified by this signature.
         // They could have different "types", and this signature doesn't seem obviously meaningful for non-empty messages.
-        if &mra_msg.header._unknown1[3..=4] == &[0x4A, 0x00] {
+        if &mra_msg.header._unknown1[2..=3] == &[0x4A, 0x00] {
             mra_msg.require_format(mra_msg.payload == vec![1, 0, 0, 0, 0])?;
         } else {
             mra_msg.require_format_clue(mra_msg.payload.len() > 13, "payload is too short")?;
@@ -380,6 +382,10 @@ impl MraMessage for DbMessage<'_> {
         FromPrimitive::from_u8(tpe_u8)
             .with_context(|| format!("Unknown message type: {:#04x}\nMessage hedaer: {:?}", tpe_u8, self))
     }
+
+    fn is_from_me(&self) -> Result<bool> {
+        Ok(self.header.flags & FLAG_INCOMING == 0)
+    }
 }
 
 impl Debug for DbMessage<'_> {
@@ -410,7 +416,9 @@ struct DbMessageHeader {
     magic_value_one: u8,
     /// Known variants are listed in MraMessageType
     tpe_u8: u8,
-    _unknown1: [u8; 11],
+    /// Only FLAG_INCOMING is known
+    flags: u8,
+    _unknown1: [u8; 10],
     /// WinApi FILETIME
     filetime: u64,
     _unknown2: [u8; 4],
@@ -423,7 +431,9 @@ impl Debug for DbMessageHeader {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         let mut formatter = formatter.debug_struct("Header");
         let tpe_u8 = self.tpe_u8;
-        formatter.field("type_u8", &tpe_u8);
+        formatter.field("type_u8", &format!("{tpe_u8:#04X}"));
+        let flags = self.flags;
+        formatter.field("flags", &format!("{flags:#010b}"));
         let unknown1 = self._unknown1.clone();
         formatter.field("_unknown1", &format!("{unknown1:02X?}"));
         let time = self.filetime;

@@ -756,14 +756,6 @@ struct MraLegacyMessage<'a> {
 }
 
 impl MraLegacyMessage<'_> {
-    fn is_from_me(&self) -> Result<bool> {
-        match self.header.flag_outgoing {
-            0 => Ok(false),
-            1 => Ok(true),
-            x => err!("Invalid flag_incoming value {x}\nMessage: {:?}", self),
-        }
-    }
-
     #[allow(dead_code)]
     fn debug_format_bytes(&self, file_bytes: &[u8]) -> String {
         const COLUMNS: usize = 32;
@@ -779,6 +771,14 @@ impl MraMessage for MraLegacyMessage<'_> {
         let tpe_u32 = self.header.tpe_u32;
         FromPrimitive::from_u32(tpe_u32)
             .with_context(|| format!("Unknown message type: {}\nMessage: {:?}", tpe_u32, self))
+    }
+
+    fn is_from_me(&self) -> Result<bool> {
+        match self.header.flag_outgoing {
+            0 => Ok(false),
+            1 => Ok(true),
+            x => err!("Invalid flag_incoming value {x}\nMessage: {:?}", self),
+        }
     }
 }
 
