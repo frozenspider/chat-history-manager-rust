@@ -109,9 +109,32 @@ fn get_conversation_messages<'a>(db_bytes: &'a [u8]) -> Result<Vec<DbMessage<'a>
         let bytes = &message_bytes[mem::size_of::<DbMessageHeader>()..];
         let (payload, bytes) = next_sized_chunk(bytes)?;
 
-        let db_msg = DbMessage { offset, header, payload };
-        db_msg.require_format_clue(bytes.is_empty(), "incorrect remainder")?;
-        result.push(db_msg);
+        let mut mra_msg = DbMessage { offset, header, payload, sections: vec![] };
+        mra_msg.require_format_clue(bytes.is_empty(), "incorrect remainder")?;
+
+        // Not really sure what is the meaning of this, but empty messages can be identified by this signature.
+        // They could have different "types", and this signature doesn't seem obviously meaningful for non-empty messages.
+        if &mra_msg.header._unknown1[3..=4] == &[0x4A, 0x00] {
+            mra_msg.require_format(mra_msg.payload == vec![1, 0, 0, 0, 0])?;
+        } else {
+            mra_msg.require_format_clue(mra_msg.payload.len() > 13, "payload is too short")?;
+            let (_unknown, mut payload) = next_n_bytes::<5>(mra_msg.payload);
+
+            // Getting sections out of payload
+            while !payload.is_empty() {
+                payload = {
+                    let (section_type, payload) = next_u32(payload);
+                    let section_type: MessageSectionType = FromPrimitive::from_u32(section_type)
+                        .with_context(|| format!("unknown message section: {section_type}"))?;
+                    // No matter what the section is, it's sized
+                    let (section_bytes, payload) = next_sized_chunk(payload)?;
+                    mra_msg.sections.push((section_type, section_bytes));
+                    payload
+                }
+            }
+        }
+
+        result.push(mra_msg);
 
         offset += message_bytes.len() + 8;
         db_bytes = rest_bytes;
@@ -125,8 +148,7 @@ fn collect_users(
     msgs: &[DbMessage],
     users: &mut HashMap<String, User>,
 ) -> EmptyRes {
-    // FIXME
-    users.insert(user_account_name.to_owned(), User {
+    users.entry(user_account_name.to_owned()).or_insert_with(|| User {
         ds_uuid: Some(ds_uuid.clone()),
         id: hash_to_id(user_account_name),
         first_name_option: None,
@@ -134,6 +156,19 @@ fn collect_users(
         username_option: Some(user_account_name.to_owned()),
         phone_number_option: None,
     });
+
+    for mra_msg in msgs {
+        for (section_type, section) in mra_msg.sections.iter() {
+            match section_type {
+                MessageSectionType::Plaintext => {}
+                MessageSectionType::AuthorName => {}
+                MessageSectionType::OtherAccount2 => {}
+                MessageSectionType::MyAccount => {}
+                MessageSectionType::OtherAccount => {}
+                MessageSectionType::Content => {}
+            }
+        }
+    }
 
     Ok(())
 }
@@ -145,7 +180,9 @@ fn process_conversation(
     users: &HashMap<String, User>,
 ) -> EmptyRes {
     for db_msg in db_msgs {
-        process_message(db_msg, user_account_name, users)?;
+        if !db_msg.sections.is_empty() {
+            process_message(db_msg, user_account_name, users)?;
+        }
     }
     Ok(())
 }
@@ -166,179 +203,162 @@ fn process_message(
 
     let tpe = mra_msg.get_tpe()?;
 
-    // Not really sure what is the meaning of this, but empty messages can be identified by this signature.
-    // They could have different "types", and this signature doesn't seem obviously meaningful for non-empty messages.
-    if &mra_msg.header._unknown1[3..=4] == &[0x4A, 0x00] {
-        mra_msg.require_format(mra_msg.payload == vec![1, 0, 0, 0, 0])?;
-    } else {
-        mra_msg.require_format_clue(mra_msg.payload.len() > 13, "payload is too short")?;
-        let (_unknown, mut payload) = next_n_bytes::<5>(mra_msg.payload);
+    // This is message author, which could be a system placeholder user
+    let mut author_name: Option<String> = None;
+    let mut plaintext: Option<String> = None;
+    let mut my_account: Option<String> = None;
+    let mut user_account: Option<String> = None;
+    let mut rte: Option<String> = None;
 
-        // This is message author, which could be a system placeholder user
-        let mut author_name: Option<String> = None;
-        let mut plaintext: Option<String> = None;
-        let mut my_account: Option<String> = None;
-        let mut user_account: Option<String> = None;
-        let mut rte: Option<String> = None;
-
-        macro_rules! set_option {
-            ($holder:ident, $new_value:expr) => {{
-                let new_value = $new_value;
-                if !new_value.is_empty() {
-                    if let Some(ref old_value) = $holder {
-                        mra_msg.require_format_with_clue(
-                            old_value == &new_value,
-                            || format!("unexpected {} value: {old_value} vs {new_value}", stringify!($holder)))?;
-                    } else {
-                        $holder = Some(new_value)
-                    }
+    macro_rules! set_option {
+        ($holder:ident, $new_value:expr) => {{
+            let new_value = $new_value;
+            if !new_value.is_empty() {
+                if let Some(ref old_value) = $holder {
+                    mra_msg.require_format_with_clue(
+                        old_value == &new_value,
+                        || format!("unexpected {} value: {old_value} vs {new_value}", stringify!($holder)))?;
+                } else {
+                    $holder = Some(new_value)
                 }
-            }};
-        }
-
-        while !payload.is_empty() {
-            payload = {
-                let (section_type, payload) = next_u32(payload);
-                let section_type: MessageSectionType = FromPrimitive::from_u32(section_type)
-                    .with_context(|| format!("unknown message section: {section_type}"))?;
-                // No matter what the section is, it's sized
-                let (section, payload) = next_sized_chunk(payload)?;
-                match section_type {
-                    MessageSectionType::Plaintext => {
-                        set_option!(plaintext, String::from_utf8(section.to_vec())?);
-                    }
-                    MessageSectionType::AuthorName => {
-                        set_option!(author_name, String::from_utf8(section.to_vec())?);
-                    }
-                    MessageSectionType::OtherAccount2 => {
-                        assert!(user_account_name == "unreads"); // FIXME
-                        set_option!(user_account, String::from_utf8(section.to_vec())?)
-                    }
-                    MessageSectionType::MyAccount => {
-                        set_option!(my_account, String::from_utf8(section.to_vec())?);
-                    }
-                    MessageSectionType::OtherAccount => {
-                        set_option!(user_account, String::from_utf8(section.to_vec())?);
-                    }
-                    MessageSectionType::Content if tpe == MraMessageType::ConferenceUsersChange => {
-                        convert_conference_user_changed_record(mra_msg, users, section)?;
-                    }
-                    MessageSectionType::Content => {
-                        let (text, rest) = {
-                            let (text_bytes, rest) = next_sized_chunk(section)?;
-                            let text_utf16 = WStr::from_utf16le(text_bytes)?;
-                            (text_utf16.to_utf8(), rest)
-                        };
-                        match tpe {
-                            MraMessageType::RegularPlaintext |
-                            MraMessageType::FileTransfer |
-                            MraMessageType::Call |
-                            MraMessageType::BirthdayReminder |
-                            MraMessageType::Sms |
-                            MraMessageType::Cartoon |
-                            MraMessageType::CartoonType2 |
-                            MraMessageType::VideoCall => {
-                                mra_msg.require_format(rest.is_empty())?;
-                                // FIXME
-                                set_option!(rte, text);
-                            }
-                            MraMessageType::RegularRtf => {
-                                // Color followed by an optional unknown 4-bytes.
-                                let (_color, rest) = next_u32(rest);
-                                mra_msg.require_format_with_clue(
-                                    rest.is_empty() || rest.len() == 4,
-                                    || format!("follow-up to UTF-16 text section: {rest:02X?}"))?;
-                                set_option!(rte, text);
-                            }
-                            MraMessageType::MicroblogRecordBroadcast => {
-                                // Color followed by an optional unknown 4-bytes.
-                                let (_color, rest) = next_u32(rest);
-                                mra_msg.require_format_with_clue(
-                                    rest.is_empty() || rest.len() == 4,
-                                    || format!("follow-up to UTF-16 text section: {rest:02X?}"))?;
-                                convert_microblog_record(&text, None);
-                                set_option!(plaintext, text);
-                            }
-                            MraMessageType::MicroblogRecordDirected => {
-                                let (target_name_bytes, rest) = next_sized_chunk(rest)?;
-                                let target_name = WStr::from_utf16le(target_name_bytes)?;
-                                let target_name = target_name.to_utf8();
-                                mra_msg.require_format_with_clue(
-                                    rest.len() == 8,
-                                    || format!("follow-up to UTF-16 text section: {rest:02X?}"))?;
-                                convert_microblog_record(&text, Some(&target_name));
-                                set_option!(plaintext, text);
-                            }
-                            MraMessageType::ConferenceMessagePlaintext => {
-                                // If no more bytes, author is self
-                                if !rest.is_empty() {
-                                    let (author_bytes, rest) = next_sized_chunk(rest)?;
-                                    let author = String::from_utf8(author_bytes.to_vec())?;
-                                    mra_msg.require_format(rest.is_empty())?;
-
-                                    set_option!(user_account, author);
-                                }
-                                set_option!(plaintext, text);
-                            }
-                            MraMessageType::ConferenceMessageRtf => {
-                                let (_color, rest) = next_u32(rest);
-                                // If no more bytes, author is self
-                                if !rest.is_empty() {
-                                    let (author_bytes, rest) = next_sized_chunk(rest)?;
-                                    let author = String::from_utf8(author_bytes.to_vec())?;
-                                    mra_msg.require_format(rest.is_empty())?;
-
-                                    set_option!(user_account, author);
-                                }
-                                set_option!(rte, text);
-                            }
-                            MraMessageType::ConferenceUsersChange => {
-                                println!("CCCC!!!!");
-                                //
-                            }
-                            MraMessageType::AuthorizationRequest => {
-                                // Account (email) followed by message, both in UTF-16 LE
-                                set_option!(user_account, text);
-                                let (text_bytes, rest) = next_sized_chunk(rest)?;
-                                set_option!(plaintext, WStr::from_utf16le(text_bytes)?.to_utf8());
-                                mra_msg.require_format(rest.is_empty())?;
-                            }
-                            MraMessageType::AntispamTriggered => {
-                                mra_msg.require_format(rest.len() == 4)?;
-                                // FIXME: make system message
-                                // "Ваш аккаунт был заблокирован системой антиспама. Пожалуйста, смените пароль от вашего почтового ящика, пройдя по ссылке:
-                                // http://e.mail.ru/cgi-bin/editpass?fromagent='MRA'"
-                                rte = Some(text);
-                            }
-                            MraMessageType::LocationChange => {
-                                // FIXME
-                                rte = Some(text);
-                            }
-                            MraMessageType::Sticker => {
-                                mra_msg.require_format(rest.is_empty())?;
-                                // Contains SMILE tag like <SMILE>id='ext:MYNUMBER:sticker:MYNUMBER'</SMILE>,
-                                // but I don't have a reference to retrieve them.
-                                let _id = match SMILE_TAG_REGEX.captures(&text) {
-                                    Some(captures) if captures.name("alt").is_none() => captures.name("id").unwrap(),
-                                    _ => {
-                                        mra_msg.require_format_clue(false, "unknown sticker ID format")?;
-                                        unreachable!()
-                                    }
-                                };
-                                rte = Some(text);
-                            }
-                            MraMessageType::Empty => {
-                                mra_msg.require_format_clue(false, "text was not expected for this message type")?;
-                            }
-                        }
-                    }
-                }
-                payload
-            };
-        }
-
-        println!("{my_account:?} {user_account:?} by {author_name:?} - {plaintext:?}, {rte:?}");
+            }
+        }};
     }
+
+    for (section_type, section) in mra_msg.sections.iter() {
+        match section_type {
+            MessageSectionType::Plaintext => {
+                set_option!(plaintext, String::from_utf8(section.to_vec())?);
+            }
+            MessageSectionType::AuthorName => {
+                set_option!(author_name, String::from_utf8(section.to_vec())?);
+            }
+            MessageSectionType::OtherAccount2 => {
+                assert!(user_account_name == "unreads"); // FIXME
+                set_option!(user_account, String::from_utf8(section.to_vec())?)
+            }
+            MessageSectionType::MyAccount => {
+                set_option!(my_account, String::from_utf8(section.to_vec())?);
+            }
+            MessageSectionType::OtherAccount => {
+                set_option!(user_account, String::from_utf8(section.to_vec())?);
+            }
+            MessageSectionType::Content if tpe == MraMessageType::ConferenceUsersChange => {
+                convert_conference_user_changed_record(mra_msg, users, section)?;
+            }
+            MessageSectionType::Content => {
+                let (text, rest) = {
+                    let (text_bytes, rest) = next_sized_chunk(section)?;
+                    let text_utf16 = WStr::from_utf16le(text_bytes)?;
+                    (text_utf16.to_utf8(), rest)
+                };
+                match tpe {
+                    MraMessageType::RegularPlaintext |
+                    MraMessageType::FileTransfer |
+                    MraMessageType::Call |
+                    MraMessageType::BirthdayReminder |
+                    MraMessageType::Sms |
+                    MraMessageType::Cartoon |
+                    MraMessageType::CartoonType2 |
+                    MraMessageType::VideoCall => {
+                        mra_msg.require_format(rest.is_empty())?;
+                        // FIXME
+                        set_option!(rte, text);
+                    }
+                    MraMessageType::RegularRtf => {
+                        // Color followed by an optional unknown 4-bytes.
+                        let (_color, rest) = next_u32(rest);
+                        mra_msg.require_format_with_clue(
+                            rest.is_empty() || rest.len() == 4,
+                            || format!("follow-up to UTF-16 text section: {rest:02X?}"))?;
+                        set_option!(rte, text);
+                    }
+                    MraMessageType::MicroblogRecordBroadcast => {
+                        // Color followed by an optional unknown 4-bytes.
+                        let (_color, rest) = next_u32(rest);
+                        mra_msg.require_format_with_clue(
+                            rest.is_empty() || rest.len() == 4,
+                            || format!("follow-up to UTF-16 text section: {rest:02X?}"))?;
+                        convert_microblog_record(&text, None);
+                        set_option!(plaintext, text);
+                    }
+                    MraMessageType::MicroblogRecordDirected => {
+                        let (target_name_bytes, rest) = next_sized_chunk(rest)?;
+                        let target_name = WStr::from_utf16le(target_name_bytes)?;
+                        let target_name = target_name.to_utf8();
+                        mra_msg.require_format_with_clue(
+                            rest.len() == 8,
+                            || format!("follow-up to UTF-16 text section: {rest:02X?}"))?;
+                        convert_microblog_record(&text, Some(&target_name));
+                        set_option!(plaintext, text);
+                    }
+                    MraMessageType::ConferenceMessagePlaintext => {
+                        // If no more bytes, author is self
+                        if !rest.is_empty() {
+                            let (author_bytes, rest) = next_sized_chunk(rest)?;
+                            let author = String::from_utf8(author_bytes.to_vec())?;
+                            mra_msg.require_format(rest.is_empty())?;
+
+                            set_option!(user_account, author);
+                        }
+                        set_option!(plaintext, text);
+                    }
+                    MraMessageType::ConferenceMessageRtf => {
+                        let (_color, rest) = next_u32(rest);
+                        // If no more bytes, author is self
+                        if !rest.is_empty() {
+                            let (author_bytes, rest) = next_sized_chunk(rest)?;
+                            let author = String::from_utf8(author_bytes.to_vec())?;
+                            mra_msg.require_format(rest.is_empty())?;
+
+                            set_option!(user_account, author);
+                        }
+                        set_option!(rte, text);
+                    }
+                    MraMessageType::ConferenceUsersChange => {
+                        println!("CCCC!!!!");
+                        //
+                    }
+                    MraMessageType::AuthorizationRequest => {
+                        // Account (email) followed by message, both in UTF-16 LE
+                        set_option!(user_account, text);
+                        let (text_bytes, rest) = next_sized_chunk(rest)?;
+                        set_option!(plaintext, WStr::from_utf16le(text_bytes)?.to_utf8());
+                        mra_msg.require_format(rest.is_empty())?;
+                    }
+                    MraMessageType::AntispamTriggered => {
+                        mra_msg.require_format(rest.len() == 4)?;
+                        // FIXME: make system message
+                        // "Ваш аккаунт был заблокирован системой антиспама. Пожалуйста, смените пароль от вашего почтового ящика, пройдя по ссылке:
+                        // http://e.mail.ru/cgi-bin/editpass?fromagent='MRA'"
+                        rte = Some(text);
+                    }
+                    MraMessageType::LocationChange => {
+                        // FIXME
+                        rte = Some(text);
+                    }
+                    MraMessageType::Sticker => {
+                        mra_msg.require_format(rest.is_empty())?;
+                        // Contains SMILE tag like <SMILE>id='ext:MYNUMBER:sticker:MYNUMBER'</SMILE>,
+                        // but I don't have a reference to retrieve them.
+                        let _id = match SMILE_TAG_REGEX.captures(&text) {
+                            Some(captures) if captures.name("alt").is_none() => captures.name("id").unwrap(),
+                            _ => {
+                                mra_msg.require_format_clue(false, "unknown sticker ID format")?;
+                                unreachable!()
+                            }
+                        };
+                        rte = Some(text);
+                    }
+                    MraMessageType::Empty => {
+                        mra_msg.require_format_clue(false, "text was not expected for this message type")?;
+                    }
+                }
+            }
+        }
+    }
+    println!("{my_account:?} {user_account:?} by {author_name:?} - {:?}", mra_msg);
+    // println!("{my_account:?} {user_account:?} by {author_name:?} - {plaintext:?}, {rte:?}");
     Ok(())
 }
 
@@ -350,6 +370,8 @@ struct DbMessage<'a> {
     offset: usize,
     header: &'a DbMessageHeader,
     payload: &'a [u8],
+    /// Parsed from payload
+    sections: Vec<(MessageSectionType, &'a [u8])>,
 }
 
 impl MraMessage for DbMessage<'_> {
