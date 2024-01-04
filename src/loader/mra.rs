@@ -5,6 +5,7 @@ use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::path::PathBuf;
+use encoding_rs::Encoding;
 
 use lazy_static::lazy_static;
 use num_traits::FromPrimitive;
@@ -25,6 +26,8 @@ mod mra_dbs;
 mod db;
 
 pub struct MailRuAgentDataLoader;
+
+type DatasetMap = HashMap<String, MraDatasetEntry>;
 
 const CONFERENCE_USER_JOINED: u32 = 0x03;
 const CONFERENCE_USER_LEFT: u32 = 0x05;
@@ -67,40 +70,66 @@ impl DataLoader for MailRuAgentDataLoader {
 }
 
 fn load_mra_dbs(path: &Path, dao_name: String) -> Result<Box<InMemoryDao>> {
-    let mut storage_path = path.parent().expect("Database file has no parent!");
+    let mut parent_path = path.parent().expect("Database file has no parent!");
+    let storage_path = if path_file_name(parent_path)? == "Base" {
+        parent_path.parent().expect(r#""Base" directory has no parent!"#)
+    } else {
+        parent_path
+    }.to_path_buf();
+
+    let mut dataset_map: HashMap<_, _> = Default::default();
 
     for subdir in DB_FILE_DIRS.iter() {
-        let path = storage_path.join(subdir);
+        let path = parent_path.join(subdir);
         if path.exists() {
-            db::do_the_thing(&path, &storage_path)?;
+            let path_ds_map = db::process_accounts_dir(&path, &storage_path)?;
+            dataset_map.extend(path_ds_map);
         }
     }
 
-    return Ok(Box::new(InMemoryDao::new(dao_name, storage_path.to_path_buf(), vec![])));
+    // // Read the whole file into the memory.
+    // let dbs_bytes = fs::read(path)?;
+    //
+    // // We'll be loading chats in three phases.
+    // // Phase 1: Read conversations in an MRA inner format, mapped to file bytes.
+    // let convs_with_msgs = mra_dbs::load_convs_with_msgs(&dbs_bytes)?;
+    //
+    // // Phase 2: Populate datasets and users with latest values, usernames being emails.
+    // let dataset_map_2 = mra_dbs::collect_datasets(&convs_with_msgs, &storage_path)?;
+    // dataset_map.extend(dataset_map_2);
+    //
+    // // Phase 3: Convert conversations to our format.
+    // mra_dbs::convert_messages(&convs_with_msgs, &mut dataset_map)?;
 
-    if path_file_name(storage_path)? == "Base" {
-        storage_path = storage_path.parent().expect(r#""Base" directory has no parent!"#);
-    }
-    let storage_path = storage_path.to_path_buf();
-
-    // Read the whole file into the memory.
-    let dbs_bytes = fs::read(path)?;
-
-    // We'll be loading chats in three phases.
-    // Phase 1: Read conversations in an MRA inner format, mapped to file bytes.
-    let convs_with_msgs = mra_dbs::load_convs_with_msgs(&dbs_bytes)?;
-
-    // Phase 2: Populate datasets and users with latest values, usernames being emails.
-    let dataset_map = mra_dbs::collect_datasets(&convs_with_msgs, &storage_path)?;
-
-    // Phase 3: Convert conversations to our format.
-    let data = mra_dbs::convert_messages(&convs_with_msgs, dataset_map, &dbs_bytes)?;
-
+    let data = dataset_map_to_dao_data(dataset_map);
     Ok(Box::new(InMemoryDao::new(
         dao_name,
         storage_path,
         data,
     )))
+}
+
+fn dataset_map_to_dao_data(dataset_map: DatasetMap) -> Vec<DatasetEntry> {
+    dataset_map.into_values().sorted_by_key(|e| e.ds.alias.clone()).map(|mut entry| {
+        // Now that we know all user names, rename chats accordingly
+        for cwm in entry.cwms.values_mut() {
+            if let Some(ref mut chat) = cwm.chat {
+                let chat_email = chat.name_option.as_ref().unwrap();
+                if let Some(pretty_name) = entry.users.get(chat_email).map(|u| u.pretty_name()) {
+                    chat.name_option = Some(pretty_name);
+                }
+            }
+        }
+        DatasetEntry {
+            ds: entry.ds,
+            ds_root: entry.ds_root,
+            myself_id: MYSELF_ID,
+            users: entry.users.into_values()
+                .sorted_by_key(|u| if u.id() == MYSELF_ID { i64::MIN } else { u.id })
+                .collect_vec(),
+            cwms: entry.cwms.into_values().collect_vec(),
+        }
+    }).collect_vec()
 }
 
 fn convert_microblog_record(
@@ -135,7 +164,7 @@ fn collect_users_from_conference_user_changed_record(
             for _ in 0..num_invited_user_names {
                 let (name_bytes, payload2) = next_sized_chunk(payload)?;
                 payload = payload2;
-                names.push(WStr::from_utf16le(name_bytes)?.to_utf8());
+                names.push(utf16le_to_string(name_bytes)?);
             }
             let (num_invited_user_emails, mut payload) = next_u32_size(payload);
             require_format(num_invited_user_names == num_invited_user_emails, mra_msg, conv_name)?;
@@ -143,7 +172,7 @@ fn collect_users_from_conference_user_changed_record(
             for _ in 0..num_invited_user_names {
                 let (username_bytes, payload2) = next_sized_chunk(payload)?;
                 payload = payload2;
-                usernames.push(WStr::from_utf16le(username_bytes)?.to_utf8());
+                usernames.push(utf16le_to_string(username_bytes)?);
             }
             require_format(payload.is_empty(), mra_msg, conv_name)?;
 
@@ -158,8 +187,8 @@ fn collect_users_from_conference_user_changed_record(
 
             upsert_user(users,
                         ds_uuid,
-                        &WStr::from_utf16le(email_bytes)?.to_utf8(),
-                        Some(WStr::from_utf16le(name_bytes)?.to_utf8()));
+                        &utf16le_to_string(email_bytes)?,
+                        Some(utf16le_to_string(name_bytes)?));
         }
         etc => {
             require_format_clue(false, mra_msg, conv_name,
@@ -193,7 +222,7 @@ fn convert_conference_user_changed_record(
             for _ in 0..num_invited_user_names {
                 let (email_bytes, payload2) = next_sized_chunk(payload)?;
                 payload = payload2;
-                emails.push(WStr::from_utf16le(email_bytes)?.to_utf8());
+                emails.push(utf16le_to_string(email_bytes)?);
             }
             require_format(payload.is_empty(), mra_msg, conv_name)?;
 
@@ -205,7 +234,7 @@ fn convert_conference_user_changed_record(
             let (email_bytes, payload) = next_sized_chunk(payload)?;
             require_format(payload.is_empty(), mra_msg, conv_name)?;
 
-            let email = WStr::from_utf16le(email_bytes)?.to_utf8();
+            let email = utf16le_to_string(email_bytes)?;
             let members = vec![users[&email].pretty_name()];
             ServiceSvo::GroupRemoveMembers(MessageServiceGroupRemoveMembers { members })
         }
@@ -431,7 +460,41 @@ fn bytes_to_pretty_string(bytes: &[u8], columns: usize) -> String {
     result.trim_end().to_owned()
 }
 
-/// Handles bold, italic and underline styles, interprets everything else as a plaintext
+fn utf16le_to_string(unicode_bytes: &[u8]) -> Result<String> {
+    let len = unicode_bytes.len();
+    require!(len % 2 == 0, "Odd number of UTF-16 bytes");
+    let mut unicode_bytes = Cow::Borrowed(unicode_bytes);
+
+    // Handling special case: singular unpaired surrogate code units.
+    // This is not a valid Unicode but it might be present - in particular, in RTF.
+    // If encountered, replace it with "?" (\U003F)
+    macro_rules! is_surrogate_2nd_byte {
+        ($i:expr) => { unicode_bytes[$i] >= 0xD8 && unicode_bytes[$i] <= 0xDF };
+    }
+    let mut i = 1;
+    while i < len {
+        if is_surrogate_2nd_byte!(i) {
+            if i + 2 >= len || !is_surrogate_2nd_byte!(i + 2) {
+                let mut bytes2 = unicode_bytes.into_owned();
+                bytes2[i] = 0x00;
+                bytes2[i - 1] = 0x3F;
+                unicode_bytes = Cow::Owned(bytes2);
+            } else {
+                i += 2; // Skip 2nd code unit
+            }
+        }
+        i += 2;
+    }
+
+    let result = WStr::from_utf16le(&unicode_bytes)
+        .with_context(|| format!("Illegal UTF-16 bytes: {unicode_bytes:02X?}"))?
+        .to_utf8();
+    Ok(result)
+}
+
+/// Parses an RTF document into internal rich text format, to some degree.
+/// Handles bold, italic and underline styles, interprets everything else as a plaintext.
+/// This is by no means a full-fledged RTF parser, but it does a decent enough job.
 fn parse_rtf(rtf: &str) -> Result<Vec<RichTextElement>> {
     use rtf_grimoire::tokenizer::Token;
 
@@ -445,22 +508,86 @@ fn parse_rtf(rtf: &str) -> Result<Vec<RichTextElement>> {
                             if name == "ansicpg" || (name == "fcharset" && *arg == 0) )
              ), "RTF is not ANSI-encoded!\nRTF: {rtf}");
 
+    const DEFAULT_ENC_ID: i32 = 1;
+
+    // This is by no means exhaustive, and only some encodings has been verified to actually match.
+    fn get_rtf_charset(id: i32) -> Option<&'static Encoding> {
+        use encoding_rs::*;
+        match id {
+            0 => Some(WINDOWS_1252),
+            1 => Some(WINDOWS_1251) /* Originally, default Windows API code page for system locale*/,
+            128 => Some(SHIFT_JIS) /* Windows-932, Japanese Shift JIS */,
+            129 => Some(EUC_KR)/* Windows-949, Korean, Unified Hangul */,
+            134 => Some(GBK) /* Windows-936, Chinese, GBK (extended GB 2312) */,
+            136 => Some(BIG5) /* Windows-950, Chinese, Big5 */,
+            161 => Some(WINDOWS_1253) /* Greek */,
+            162 => Some(WINDOWS_1254) /* Turkish */,
+            163 => Some(WINDOWS_1258) /* Vietnamese */,
+            177 => Some(WINDOWS_1255) /* Hebrew */,
+            178 => Some(WINDOWS_1256) /* Arabic */,
+            186 => Some(WINDOWS_1257) /* Baltic */,
+            204 => Some(WINDOWS_1251) /* Russian */,
+            222 => Some(WINDOWS_874)/* Thai */,
+            238 => Some(WINDOWS_1250) /* Latin, Eastern Europe */,
+            254 => Some(IBM866)/* PC 437 */,
+            255 => Some(WINDOWS_1251) /* Supposed to be OEM but oh well */,
+            _ => None /* Unknown, not available, or don't bother decoding */,
+        }
+    }
+
+    let fonttbl_charsets = {
+        let mut fonttbl_charsets = vec![];
+        let mut depth = 0;
+        let start = Token::ControlWord { name: "fonttbl".to_owned(), arg: None };
+        for token in tokens.iter().skip_while(|&t| t != &start).skip(1) {
+            match token {
+                Token::ControlWord { ref name, arg: Some(arg) } if name == "f" => {
+                    require!(*arg == fonttbl_charsets.len() as i32, "Malformed RTF fonts table!\nRTF: {rtf}");
+                }
+                Token::ControlWord { ref name, arg: Some(charset_num) } if name == "fcharset" => {
+                    fonttbl_charsets.push(get_rtf_charset(*charset_num));
+                }
+                Token::StartGroup => {
+                    depth += 1;
+                }
+                Token::EndGroup => {
+                    depth -= 1;
+                    if depth < 0 { break; }
+                }
+                _ => { /* NOOP */ }
+            }
+        }
+        fonttbl_charsets
+    };
+    let mut enc = get_rtf_charset(DEFAULT_ENC_ID);
+
     // Text of current styled section
     let mut curr_text: Option<String> = None;
 
     // Bytes of currently constructed UTF-16 LE string
     let mut unicode_bytes: Vec<u8> = vec![];
 
+    // Bytes of currently constructed charset-specific string
+    let mut charset_bytes: Vec<u8> = vec![];
+
     // Returned text is mutable and should be appended.
     // Calling this will flush Unicode string under construction (if any).
     macro_rules! flush_and_get_curr_text {
         () => {{
             let text = curr_text.get_or_insert_with(|| "".to_owned());
-            // Flush the existing unicode string, if any
+            assert!(unicode_bytes.is_empty() || charset_bytes.is_empty());
+            // Flush the existing constructed string, if any
             if !unicode_bytes.is_empty() {
-                let string = WStr::from_utf16le(&unicode_bytes)?.to_utf8();
-                text.push_str(&string);
+                text.push_str(&utf16le_to_string(&unicode_bytes)?);
                 unicode_bytes.clear();
+            }
+            if !charset_bytes.is_empty() {
+                if let Some(enc) = enc {
+                    text.push_str(&to_utf8(&charset_bytes, enc)?);
+                } else {
+                    text.push_str("?");
+                }
+                charset_bytes.clear();
             }
             text
         }};
@@ -526,16 +653,31 @@ fn parse_rtf(rtf: &str) -> Result<Vec<RichTextElement>> {
                 style = get_new_state(arg, Style::Plain)?;
             }
             Token::ControlWord { name, arg: Some(arg) } if name == "'" && arg >= 0 => {
-                // Mail.Ru RTF seems to be hardcoded to use cp1251 even if \ansicpg says otherwise
-                flush_and_get_curr_text!().push(cp1251_to_utf8_char(arg as u16)?);
+                // If Unicode was being contructed, commit it first
+                if !unicode_bytes.is_empty() {
+                    flush_and_get_curr_text!();
+                }
+                charset_bytes.push(arg as u8);
             }
             Token::ControlWord { name, arg: Some(arg) } if name == "u" => {
+                // If charset-encoded string was being contructed, commit it first
+                if !charset_bytes.is_empty() {
+                    flush_and_get_curr_text!();
+                }
                 // As per spec, "Unicode values greater than 32767 must be expressed as negative numbers",
                 // but Mail.Ru doesn't seem to care.
                 require!(arg >= 0, "Unexpected Unicode value!\nRTF: {rtf}");
                 let arg = arg as u16;
                 unicode_bytes.extend_from_slice(&arg.to_le_bytes());
                 skip_next_char = true;
+            }
+            Token::ControlWord { name, arg: Some(font_num) } if name == "f" => {
+                flush_and_get_curr_text!();
+                enc = fonttbl_charsets[font_num as usize];
+            }
+            Token::ControlWord { name, .. } if name == "plain" => {
+                flush_and_get_curr_text!();
+                enc = get_rtf_charset(DEFAULT_ENC_ID);
             }
             Token::Text(t) => {
                 let string = String::from_utf8(t)?;
@@ -544,6 +686,8 @@ fn parse_rtf(rtf: &str) -> Result<Vec<RichTextElement>> {
                     str = &str[1..];
                     skip_next_char = false;
                 }
+                // Only flush text if string is actually appended, otherwise it might interrupt
+                // multi-code-points charactes, like those with surrogates.
                 if !str.is_empty() {
                     flush_and_get_curr_text!().push_str(str);
                 }
@@ -563,18 +707,8 @@ fn parse_rtf(rtf: &str) -> Result<Vec<RichTextElement>> {
     Ok(result)
 }
 
-fn cp1251_to_utf8_char(u: u16) -> Result<char> {
-    let bytes = u.to_le_bytes();
-    let res = cp1251_to_utf8(&bytes)?;
-    let mut chars = res.chars();
-    let result = Ok(chars.next().unwrap());
-    assert!(chars.next() == Some('\0'));
-    result
-}
-
-fn cp1251_to_utf8(bytes: &[u8]) -> Result<Cow<str>> {
+fn to_utf8<'a>(bytes: &'a [u8], enc: &'static Encoding) -> Result<Cow<'a, str>> {
     use encoding_rs::*;
-    let enc = WINDOWS_1251;
     let (res, had_errors) = enc.decode_without_bom_handling(&bytes);
     if !had_errors {
         Ok(res)

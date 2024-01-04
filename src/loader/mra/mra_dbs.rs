@@ -168,8 +168,8 @@ fn load_messages<'a>(
 pub(super) fn collect_datasets(
     convs_with_msgs: &[MraLegacyConversationWithMessages<'_>],
     storage_path: &Path,
-) -> Result<HashMap::<String, MraDatasetEntry>> {
-    let mut result = HashMap::<String, MraDatasetEntry>::new();
+) -> Result<DatasetMap> {
+    let mut result = DatasetMap::new();
 
     // Collecting all messages together sorted by timestamp to make sure we only deal with the last possible state
     let mut msgs_with_context = Vec::with_capacity(convs_with_msgs.iter().map(|c| c.msgs.len()).sum());
@@ -251,11 +251,10 @@ pub(super) fn collect_datasets(
     Ok(result)
 }
 
-pub(super) fn convert_messages<'a>(
-    convs_with_msgs: &[MraLegacyConversationWithMessages<'a>],
-    mut dataset_map: HashMap<String, MraDatasetEntry>,
-    _dbs_bytes: &'a [u8],
-) -> Result<Vec<DatasetEntry>> {
+pub(super) fn convert_messages(
+    convs_with_msgs: &[MraLegacyConversationWithMessages],
+    mut dataset_map: &mut DatasetMap,
+) -> EmptyRes {
     for conv_w_msgs in convs_with_msgs.iter() {
         let myself_username = conv_w_msgs.conv.myself_name.to_utf8();
         let conv_username = conv_w_msgs.conv.other_name.to_utf8();
@@ -317,26 +316,7 @@ pub(super) fn convert_messages<'a>(
         });
     }
 
-    Ok(dataset_map.into_values().sorted_by_key(|e| e.ds.alias.clone()).map(|mut entry| {
-        // Now that we know all user names, rename chats accordingly
-        for cwm in entry.cwms.values_mut() {
-            if let Some(ref mut chat) = cwm.chat {
-                let chat_email = chat.name_option.as_ref().unwrap();
-                if let Some(pretty_name) = entry.users.get(chat_email).map(|u| u.pretty_name()) {
-                    chat.name_option = Some(pretty_name);
-                }
-            }
-        }
-        DatasetEntry {
-            ds: entry.ds,
-            ds_root: entry.ds_root,
-            myself_id: MYSELF_ID,
-            users: entry.users.into_values()
-                .sorted_by_key(|u| if u.id() == MYSELF_ID { i64::MIN } else { u.id })
-                .collect_vec(),
-            cwms: entry.cwms.into_values().collect_vec(),
-        }
-    }).collect_vec())
+    Ok(())
 }
 
 fn convert_message(
@@ -383,7 +363,7 @@ fn convert_message(
             let rtes = if tpe == MraMessageType::RegularRtf {
                 let payload = mra_msg.payload;
                 let (rtf_bytes, payload) = next_sized_chunk(payload)?;
-                let rtf = WStr::from_utf16le(rtf_bytes)?.to_utf8();
+                let rtf = utf16le_to_string(rtf_bytes)?;
                 // RGBA bytes, ignoring
                 let payload = &payload[4..];
                 // Might be followed by empty bytes
@@ -401,7 +381,7 @@ fn convert_message(
             // For outdated MRA clients, this will be "action needs newer app" message
             let payload = mra_msg.payload;
             let (rtf_bytes, payload) = next_sized_chunk(payload)?;
-            let rtf = WStr::from_utf16le(rtf_bytes)?.to_utf8();
+            let rtf = utf16le_to_string(rtf_bytes)?;
             // RGBA bytes, ignoring
             let payload = &payload[4..];
             require_format(payload.is_empty(), mra_msg, conv_name)?;
@@ -524,7 +504,7 @@ fn convert_message(
             // Source is a <SMILE> tag
             let (src_bytes, payload) = next_sized_chunk(payload)?;
             require_format(payload.is_empty(), mra_msg, conv_name)?;
-            let src = WStr::from_utf16le(src_bytes)?.to_utf8();
+            let src = utf16le_to_string(src_bytes)?;
             let (_id, emoji_option) = match SMILE_TAG_REGEX.captures(&src) {
                 Some(captures) => (captures.name("id").unwrap().as_str(),
                                    captures.name("alt").and_then(|smiley| smiley_to_emoji(smiley.as_str()))),
@@ -555,7 +535,7 @@ fn convert_message(
             let target_name = if tpe == MraMessageType::MicroblogRecordDirected {
                 let (target_name_bytes, payload2) = next_sized_chunk(payload)?;
                 payload = payload2;
-                Some(WStr::from_utf16le(target_name_bytes)?.to_utf8())
+                Some(utf16le_to_string(target_name_bytes)?)
             } else { None };
             // Next 8 bytes is some timestamp we don't really care about
             let payload = &payload[8..];
@@ -578,15 +558,15 @@ fn convert_message(
             let payload = mra_msg.payload;
             // RTF
             let (rtf_bytes, payload) = next_sized_chunk(payload)?;
-            let rtf = WStr::from_utf16le(rtf_bytes)?.to_utf8();
+            let rtf = utf16le_to_string(rtf_bytes)?;
             // RGBA bytes, ignoring
             let payload = &payload[4..];
             // Author email (only present for others' messages)
             require_format_clue(
-                payload.is_empty() == mra_msg.is_from_me()?,
+                payload.is_empty() == from_me,
                 mra_msg, conv_name,
                 "Expected message payload to be empty for self messages only!\nMessage: {mra_msg:?}")?;
-            if !mra_msg.is_from_me()? {
+            if !from_me {
                 let (author_email_bytes, payload) = next_sized_chunk(payload)?;
                 require_format(payload.is_empty(), mra_msg, conv_name)?;
                 from_username = String::from_utf8(author_email_bytes.to_vec())?
