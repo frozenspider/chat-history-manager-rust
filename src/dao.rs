@@ -250,51 +250,71 @@ impl DaoCache {
 
 const BATCH_SIZE: usize = 5_000;
 
-pub fn ensure_datasets_are_equal(master_dao: &dyn ChatHistoryDao,
-                                 master_ds_uuid: &PbUuid,
-                                 slave_dao: &dyn ChatHistoryDao,
-                                 slave_ds_uuid: &PbUuid) -> EmptyRes {
+pub fn get_datasets_diff(master_dao: &dyn ChatHistoryDao,
+                         master_ds_uuid: &PbUuid,
+                         slave_dao: &dyn ChatHistoryDao,
+                         slave_ds_uuid: &PbUuid,
+                         max_diffs: usize) -> Result<Vec<Difference>> {
+    let mut differences = Vec::with_capacity(max_diffs);
+
+    macro_rules! check_diff {
+        ($expr:expr, $critical:literal, $msg:expr, $values:expr) => {
+            if !$expr {
+                let values: Option<(_, _)> = $values;
+                differences.push(Difference {
+                    message: $msg.to_string(),
+                    values: values.map(|vs| DifferenceValues { old: vs.0.to_string(), new: vs.1.to_string()}),
+                });
+                if $critical || differences.len() >= max_diffs { return Ok(differences.clone()); }
+            }
+        };
+    }
+
     measure(|| {
         let master_ds = master_dao.datasets()?.into_iter().find(|ds| ds.uuid() == master_ds_uuid)
             .with_context(|| format!("Dataset {} not found in master DAO!", master_ds_uuid.value))?;
         let mut slave_ds = slave_dao.datasets()?.into_iter().find(|ds| ds.uuid() == slave_ds_uuid)
             .with_context(|| format!("Dataset {} not found in slave DAO!", slave_ds_uuid.value))?;
         slave_ds.uuid = Some(master_ds_uuid.clone());
-        require!(master_ds == slave_ds,
-                 "Dataset differs:\nWas    {:?}\nBecame {:?}",
-                 master_ds, slave_ds);
+        check_diff!(master_ds == slave_ds, false,
+                    "Dataset differs", Some((format!("{master_ds:?}"), format!("{slave_ds:?}"))));
         let master_ds_root = master_dao.dataset_root(master_ds_uuid)?;
         let slave_ds_root = slave_dao.dataset_root(slave_ds_uuid)?;
-        require!(*master_ds_root != *slave_ds_root, "Master and slave dataset root paths are the same!");
+        check_diff!(*master_ds_root != *slave_ds_root, false,
+                    "Master and slave dataset root paths are the same!", None::<(String, String)>);
 
-        measure(|| {
+        let maybe_result = measure(|| {
             let master_users = master_dao.users(master_ds_uuid)?;
             let slave_users = slave_dao.users(slave_ds_uuid)?;
-            require!(master_users.len() == slave_users.len(),
-                     "User count differs:\nWas    {} ({:?})\nBecame {} ({:?})",
-                     master_users.len(), master_users, slave_users.len(), slave_users);
+            check_diff!(master_users.len() == slave_users.len(), true,
+                        "User count differs", Some((
+                            format!("{} ({:?})", master_users.len(), master_users),
+                            format!("{} ({:?})", slave_users.len(), slave_users)
+                        )));
             for (i, (master_user, mut slave_user)) in master_users.iter().zip(slave_users.into_iter()).enumerate() {
                 slave_user.ds_uuid = Some(master_ds_uuid.clone());
-                require!(*master_user == slave_user,
-                         "User #{i} differs:\nWas    {:?}\nBecame {:?}", master_user, slave_user);
+                check_diff!(*master_user == slave_user, false,
+                            format!("User #{i} differs"), Some((format!("{master_user:?}"), format!("{slave_user:?}"))));
             }
-            Ok(())
-        }, |_, t| log::info!("Users checked in {t} ms"))?;
+            Ok(vec![])
+        }, |_: &Result<_>, t| log::info!("Users checked in {t} ms"))?;
+        if !maybe_result.is_empty() { return Ok(maybe_result); }
 
         let master_chats = master_dao.chats(master_ds_uuid)?;
         let slave_chats = slave_dao.chats(slave_ds_uuid)?;
-        require!(master_chats.len() == slave_chats.len(),
-                 "Chat count differs:\nWas    {}\nBecame {}", master_chats.len(), slave_chats.len());
+        check_diff!(master_chats.len() == slave_chats.len(), true,
+                    "Chat count differs", Some((format!("{}", master_chats.len()), format!("{}", slave_chats.len()))));
 
         for (i, (master_cwd, slave_cwd)) in master_chats.iter().zip(slave_chats.iter()).enumerate() {
-            measure(|| {
+            let maybe_result = measure(|| {
                 {
                     let mut slave_cwd = slave_cwd.clone();
                     slave_cwd.chat.ds_uuid = Some(master_ds_uuid.clone());
 
-                    require!(PracticalEqTuple::new(&master_cwd.chat, &master_ds_root, master_cwd).practically_equals(
-                            &PracticalEqTuple::new(&slave_cwd.chat, &slave_ds_root, &slave_cwd))?,
-                             "Chat #{i} differs:\nWas    {:?}\nBecame {:?}", master_cwd.chat, slave_cwd.chat);
+                    check_diff!(PracticalEqTuple::new(&master_cwd.chat, &master_ds_root, master_cwd).practically_equals(
+                                    &PracticalEqTuple::new(&slave_cwd.chat, &slave_ds_root, &slave_cwd))?, false,
+                                format!("Chat #{i} differs"),
+                                Some((format!("{:?}", master_cwd.chat), format!("{:?}", slave_cwd.chat))));
                 }
 
                 let msg_count = master_cwd.chat.msg_count as usize;
@@ -302,26 +322,28 @@ pub fn ensure_datasets_are_equal(master_dao: &dyn ChatHistoryDao,
                 while offset < msg_count {
                     let master_messages = master_dao.scroll_messages(&master_cwd.chat, offset, BATCH_SIZE)?;
                     let slave_messages = slave_dao.scroll_messages(&slave_cwd.chat, offset, BATCH_SIZE)?;
-                    require!(!master_messages.is_empty() && !slave_messages.is_empty(),
-                             "Empty messages batch returned, either flawed batching logic or incorrect master_chat.msgCount");
-                    require!(master_messages.len() == slave_messages.len(),
-                             "Messages size for chat {} differs:\nWas    {}\nBecame {}",
-                             master_cwd.chat.qualified_name(), master_chats.len(), slave_chats.len());
+                    // This can only happen when message count is different
+                    check_diff!(!master_messages.is_empty() && !slave_messages.is_empty(), false,
+                                "Empty messages batch encountered", None::<(String, String)>);
+                    check_diff!(master_messages.len() == slave_messages.len(), false,
+                                format!("Messages size for chat {} differs", master_cwd.chat.qualified_name()),
+                                Some((master_chats.len(), slave_chats.len())));
 
                     for (j, (master_msg, slave_msg)) in master_messages.iter().zip(slave_messages.iter()).enumerate() {
                         let master_pet = PracticalEqTuple::new(master_msg, &master_ds_root, master_cwd);
                         let slave_pet = PracticalEqTuple::new(slave_msg, &slave_ds_root, &slave_cwd);
-                        require!(master_pet.practically_equals(&slave_pet)?,
-                                 "Message #{j} for chat {} differs:\nWas    {:?}\nBecame {:?}",
-                                 master_cwd.chat.qualified_name(), master_msg, slave_msg);
+                        check_diff!(master_pet.practically_equals(&slave_pet)?, false,
+                                    format!("Message #{j} for chat {} differs", master_cwd.chat.qualified_name()),
+                                    Some((format!("{:?}", master_msg), format!("{:?}", slave_msg))));
                     }
                     offset += master_messages.len();
                 }
-                Ok(())
-            }, |_, t| log::info!("Chat {} ({} messages) checked in {t} ms", slave_cwd.chat.qualified_name(),
-                                                                            slave_cwd.chat.msg_count))?;
+                Ok(vec![])
+            }, |_: &Result<_>, t| log::info!("Chat {} ({} messages) checked in {t} ms", slave_cwd.chat.qualified_name(),
+                                                                                        slave_cwd.chat.msg_count))?;
+            if !maybe_result.is_empty() { return Ok(maybe_result); }
         }
 
-        Ok(())
+        Ok(differences)
     }, |_, t| log::info!("Dataset equality checked in {t} ms"))
 }

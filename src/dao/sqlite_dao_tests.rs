@@ -777,7 +777,10 @@ fn backups() -> EmptyRes {
 
     let loaded_dao = SqliteDao::load(&unzip_path)?;
 
-    ensure_datasets_are_equal(&dst_dao, ds_uuid, &loaded_dao, ds_uuid)?;
+    assert!(get_datasets_diff(
+        &dst_dao, ds_uuid,
+        &loaded_dao, ds_uuid,
+        10)?.is_empty());
 
     Ok(())
 }
