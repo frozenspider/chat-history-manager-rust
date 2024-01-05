@@ -81,7 +81,7 @@ fn fetching() -> EmptyRes {
             let left_eq = practically_eq(&src.0, &dst.0)?;
             let between_eq = src.1 == dst.1;
             let right_eq = practically_eq(&src.2, &dst.2)?;
-            Ok::<_, anyhow::Error>(left_eq && between_eq && right_eq)
+            ok(left_eq && between_eq && right_eq)
         };
 
         assert_eq!(src_cwd.chat, dst_cwd.chat);
@@ -95,19 +95,19 @@ fn fetching() -> EmptyRes {
         let fetch = |f: &dyn Fn(&dyn ChatHistoryDao, &ChatWithDetails, &[Message]) -> Result<Vec<Message>>| {
             let src_msgs = f(daos.src_dao.as_ref(), &src_cwd, &all_src_msgs)?;
             let dst_msgs = f(&daos.dst_dao, &dst_cwd, &all_dst_msgs)?;
-            Ok::<_, anyhow::Error>((src_msgs, dst_msgs))
+            ok((src_msgs, dst_msgs))
         };
         let fetch_abbrev = |f: &dyn Fn(&dyn ChatHistoryDao, &ChatWithDetails, &[Message]) -> Result<(Vec<Message>, usize, Vec<Message>)>| {
             let src_res = f(daos.src_dao.as_ref(), &src_cwd, &all_src_msgs)?;
             let dst_res = f(&daos.dst_dao, &dst_cwd, &all_dst_msgs)?;
-            Ok::<_, anyhow::Error>((src_res, dst_res))
+            ok((src_res, dst_res))
         };
 
         // An unfortunate shortcoming of Rust not supporting generics for closures
         let count = |f: &dyn Fn(&dyn ChatHistoryDao, &ChatWithDetails, &[Message]) -> Result<usize>| {
             let src_msgs = f(daos.src_dao.as_ref(), &src_cwd, &all_src_msgs)?;
             let dst_msgs = f(&daos.dst_dao, &dst_cwd, &all_dst_msgs)?;
-            Ok::<_, anyhow::Error>((src_msgs, dst_msgs))
+            ok((src_msgs, dst_msgs))
         };
 
         macro_rules! assert_correct {

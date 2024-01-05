@@ -2,10 +2,10 @@
 /// as UTF-16 LE. Afterwards, storage moved to a new separate .db files and mra.dbs was left as-is until 2015-03-17
 /// when all conversations were deleted from it.
 ///
-/// Known issues:
+/// Known issues/limitations:
 /// * Some smile types are not converted and left as-is since there's no reference too see how they looked like.
-/// * Only a limited RTF support has been added - just bold, italic and underline styles, and only one per substring.
 /// * In rare cases, Russian text is double-encoded as cp1251 within UTF-16 LE. Distorted text is passed as-is.
+/// * Timestamps are as if local timezone was UTC, and actual timezone is not known.
 ///
 /// Following references were helpful in reverse engineering the format (in Russian):
 /// * https://xakep.ru/2012/11/30/mailru-agent-hack/
@@ -78,24 +78,24 @@ fn load_conversations<'a>(dbs_bytes: &'a [u8], offsets_table: &[u32]) -> Result<
                 let underscore_pos = find_first_position(name_slice, &[0x5F, 0x00], 2);
                 [zero_byte_pos, underscore_pos].into_iter().flatten().min().unwrap()
             };
-            let myself_name_utf16 = &name_slice[..separator_pos];
+            let myself_username_utf16 = &name_slice[..separator_pos];
 
             // Just zero char this time
             let name_slice = &name_slice[(separator_pos + 2)..];
             let separator_pos = find_first_position(name_slice, &[0x00, 0x00], 2).unwrap();
-            let other_name_utf16 = &name_slice[..separator_pos];
+            let conv_username_utf16 = &name_slice[..separator_pos];
 
             let conv = MraLegacyConversation {
                 offset: current_offset,
-                myself_name: WStr::from_utf16le(myself_name_utf16)?,
-                other_name: WStr::from_utf16le(other_name_utf16)?,
+                myself_username: WStr::from_utf16le(myself_username_utf16)?,
+                conv_username: WStr::from_utf16le(conv_username_utf16)?,
                 msg_id1: u32_ptr_to_option(read_u32(dbs_bytes, current_offset + MESSAGE_IDS_OFFSET)),
                 msg_id2: u32_ptr_to_option(read_u32(dbs_bytes, current_offset + MESSAGE_IDS_OFFSET + 4)),
                 raw: &dbs_bytes[current_offset..(current_offset + len)],
             };
 
             log::debug!("mail_data at offset {:#010x}: Conversation between {} and {}",
-                        current_offset, conv.myself_name.to_utf8(), conv.other_name.to_utf8());
+                        current_offset, conv.myself_username.to_utf8(), conv.conv_username.to_utf8());
             result.push(conv);
         } else {
             log::debug!("mail_data at offset {:#010x}: Skipping as it doesn't seem to be message related", current_offset);
@@ -119,6 +119,7 @@ fn load_messages<'a>(
 ) -> Result<Vec<MraLegacyConversationWithMessages<'a>>> {
     let mut result = vec![];
     for conv in convs {
+        let mut sequential_id = 0;
         let mut msg_id_option = conv.msg_id1;
         let mut msgs = vec![];
         while let Some(msg_id) = msg_id_option {
@@ -154,10 +155,11 @@ fn load_messages<'a>(
             let payload_offset = text_offset + 2 * header.text_length as usize;
             let payload = &dbs_bytes[payload_offset..(header_offset + header.size as usize)];
 
-            let mra_msg = MraLegacyMessage { offset: header_offset, header, text, author, payload_offset, payload };
+            let mra_msg = MraLegacyMessage { sequential_id, offset: header_offset, header, text, author, payload_offset, payload };
             msgs.push(mra_msg);
 
             msg_id_option = u32_ptr_to_option(header.prev_id);
+            sequential_id += 1;
         }
         result.push(MraLegacyConversationWithMessages { conv, msgs });
     }
@@ -174,8 +176,8 @@ pub(super) fn collect_datasets(
     // Collecting all messages together sorted by timestamp to make sure we only deal with the last possible state
     let mut msgs_with_context = Vec::with_capacity(convs_with_msgs.iter().map(|c| c.msgs.len()).sum());
     for conv_w_msgs in convs_with_msgs.iter() {
-        let myself_username = conv_w_msgs.conv.myself_name.to_utf8();
-        let conv_username = conv_w_msgs.conv.other_name.to_utf8();
+        let myself_username = conv_w_msgs.conv.myself_username.to_utf8();
+        let conv_username = conv_w_msgs.conv.conv_username.to_utf8();
 
         result.entry(myself_username.clone()).or_insert_with(|| {
             let ds_uuid = PbUuid::random();
@@ -232,7 +234,7 @@ pub(super) fn collect_datasets(
             msgs_with_context.push((mra_msg, myself_username.clone(), from_username));
         }
     }
-    msgs_with_context.sort_unstable_by_key(|mwc| mwc.0.header.time);
+    msgs_with_context.sort_unstable_by_key(|mwc| mwc.0.header.filetime_utc);
 
     // Iterating from the end to work on the last state
     for (mra_msg, dataset_key, from_username) in msgs_with_context.into_iter().rev() {
@@ -253,11 +255,11 @@ pub(super) fn collect_datasets(
 
 pub(super) fn convert_messages(
     convs_with_msgs: &[MraLegacyConversationWithMessages],
-    mut dataset_map: &mut DatasetMap,
+    dataset_map: &mut DatasetMap,
 ) -> EmptyRes {
     for conv_w_msgs in convs_with_msgs.iter() {
-        let myself_username = conv_w_msgs.conv.myself_name.to_utf8();
-        let conv_username = conv_w_msgs.conv.other_name.to_utf8();
+        let myself_username = conv_w_msgs.conv.myself_username.to_utf8();
+        let conv_username = conv_w_msgs.conv.conv_username.to_utf8();
 
         if conv_w_msgs.msgs.is_empty() {
             log::debug!("Skipping conversation between {} and {} with no messages", myself_username, conv_username);
@@ -328,23 +330,12 @@ fn convert_message(
     prev_msgs: &mut [Message],
     ongoing_call_msg_id: &mut Option<i64>,
 ) -> Result<Option<Message>> {
-    let timestamp = filetime_to_timestamp(mra_msg.header.time);
+    // Note that this timestamp is in UTC, not in local timezone! And there's no known way to get the actual timezone
+    // difference unless we have a newer DB format with messages overlap.
+    let timestamp = filetime_to_timestamp(mra_msg.header.filetime_utc);
 
-    // For a source message ID, we're using message time.
-    // It's SUPPOSED to be precise enough to be unique within a chat, but in practice it's too rounded.
-    // To work around that, we increment source IDs when it's duplicated.
-    let source_id_option = {
-        let source_id = (mra_msg.header.time / 2) as i64;
-        Some(if let Some(last_source_id) = prev_msgs.last().and_then(|m| m.source_id_option) {
-            if last_source_id >= source_id {
-                last_source_id + 1
-            } else {
-                source_id
-            }
-        } else {
-            source_id
-        })
-    };
+    // Since messages cannot be deleted, message number should be persistent across different DB snapshots
+    let source_id_option = Some(mra_msg.sequential_id as i64);
 
     let from_me = mra_msg.is_from_me()?;
     let mut from_username = (if from_me { myself_username } else { conv_name }).to_owned();
@@ -626,8 +617,8 @@ fn convert_message(
 pub(super) struct MraLegacyConversation<'a> {
     /// Offset at which data begins
     offset: usize,
-    myself_name: &'a WStr<LE>,
-    other_name: &'a WStr<LE>,
+    myself_username: &'a WStr<LE>,
+    conv_username: &'a WStr<LE>,
     /// Point to offset table data
     msg_id1: Option<u32>,
     /// Point to offset table data
@@ -644,8 +635,8 @@ struct MraLegacyMessageHeader {
     prev_id: u32,
     next_id: u32,
     _unknown1: u32,
-    /// WinApi FILETIME
-    time: u64,
+    /// WinApi FILETIME but local timezone is treated as if it was UTC
+    filetime_utc: u64,
     /// Known variants are listed in MraMessageType
     tpe_u32: u32,
     flag_outgoing: u8,
@@ -663,6 +654,8 @@ struct MraLegacyMessageHeader {
 }
 
 struct MraLegacyMessage<'a> {
+    /// 0 for the first message of conversation, increments for next one
+    sequential_id: u32,
     /// Offset at which header begins
     offset: usize,
     header: &'a MraLegacyMessageHeader,

@@ -42,9 +42,9 @@ impl<'a, T: 'a> Tup<'a, T> {
 /// Since equality for String is equality for path, two missing paths are equal even if one of them is None
 impl<'a, > PracticalEq for Tup<'a, Option<String>> {
     fn practically_equals(&self, other: &Self) -> Result<bool> {
-        let missing = "[MISSING]".to_owned();
-        let lhs = self.with(self.v.as_ref().unwrap_or(&missing));
-        let rhs = other.with(other.v.as_ref().unwrap_or(&missing));
+        lazy_static! { static ref MISSING: String = String::from("[MISSING]"); }
+        let lhs = self.with(self.v.as_ref().unwrap_or(&MISSING));
+        let rhs = other.with(other.v.as_ref().unwrap_or(&MISSING));
         lhs.practically_equals(&rhs)
     }
 }

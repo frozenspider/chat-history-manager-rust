@@ -70,7 +70,7 @@ impl DataLoader for MailRuAgentDataLoader {
 }
 
 fn load_mra_dbs(path: &Path, dao_name: String) -> Result<Box<InMemoryDao>> {
-    let mut parent_path = path.parent().expect("Database file has no parent!");
+    let parent_path = path.parent().expect("Database file has no parent!");
     let storage_path = if path_file_name(parent_path)? == "Base" {
         parent_path.parent().expect(r#""Base" directory has no parent!"#)
     } else {
@@ -79,27 +79,37 @@ fn load_mra_dbs(path: &Path, dao_name: String) -> Result<Box<InMemoryDao>> {
 
     let mut dataset_map: HashMap<_, _> = Default::default();
 
+    log::info!("Loading {} (legacy) format", MRA_DBS);
+
+    // Read the whole file into the memory.
+    let dbs_bytes = fs::read(path)?;
+
+    // We'll be loading chats in three phases.
+    // Phase 1: Read conversations in an MRA inner format, mapped to file bytes.
+    let convs_with_msgs = mra_dbs::load_convs_with_msgs(&dbs_bytes)?;
+
+    // Phase 2: Populate datasets and users with latest values, usernames being emails.
+    let dataset_map_2 = mra_dbs::collect_datasets(&convs_with_msgs, &storage_path)?;
+    dataset_map.extend(dataset_map_2);
+
+    // Phase 3: Convert conversations to our format.
+    mra_dbs::convert_messages(&convs_with_msgs, &mut dataset_map)?;
+
+    log::info!("Loading .db (newer) format");
+    let mut conv_maps = HashMap::new();
     for subdir in DB_FILE_DIRS.iter() {
         let path = parent_path.join(subdir);
         if path.exists() {
-            let path_ds_map = db::process_accounts_dir(&path, &storage_path)?;
-            dataset_map.extend(path_ds_map);
+            let conv_map = db::load_accounts_dir(&path, &storage_path, &mut dataset_map)?;
+            conv_maps.extend(conv_map);
         }
     }
 
-    // // Read the whole file into the memory.
-    // let dbs_bytes = fs::read(path)?;
-    //
-    // // We'll be loading chats in three phases.
-    // // Phase 1: Read conversations in an MRA inner format, mapped to file bytes.
-    // let convs_with_msgs = mra_dbs::load_convs_with_msgs(&dbs_bytes)?;
-    //
-    // // Phase 2: Populate datasets and users with latest values, usernames being emails.
-    // let dataset_map_2 = mra_dbs::collect_datasets(&convs_with_msgs, &storage_path)?;
-    // dataset_map.extend(dataset_map_2);
-    //
-    // // Phase 3: Convert conversations to our format.
-    // mra_dbs::convert_messages(&convs_with_msgs, &mut dataset_map)?;
+    if let Some(timestamp_diff) = find_timestamp_delta(&dataset_map, &conv_maps)? {
+        change_timestamps(timestamp_diff, &mut dataset_map);
+    }
+
+    db::merge_conversations(conv_maps, &mut dataset_map)?;
 
     let data = dataset_map_to_dao_data(dataset_map);
     Ok(Box::new(InMemoryDao::new(
@@ -107,6 +117,66 @@ fn load_mra_dbs(path: &Path, dao_name: String) -> Result<Box<InMemoryDao>> {
         storage_path,
         data,
     )))
+}
+
+/// Old MRA format treated local timezone as UTC, while newer format treats timezone properly.
+/// There's also an overlap between old and new messages, so we use it to try to determine timezone difference.
+fn find_timestamp_delta(
+    old_dataset_map: &HashMap<String, MraDatasetEntry>,
+    new_conv_maps: &HashMap<String, db::ConversationsMap>,
+) -> Result<Option<i64>> {
+    log::debug!("Trying to determine timestamp delta");
+    for (myself_username, old_entry, new_conv) in new_conv_maps.iter()
+        .filter_map(|(k, nv)| old_dataset_map.get(k).map(|ov| (k, ov, nv)))
+    {
+        for (other_username, old_msgs, new_msgs) in new_conv.iter()
+            .filter_map(|(k, nv)| old_entry.cwms.get(k).map(|ov| (k, &ov.messages, &nv.0)))
+            .filter(|(k, ov, nv)| !ov.is_empty() && !nv.is_empty())
+        {
+            log::debug!("Analyzing conversation between {myself_username} and {other_username}");
+
+            if let Some(old_idx) = find_overpalling_subset(&old_msgs, &new_msgs) {
+                let delta = new_msgs[0].timestamp - old_msgs[old_idx].timestamp;
+                // Timestamps often differs by a few seconds beyond the normal timezone difference.
+                // Let's round it within 15-minutes precision
+                const DIV: f64 = 60.0 * 15.0;
+                let delta = ((delta as f64 / DIV).round() * DIV) as i64;
+                log::debug!("Timestamp delta determined to be {delta} ({} hrs)", (delta as f64 / 60.0 / 60.0));
+                return Ok(Some(delta));
+            }
+        }
+    }
+    log::warn!("Timestamp delta could not be determined!");
+    Ok(None)
+}
+
+/// If there is a trailing subslice of `old_msgs` that match leading subslice of `new_msgs`
+/// (judging by the text and typed parts only), find the `old_msgs` index of the first element.
+fn find_overpalling_subset(old_msgs: &[Message], new_msgs: &[Message]) -> Option<usize> {
+    'old_idx_loop:
+    for old_idx in (0..old_msgs.len()).rev() {
+        let old_msgs_subset = &old_msgs[old_idx..];
+        if old_msgs_subset.len() > new_msgs.len() { break; }
+        let new_msgs_subset = &new_msgs[..old_msgs_subset.len()];
+        for (old_msg, new_msg) in old_msgs_subset.iter().zip(new_msgs_subset.iter()) {
+            // PracticallyEq requires too much context, but direct Typed equality should do fine here
+            if old_msg.text != new_msg.text || old_msg.typed != new_msg.typed {
+                continue 'old_idx_loop;
+            }
+        }
+        return Some(old_idx);
+    }
+    return None;
+}
+
+fn change_timestamps(timestamp_diff: i64, dataset_map: &mut HashMap<String, MraDatasetEntry>) {
+    for entry in dataset_map.values_mut() {
+        for cwm in entry.cwms.values_mut() {
+            for msg in cwm.messages.iter_mut() {
+                msg.timestamp += timestamp_diff;
+            }
+        }
+    }
 }
 
 fn dataset_map_to_dao_data(dataset_map: DatasetMap) -> Vec<DatasetEntry> {
@@ -303,7 +373,6 @@ trait MraMessage: Debug {
 //
 // Assertions
 //
-
 
 fn context(mra_msg: &impl MraMessage, conv_name: &str) -> String {
     format!("Unexpected {:?} message format\nConversation: {conv_name}, message: {mra_msg:?}", mra_msg.get_tpe().unwrap())
@@ -708,7 +777,6 @@ fn parse_rtf(rtf: &str) -> Result<Vec<RichTextElement>> {
 }
 
 fn to_utf8<'a>(bytes: &'a [u8], enc: &'static Encoding) -> Result<Cow<'a, str>> {
-    use encoding_rs::*;
     let (res, had_errors) = enc.decode_without_bom_handling(&bytes);
     if !had_errors {
         Ok(res)

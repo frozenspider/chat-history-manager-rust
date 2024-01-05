@@ -74,7 +74,7 @@ impl MergeService for Arc<Mutex<ChatHistoryManagerServer>> {
         self.process_merge_service_request(&req, |req, m_dao, m_ds, s_dao, s_ds| {
             let sqlite_dao_dir = Path::new(&req.new_database_dir);
             let user_merges = req.user_merges.iter().map(|um|
-                Ok::<_, anyhow::Error>(match UserMergeType::try_from(um.tpe)? {
+                ok(match UserMergeType::try_from(um.tpe)? {
                     UserMergeType::Retain => UserMergeDecision::Retain(UserId(um.user_id)),
                     UserMergeType::Add => UserMergeDecision::Add(UserId(um.user_id)),
                     UserMergeType::DontAdd => UserMergeDecision::DontAdd(UserId(um.user_id)),
@@ -83,7 +83,7 @@ impl MergeService for Arc<Mutex<ChatHistoryManagerServer>> {
                 })
             ).try_collect()?;
             let chat_merges = req.chat_merges.iter().map(|cm|
-                Ok::<_, anyhow::Error>(match ChatMergeType::try_from(cm.tpe)? {
+                ok(match ChatMergeType::try_from(cm.tpe)? {
                     ChatMergeType::Retain => ChatMergeDecision::Retain { master_chat_id: ChatId(cm.chat_id) },
                     ChatMergeType::DontMerge => ChatMergeDecision::DontMerge { chat_id: ChatId(cm.chat_id) },
                     ChatMergeType::Add => ChatMergeDecision::Add { slave_chat_id: ChatId(cm.chat_id) },
@@ -93,7 +93,7 @@ impl MergeService for Arc<Mutex<ChatHistoryManagerServer>> {
                         use MessagesMergeDecision as MMD;
                         let message_merges = cm.message_merges.iter().map(|mm| {
                             let range = mm.range.as_ref().context("Messages range not supplied!")?;
-                            Ok::<_, anyhow::Error>(match MessageMergeType::try_from(mm.tpe)? {
+                            ok(match MessageMergeType::try_from(mm.tpe)? {
                                 MMT::Match => MMD::Match(MergeAnalysisSectionMatch {
                                     first_master_msg_id: MasterInternalId(range.first_master_msg_id),
                                     last_master_msg_id: MasterInternalId(range.last_master_msg_id),

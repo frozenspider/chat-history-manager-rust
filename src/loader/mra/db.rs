@@ -9,8 +9,16 @@ const MSG_HEADER_MAGIC_NUMBER: u32 = 0x2D;
 
 const FLAG_INCOMING: u8 = 0b100;
 
-pub(super) fn process_accounts_dir(path: &Path, storage_path: &Path) -> Result<DatasetMap> {
-    let mut dataset_map = DatasetMap::new();
+pub(super) type ConversationsMap = HashMap<String, (Vec<Message>, HashSet<UserId>)>;
+
+/// Note that this will NOT add chats/messages to dataset map.
+/// Instead, it will return them to be analyzed and added later.
+pub(super) fn load_accounts_dir(
+    path: &Path,
+    storage_path: &Path,
+    dataset_map: &mut DatasetMap,
+) -> Result<HashMap<String, ConversationsMap>> {
+    let mut result: HashMap<_, _> = Default::default();
     for dir_entry in fs::read_dir(path)? {
         let dir_entry = dir_entry?;
         let meta = dir_entry.metadata()?;
@@ -18,25 +26,27 @@ pub(super) fn process_accounts_dir(path: &Path, storage_path: &Path) -> Result<D
         let name = path_file_name(&path)?;
         if meta.is_dir() {
             let ds_uuid = PbUuid::random();
-            let (users, cwms) = process_account(name, &ds_uuid, &path)?;
-            dataset_map.insert(name.to_owned(), MraDatasetEntry {
-                ds: Dataset { uuid: Some(ds_uuid), alias: name.to_owned() },
+            let entry = dataset_map.entry(name.to_owned()).or_insert_with(|| MraDatasetEntry {
+                ds: Dataset { uuid: Some(ds_uuid.clone()), alias: name.to_owned() },
                 ds_root: storage_path.to_path_buf(),
-                users,
-                cwms,
+                users: Default::default(),
+                cwms: Default::default(),
             });
+            let conv_map = load_account(name, &ds_uuid, &path, &mut entry.users)?;
+            result.insert(name.to_owned(), conv_map);
         } else {
             log::warn!("{} is not a directory, ignored", name);
         }
     }
-    Ok(dataset_map)
+    Ok(result)
 }
 
-fn process_account(
+fn load_account(
     myself_username: &str,
     ds_uuid: &PbUuid,
     path: &Path,
-) -> Result<(HashMap<String, User>, HashMap<String, ChatWithMessages>)> {
+    users: &mut HashMap<String, User>,
+) -> Result<ConversationsMap> {
     let myself = User {
         ds_uuid: Some(ds_uuid.clone()),
         id: *MYSELF_ID,
@@ -47,47 +57,41 @@ fn process_account(
     };
 
     // Read whole files into the memory
-    let mut files_content: Vec<(String, Vec<u8>)> = vec![];
+    let mut db_msgs_map: HashMap<String, Vec<DbMessage>> = Default::default();
     for db_file in list_all_files(path, false)?
         .into_iter()
         .filter(|p| p.extension().and_then(|s| s.to_str()).is_some_and(|s| s == "db"))
     {
         let conv_name = path_file_name(&db_file)?.smart_slice(..-3).to_owned();
-
-        let index_file = db_file.parent().unwrap().join(format!("{conv_name}.index"));
-        require!(index_file.exists(), "Index file for {conv_name} does not exist!");
-
-        let db_bytes = fs::read(db_file)?;
-        let index_bytes = fs::read(index_file)?;
-
         if conv_name == "unreads" { continue; }
 
-        files_content.push((conv_name, db_bytes));
+        let db_bytes = fs::read(db_file)?;
+
+        let mut msgs = load_conversation_messages(&conv_name, &db_bytes)?;
+        // Messages might be out of order
+        msgs.sort_by_key(|m| m.header.filetime);
+
+        db_msgs_map.insert(conv_name, msgs);
     }
-    let files_content = files_content;
 
-    let db_msgs_map: HashMap<String, Vec<DbMessage>> =
-        files_content
-            .iter()
-            .map(|(k, v)| get_conversation_messages(k, v).map(|v| (k.clone(), v)))
-            .try_collect()?;
-
-    let mut users = HashMap::from([(myself_username.to_owned(), myself)]);
-    let mut cwms: HashMap<_, _> = Default::default();
+    if users.is_empty() {
+        users.insert(myself_username.to_owned(), myself);
+    }
 
     for (conv_name, db_msgs) in db_msgs_map.iter() {
-        collect_users(ds_uuid, myself_username, conv_name, db_msgs, &mut users)?;
+        collect_users(ds_uuid, myself_username, conv_name, db_msgs, users)?;
     }
 
-    for (conv_name, _) in files_content.iter() {
-        let db_msgs = &db_msgs_map[conv_name];
-        let cwm = process_conversation(db_msgs, myself_username, &conv_name, ds_uuid, &users)?;
-        cwms.insert(conv_name.to_owned(), cwm);
+    let mut result: ConversationsMap = Default::default();
+    for (conv_name, db_msgs) in db_msgs_map.into_iter() {
+        let (new_msgs, interlocutor_ids) = process_conversation(&db_msgs, myself_username, &conv_name, &users)?;
+        result.insert(conv_name, (new_msgs, interlocutor_ids));
     }
-    Ok((users, cwms))
+    Ok(result)
 }
 
-fn get_conversation_messages<'a>(conv_name: &str, db_bytes: &'a [u8]) -> Result<Vec<DbMessage<'a>>> {
+/// Filters out empty (placeholder?) messages.
+fn load_conversation_messages<'a>(conv_name: &str, db_bytes: &'a [u8]) -> Result<Vec<DbMessage>> {
     let mut result = vec![];
     let mut db_bytes = db_bytes;
     let mut offset = 0;
@@ -108,7 +112,7 @@ fn get_conversation_messages<'a>(conv_name: &str, db_bytes: &'a [u8]) -> Result<
         // This is inherently unsafe. The only thing we can do is to check a magic number right after.
         let header = unsafe {
             let header_ptr = message_bytes.as_ptr() as *const DbMessageHeader;
-            header_ptr.as_ref::<'a>().unwrap()
+            header_ptr.as_ref::<'a>().unwrap().clone()
         };
         require!(header.magic_number == MSG_HEADER_MAGIC_NUMBER && header.magic_value_one == 1 && header.padding2 == 0,
                  "Incorrect header for message at offset {offset:#010x}: {header:?}");
@@ -116,7 +120,7 @@ fn get_conversation_messages<'a>(conv_name: &str, db_bytes: &'a [u8]) -> Result<
         let bytes = &message_bytes[mem::size_of::<DbMessageHeader>()..];
         let (payload, bytes) = next_sized_chunk(bytes)?;
 
-        let mut mra_msg = DbMessage { offset, header, payload, sections: vec![] };
+        let mut mra_msg = DbMessage { offset, header, payload: payload.to_vec(), sections: vec![] };
         require_format_clue(bytes.is_empty(), &mra_msg, conv_name, "incorrect remainder")?;
 
         // Not really sure what is the meaning of this, but empty messages can be identified by this signature.
@@ -125,7 +129,7 @@ fn get_conversation_messages<'a>(conv_name: &str, db_bytes: &'a [u8]) -> Result<
             require_format(mra_msg.payload == vec![1, 0, 0, 0, 0], &mra_msg, conv_name)?;
         } else {
             require_format_clue(mra_msg.payload.len() > 13, &mra_msg, conv_name, "payload is too short")?;
-            let (_unknown, mut payload) = next_n_bytes::<5>(mra_msg.payload);
+            let (_unknown, mut payload) = next_n_bytes::<5>(&mra_msg.payload);
 
             // Getting sections out of payload
             while !payload.is_empty() {
@@ -135,14 +139,17 @@ fn get_conversation_messages<'a>(conv_name: &str, db_bytes: &'a [u8]) -> Result<
                         .with_context(|| format!("unknown message section: {section_type}"))?;
                     // No matter what the section is, it's sized
                     let (section_bytes, payload) = next_sized_chunk(payload)?;
-                    mra_msg.sections.push((section_type, section_bytes));
+                    mra_msg.sections.push((section_type, section_bytes.to_vec()));
                     payload
                 }
             }
             mra_msg.sections.sort_by_key(|pair| pair.0);
         }
 
-        result.push(mra_msg);
+        // If message has no sections, it's a weird placeholder message we don't really care about
+        if !mra_msg.sections.is_empty() {
+            result.push(mra_msg);
+        }
 
         offset += offset_shift + 8;
         db_bytes = rest_bytes;
@@ -161,8 +168,6 @@ fn collect_users(
     upsert_user(users, ds_uuid, conv_name, None);
 
     for mra_msg in msgs {
-        if mra_msg.sections.is_empty() { continue; }
-
         macro_rules! set_option {
             ($holder:ident, $new_value:expr) => {{
                 let new_value = $new_value;
@@ -246,50 +251,21 @@ fn process_conversation(
     db_msgs: &[DbMessage],
     myself_username: &str,
     conv_name: &str,
-    ds_uuid: &PbUuid,
     users: &HashMap<String, User>,
-) -> Result<ChatWithMessages> {
-    let mut internal_id = 0;
-
+) -> Result<(Vec<Message>, HashSet<UserId>)> {
     let mut msgs: Vec<Message> = vec![];
     let mut ongoing_call_msg_id = None;
-    let mut interlocutor_ids = HashSet::from([*MYSELF_ID]);
+    let mut interlocutor_ids = HashSet::from([MYSELF_ID]);
     for mra_msg in db_msgs {
-        if mra_msg.sections.is_empty() { continue; }
-
-        if let Some(msg) = convert_message(mra_msg, internal_id, myself_username, conv_name, users,
+        // Using -1 as a placeholder internal_id
+        if let Some(msg) = convert_message(mra_msg, -1, myself_username, conv_name, users,
                                            &mut msgs, &mut ongoing_call_msg_id)? {
-            interlocutor_ids.insert(msg.from_id);
+            interlocutor_ids.insert(UserId(msg.from_id));
             msgs.push(msg);
-            internal_id += 1;
         }
     }
 
-    let member_ids = interlocutor_ids
-        .into_iter()
-        .sorted_by_key(|id| if *id == *MYSELF_ID { i64::MIN } else { *id })
-        .collect_vec();
-
-    let chat_type = if conv_name.ends_with("@chat.agent") || member_ids.len() > 2 {
-        ChatType::PrivateGroup
-    } else {
-        ChatType::Personal
-    };
-
-    Ok(ChatWithMessages {
-        chat: Some(Chat {
-            ds_uuid: Some(ds_uuid.clone()),
-            id: hash_to_id(conv_name),
-            name_option: Some(conv_name.to_owned()),
-            source_type: SourceType::Mra as i32,
-            tpe: chat_type as i32,
-            img_path_option: None,
-            member_ids,
-            msg_count: msgs.len() as i32,
-            main_chat_id: None,
-        }),
-        messages: msgs,
-    })
+    Ok((msgs, interlocutor_ids))
 }
 
 fn convert_message(
@@ -568,19 +544,91 @@ fn convert_message(
     )))
 }
 
+pub(super) fn merge_conversations(
+    convs_map: HashMap<String, ConversationsMap>,
+    dataset_map: &mut DatasetMap,
+) -> EmptyRes {
+    for (myself_username, conv_map) in convs_map {
+        // Guaranteed to be present
+        let entry = dataset_map.get_mut(&myself_username).unwrap();
+        let ds_uuid = entry.ds.uuid().clone();
+
+        for (conv_username, (new_msgs, mut interlocutor_ids)) in conv_map {
+            let cwm = entry.cwms.entry(conv_username.clone()).or_insert_with(|| {
+                ChatWithMessages {
+                    chat: Some(Chat {
+                        ds_uuid: Some(ds_uuid.clone()),
+                        id: hash_to_id(&conv_username),
+                        name_option: Some(conv_username.clone()),
+                        source_type: SourceType::Mra as i32,
+                        tpe: -1, // Will be changed later
+                        img_path_option: None,
+                        member_ids: vec![], // Will be changed later
+                        msg_count: -1, // Will be changed later
+                        main_chat_id: None,
+                    }),
+                    messages: vec![],
+                }
+            });
+
+            merge_messages(format!("{myself_username} with {conv_username}"),
+                           new_msgs,
+                           &mut cwm.messages)?;
+
+            if let Some(chat) = cwm.chat.as_mut() {
+                interlocutor_ids.extend(chat.member_ids.iter().map(|id| UserId(*id)));
+                chat.member_ids = interlocutor_ids
+                    .into_iter()
+                    .map(|id| id.0)
+                    .sorted_by_key(|&id| if id == *MYSELF_ID { i64::MIN } else { id })
+                    .collect_vec();
+
+                chat.tpe = if conv_username.ends_with("@chat.agent") || chat.member_ids.len() > 2 {
+                    ChatType::PrivateGroup as i32
+                } else {
+                    ChatType::Personal as i32
+                };
+                chat.msg_count = cwm.messages.len() as i32;
+            }
+        }
+    }
+
+    Ok(())
+}
+
+/// Merge new messages into old ones, skipping overlapping duplicate messages.
+/// Note that "duplicate" messages have different source IDs, and might actually have slight time differences.
+fn merge_messages(pretty_conv_name: String, new_msgs: Vec<Message>, msgs: &mut Vec<Message>) -> EmptyRes {
+    if msgs.is_empty() {
+        // Trivial case
+        msgs.extend(new_msgs);
+        return Ok(());
+    } else if new_msgs.is_empty() {
+        return Ok(());
+    } else if let Some(old_idx) = find_overpalling_subset(&msgs, &new_msgs) {
+        msgs.truncate(msgs.len() - old_idx);
+        msgs.extend(new_msgs);
+    } else {
+        msgs.extend(new_msgs);
+    }
+
+    Ok(())
+}
+
 //
 // Structs and enums
 //
 
-struct DbMessage<'a> {
+/// Made to own its content to simplify moving it around.
+struct DbMessage {
     offset: usize,
-    header: &'a DbMessageHeader,
-    payload: &'a [u8],
+    header: DbMessageHeader,
+    payload: Vec<u8>,
     /// Parsed from payload
-    sections: Vec<(MessageSectionType, &'a [u8])>,
+    sections: Vec<(MessageSectionType, Vec<u8>)>,
 }
 
-impl MraMessage for DbMessage<'_> {
+impl MraMessage for DbMessage {
     fn get_tpe(&self) -> Result<MraMessageType> {
         let tpe_u8 = self.header.tpe_u8;
         FromPrimitive::from_u8(tpe_u8)
@@ -592,7 +640,7 @@ impl MraMessage for DbMessage<'_> {
     }
 }
 
-impl Debug for DbMessage<'_> {
+impl Debug for DbMessage {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         let mut formatter = formatter.debug_struct("DbMessage");
         formatter.field("offset", &format!("{:#010x}", self.offset));
