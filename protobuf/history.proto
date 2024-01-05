@@ -22,7 +22,7 @@ service HistoryLoaderService {
   rpc Load(LoadRequest) returns (LoadResponse) {}
   rpc GetLoadedFiles(Empty) returns (GetLoadedFilesResponse) {}
   rpc Close(CloseRequest) returns (Empty) {}
-  rpc EnsureSame(EnsureSameRequest) returns (Empty) {}
+  rpc EnsureSame(EnsureSameRequest) returns (EnsureSameResponse) {}
 }
 
 message Empty {}
@@ -640,6 +640,20 @@ message EnsureSameRequest {
 
   string slave_dao_key = 3;
   PbUuid slave_ds_uuid = 4 [(scalapb.field).no_box = true];
+}
+
+message EnsureSameResponse {
+  repeated Difference diffs = 1;
+}
+
+message Difference {
+  string message = 1;
+  optional DifferenceValues values = 2;
+}
+
+message DifferenceValues {
+  string old = 1;
+  string new = 2;
 }
 
 message BackupRequest {

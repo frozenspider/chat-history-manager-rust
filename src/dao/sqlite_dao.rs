@@ -187,7 +187,8 @@ impl SqliteDao {
 
             for src_ds in src_datasets.iter() {
                 let ds_uuid = src_ds.uuid();
-                ensure_datasets_are_equal(src, ds_uuid, self, ds_uuid)?;
+                let diff = get_datasets_diff(src, ds_uuid, self, ds_uuid, 1)?;
+                require!(diff.is_empty(), "{}", diff.iter().join("\n\n"))
             }
 
             Ok(())

@@ -152,6 +152,16 @@ impl Dataset {
     pub fn uuid(&self) -> &PbUuid { self.uuid.as_ref().unwrap() }
 }
 
+impl Display for Difference {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.message)?;
+        if let Some(ref values) = self.values {
+            write!(f, "\nWas:    {}\nBecame: {}", values.old, values.new)?;
+        }
+        Ok(())
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct ChatWithDetails {
     pub chat: Chat,

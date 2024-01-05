@@ -44,14 +44,19 @@ impl HistoryLoaderService for Arc<Mutex<ChatHistoryManagerServer>> {
         })
     }
 
-    async fn ensure_same(&self, req: Request<EnsureSameRequest>) -> TonicResult<Empty> {
+    async fn ensure_same(&self, req: Request<EnsureSameRequest>) -> TonicResult<EnsureSameResponse> {
+        const MAX_DIFFS: usize = 10;
+
         self.process_request(&req, |req, self_lock| {
             let master_dao = &self_lock.loaded_daos[&req.master_dao_key];
             let slave_dao = &self_lock.loaded_daos[&req.slave_dao_key];
             let master_ds_uuid = req.master_ds_uuid.as_ref().context("master_ds_uuid not set!")?;
             let slave_ds_uuid = req.slave_ds_uuid.as_ref().context("slave_ds_uuid not set!")?;
-            dao::ensure_datasets_are_equal((*master_dao).borrow().as_ref(), master_ds_uuid, (*slave_dao).borrow().as_ref(), slave_ds_uuid)?;
-            Ok(Empty {})
+            let diffs = dao::get_datasets_diff(
+                (*master_dao).borrow().as_ref(), master_ds_uuid,
+                (*slave_dao).borrow().as_ref(), slave_ds_uuid,
+                MAX_DIFFS)?;
+            Ok(EnsureSameResponse { diffs })
         })
     }
 }
