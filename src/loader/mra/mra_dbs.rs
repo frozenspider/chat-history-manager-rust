@@ -383,31 +383,7 @@ fn convert_message(
             }))
         }
         MraMessageType::FileTransfer => {
-            // We can get file names from the outgoing messages.
-            // Mail.Ru allowed us to send several files in one message, so we unite them here.
-            let text_parts = text.split('\n').collect_vec();
-            let file_name_option = if text_parts.len() >= 3 {
-                let file_paths: Vec<&str> = text_parts.smart_slice(1..-1).iter().map(|&s|
-                    s.trim()
-                        .rsplitn(3, ' ')
-                        .nth(2)
-                        .context("Unexpected file path format!"))
-                    .try_collect()?;
-                Some(file_paths.iter().join(", "))
-            } else {
-                None
-            };
-            (vec![], Typed::Regular(MessageRegular {
-                content_option: Some(Content {
-                    sealed_value_optional: Some(ContentSvo::File(ContentFile {
-                        path_option: None,
-                        file_name_option,
-                        mime_type_option: None,
-                        thumbnail_path_option: None,
-                    }))
-                }),
-                ..Default::default()
-            }))
+            convert_file_transfer(&text)?
         }
         MraMessageType::Call |
         MraMessageType::VideoCall => {
@@ -417,69 +393,10 @@ fn convert_message(
             let payload = validate_skip_chunk(payload, mra_msg.text.as_bytes())?;
             require_format(payload.is_empty(), mra_msg, conv_name)?;
 
-            const BEGIN_CONNECTING: &str = "Устанавливается соединение...";
-            const BEGIN_I_CALL: &str = "Звонок от вашего собеседника";
-            const BEGIN_I_VCALL: &str = "Видеозвонок от вашего собеседника";
-            const BEGIN_O_CALL: &str = "Вы звоните собеседнику. Ожидание ответа...";
-            const BEGIN_STARTED: &str = "Начался разговор";
-
-            const END_HANG: &str = "Звонок завершен";
-            const END_VHANG: &str = "Видеозвонок завершен";
-            const END_CONN_FAILED: &str = "Не удалось установить соединение. Попробуйте позже.";
-            const END_I_CANCELLED: &str = "Вы отменили звонок";
-            const END_I_CANCELLED_2: &str = "Вы отклонили звонок";
-            const END_I_VCANCELLED: &str = "Вы отменили видеозвонок";
-            const END_I_VCANCELLED_2: &str = "Вы отклонили видеозвонок"; // This one might not be real
-            const END_O_CANCELLED: &str = "Собеседник отменил звонок";
-            const END_O_VCANCELLED: &str = "Собеседник отменил видеозвонок";
-
-            // MRA is not very rigid in propagating all the statuses.
-            match text.as_str() {
-                BEGIN_CONNECTING | BEGIN_I_CALL | BEGIN_I_VCALL | BEGIN_O_CALL | BEGIN_STARTED => {
-                    if ongoing_call_msg_id.is_some_and(|id| internal_id - id <= 5) {
-                        // If call is already (recently) marked, do nothing
-                        return Ok(None);
-                    } else {
-                        // Save call ID to later amend with duration and status.
-                        *ongoing_call_msg_id = Some(internal_id);
-                    }
-                }
-                END_HANG | END_VHANG |
-                END_CONN_FAILED |
-                END_I_CANCELLED | END_I_CANCELLED_2 | END_I_VCANCELLED | END_I_VCANCELLED_2 |
-                END_O_CANCELLED | END_O_VCANCELLED => {
-                    if ongoing_call_msg_id.is_some_and(|id| internal_id - id <= 50) {
-                        let msg_id = ongoing_call_msg_id.unwrap();
-                        let msg = prev_msgs.iter_mut().rfind(|m| m.internal_id == msg_id).unwrap();
-                        let start_time = msg.timestamp;
-                        let discard_reason_option = match text.as_str() {
-                            END_HANG | END_VHANG => None,
-                            END_CONN_FAILED => Some("Failed to connect"),
-                            END_I_CANCELLED | END_I_CANCELLED_2 | END_I_VCANCELLED | END_I_VCANCELLED_2 => Some("Declined by you"),
-                            END_O_CANCELLED | END_O_VCANCELLED => Some("Declined by user"),
-                            _ => unreachable!()
-                        };
-                        match msg.typed_mut() {
-                            Typed::Service(MessageService { sealed_value_optional: Some(ServiceSvo::PhoneCall(call)), .. }) => {
-                                call.duration_sec_option = Some((timestamp - start_time) as i32);
-                                call.discard_reason_option = discard_reason_option.map(|s| s.to_owned());
-                            }
-                            etc => bail!("Unexpected ongoing call type: {etc:?}\nMessage: {mra_msg:?}")
-                        };
-                        *ongoing_call_msg_id = None;
-                    }
-                    // Either way, this message itself isn't supposed to have a separate entry.
-                    return Ok(None);
-                }
-                etc => bail!("Unrecognized call message: {etc}\nMessage: {mra_msg:?}"),
+            match process_call(&text, internal_id, mra_msg, conv_name, timestamp, ongoing_call_msg_id, prev_msgs)? {
+                Some(text_and_typed) => text_and_typed,
+                None => return Ok(None),
             }
-
-            (vec![], Typed::Service(MessageService {
-                sealed_value_optional: Some(ServiceSvo::PhoneCall(MessageServicePhoneCall {
-                    duration_sec_option: None,
-                    discard_reason_option: None,
-                }))
-            }))
         }
         MraMessageType::BirthdayReminder => {
             let payload = mra_msg.payload;
@@ -496,24 +413,8 @@ fn convert_message(
             let (src_bytes, payload) = next_sized_chunk(payload)?;
             require_format(payload.is_empty(), mra_msg, conv_name)?;
             let src = utf16le_to_string(src_bytes)?;
-            let (_id, emoji_option) = match SMILE_TAG_REGEX.captures(&src) {
-                Some(captures) => (captures.name("id").unwrap().as_str(),
-                                   captures.name("alt").and_then(|smiley| smiley_to_emoji(smiley.as_str()))),
-                None => bail!("Unexpected cartoon source: {src}")
-            };
 
-            (vec![], Typed::Regular(MessageRegular {
-                content_option: Some(Content {
-                    sealed_value_optional: Some(ContentSvo::Sticker(ContentSticker {
-                        path_option: None,
-                        width: 0,
-                        height: 0,
-                        thumbnail_path_option: None,
-                        emoji_option,
-                    }))
-                }),
-                ..Default::default()
-            }))
+            convert_cartoon(&src).with_context(|| context(mra_msg, conv_name))?
         }
         MraMessageType::ConferenceUsersChange => {
             convert_conference_user_changed_record(conv_name, mra_msg, mra_msg.payload, users)?

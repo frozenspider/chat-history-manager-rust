@@ -1,6 +1,6 @@
 /// For strings, this format uses UTF-8 and UTF-16 LE.
+/// Note that when both new and old DBs are present, new DB might have some messages missing!
 
-use std::cell::RefCell;
 use std::fmt::Formatter;
 
 use super::*;
@@ -194,7 +194,7 @@ fn collect_users(
                 MessageSectionType::AuthorName => {
                     set_option!(author_name, String::from_utf8(section.to_vec())?);
                 }
-                MessageSectionType::OtherAccount | MessageSectionType::OtherAccount2 => {
+                MessageSectionType::OtherAccount => {
                     set_option!(interlocutor_username, String::from_utf8(section.to_vec())?);
                 }
                 MessageSectionType::Content if tpe == MraMessageType::ConferenceUsersChange =>
@@ -235,6 +235,11 @@ fn collect_users(
                         _ => { /* NOOP */ }
                     }
                 }
+                MessageSectionType::OtherAccountInUnreads => {
+                    require_format_clue(false, mra_msg, conv_name,
+                                        "unexpected section type OtherAccountInUnreads")?;
+                    unreachable!();
+                }
                 MessageSectionType::Plaintext | MessageSectionType::MyAccount => { /* NOOP */ }
             }
         }
@@ -256,12 +261,14 @@ fn process_conversation(
     let mut msgs: Vec<Message> = vec![];
     let mut ongoing_call_msg_id = None;
     let mut interlocutor_ids = HashSet::from([MYSELF_ID]);
+    let mut internal_id = 0;
     for mra_msg in db_msgs {
         // Using -1 as a placeholder internal_id
-        if let Some(msg) = convert_message(mra_msg, -1, myself_username, conv_name, users,
+        if let Some(msg) = convert_message(mra_msg, internal_id, myself_username, conv_name, users,
                                            &mut msgs, &mut ongoing_call_msg_id)? {
             interlocutor_ids.insert(UserId(msg.from_id));
             msgs.push(msg);
+            internal_id += 1;
         }
     }
 
@@ -306,19 +313,19 @@ fn convert_message(
 
     let tpe = mra_msg.get_tpe()?;
 
+    // Going over sections to collect this data, it will be processed later
     let mut plaintext: Option<String> = None;
     let mut rtf: Option<String> = None;
     let mut microblog_record_target_name: Option<String> = None;
+    let mut location: Option<ContentLocation> = None;
+    let mut conference_user_changed_payload: Option<&[u8]> = None;
 
     macro_rules! set_option {
         ($holder:ident, $new_value:expr) => {{
             let new_value = $new_value;
             if !new_value.is_empty() {
                 if let Some(ref old_value) = $holder {
-                    require_format_with_clue(
-                        old_value == &new_value,
-                        mra_msg,
-                        conv_name,
+                    require_format_with_clue(old_value == &new_value, mra_msg, conv_name,
                         || format!("unexpected {} value: {old_value} vs {new_value}", stringify!($holder)))?;
                 } else {
                     $holder = Some(new_value)
@@ -354,15 +361,11 @@ fn convert_message(
             MessageSectionType::Plaintext => {
                 set_text!(String::from_utf8(section.to_vec())?);
             }
-            MessageSectionType::OtherAccount2 => {
-                assert!(conv_name == "unreads"); // FIXME
-                if !from_me { set_unless_empty!(from_username, String::from_utf8(section.to_vec())?); }
-            }
             MessageSectionType::OtherAccount => {
                 if !from_me { set_unless_empty!(from_username, String::from_utf8(section.to_vec())?); }
             }
             MessageSectionType::Content if tpe == MraMessageType::ConferenceUsersChange => {
-                convert_conference_user_changed_record(conv_name, mra_msg, section, users)?;
+                conference_user_changed_payload = Some(section);
             }
             MessageSectionType::Content => {
                 let (text, rest) = {
@@ -445,28 +448,26 @@ fn convert_message(
                     }
                     MraMessageType::AntispamTriggered => {
                         require_format(rest.len() == 4, mra_msg, conv_name)?;
-                        // Count be either plaintext or RTF
-                        // if text.starts_with(r#"{\rtf"#)
-                        // FIXME: make system message
-                        // "Ваш аккаунт был заблокирован системой антиспама. Пожалуйста, смените пароль от вашего почтового ящика, пройдя по ссылке:
-                        // http://e.mail.ru/cgi-bin/editpass?fromagent='MRA'"
                         set_text!(text);
                     }
                     MraMessageType::LocationChange => {
-                        // FIXME
-                        set_text!(text);
+                        // Lattitude
+                        let (lat_bytes, rest) = next_sized_chunk(rest)?;
+                        let lat_str = String::from_utf8(lat_bytes.to_vec())?;
+                        // Longitude
+                        let (lon_bytes, _rest) = next_sized_chunk(rest)?;
+                        let lon_str = String::from_utf8(lon_bytes.to_vec())?;
+
+                        location = Some(ContentLocation {
+                            title_option: None,
+                            address_option: Some(text),
+                            lat_str,
+                            lon_str,
+                            duration_sec_option: None,
+                        });
                     }
                     MraMessageType::Sticker => {
                         require_format(rest.is_empty(), mra_msg, conv_name)?;
-                        // Contains SMILE tag like <SMILE>id='ext:MYNUMBER:sticker:MYNUMBER'</SMILE>,
-                        // but I don't have a reference to retrieve them.
-                        let _id = match SMILE_TAG_REGEX.captures(&text) {
-                            Some(captures) if captures.name("alt").is_none() => captures.name("id").unwrap(),
-                            _ => {
-                                require_format_clue(false, mra_msg, conv_name, "unknown sticker ID format")?;
-                                unreachable!()
-                            }
-                        };
                         set_text!(text);
                     }
                     MraMessageType::Empty | MraMessageType::ConferenceUsersChange => {
@@ -474,13 +475,28 @@ fn convert_message(
                     }
                 }
             }
-            MessageSectionType::AuthorName | MessageSectionType::MyAccount => {
+            MessageSectionType::AuthorName | MessageSectionType::MyAccount | MessageSectionType::OtherAccountInUnreads => {
                 /* Already processed, NOOP */
             }
         }
     }
 
+    // Processing the data collected earlier to make a true message
+
     // println!("'{from_username}' - {plaintext:?}, {rtf:?}");
+
+    let get_rtes = || ok(match (rtf.as_ref(), plaintext.as_ref()) {
+        (Some(rtf), _) => {
+            Some(parse_rtf(&rtf).with_context(|| context(mra_msg, conv_name))?)
+        }
+        (_, Some(text)) => {
+            let text = replace_smiles_with_emojis(&text);
+            Some(vec![RichText::make_plain(text)])
+        }
+        _ => {
+            None
+        }
+    });
 
     use message::Typed;
     let (text, typed) = match tpe {
@@ -490,42 +506,84 @@ fn convert_message(
         MraMessageType::Sms |
         MraMessageType::ConferenceMessagePlaintext |
         MraMessageType::ConferenceMessageRtf => {
-            let rtes = match (rtf, plaintext) {
-                (Some(rtf), _) => {
-                    parse_rtf(&rtf).with_context(|| context(mra_msg, conv_name))?
-                }
-                (_, Some(text)) => {
-                    let text = replace_smiles_with_emojis(&text);
-                    vec![RichText::make_plain(text)]
-                }
+            let rtes = get_rtes()?;
+            require_format_clue(rtes.is_some(), mra_msg, conv_name, "text is not set")?;
+            (rtes.unwrap(), Typed::Regular(Default::default()))
+        }
+        MraMessageType::AntispamTriggered |
+        MraMessageType::BirthdayReminder => {
+            let rtes = get_rtes()?;
+            require_format_clue(rtes.is_some(), mra_msg, conv_name, "text is not set")?;
+            (rtes.unwrap(), Typed::Service(MessageService {
+                sealed_value_optional: Some(ServiceSvo::Notice(MessageServiceNotice {}))
+            }))
+        }
+        MraMessageType::Cartoon |
+        MraMessageType::CartoonType2 => {
+            require_format_clue(plaintext.is_some(), mra_msg, conv_name, "cartoon source is not set")?;
+            let text = plaintext.unwrap();
+            convert_cartoon(&text).with_context(|| context(mra_msg, conv_name))?
+        }
+        MraMessageType::Sticker => {
+            require_format_clue(plaintext.is_some(), mra_msg, conv_name, "sticker source is not set")?;
+            let text = plaintext.unwrap();
+            // Contains SMILE tag like <SMILE>id='ext:MYNUMBER:sticker:MYNUMBER'</SMILE>,
+            // but I don't have a reference to retrieve them.
+            let _id = match SMILE_TAG_REGEX.captures(&text) {
+                Some(captures) if captures.name("alt").is_none() => captures.name("id").unwrap(),
                 _ => {
-                    require_format_clue(false, mra_msg, conv_name, "text is not set")?;
+                    require_format_clue(false, mra_msg, conv_name, "unknown sticker ID format")?;
                     unreachable!()
                 }
             };
-            (rtes, Typed::Regular(Default::default()))
+            (vec![], Typed::Regular(MessageRegular {
+                content_option: Some(Content {
+                    sealed_value_optional: Some(ContentSvo::Sticker(ContentSticker {
+                        path_option: None,
+                        width: 0,
+                        height: 0,
+                        thumbnail_path_option: None,
+                        emoji_option: None,
+                    }))
+                }),
+                ..Default::default()
+            }))
         }
-        MraMessageType::AntispamTriggered |
-        MraMessageType::FileTransfer |
+        MraMessageType::FileTransfer => {
+            require_format_clue(plaintext.is_some(), mra_msg, conv_name, "file transfer text is not set")?;
+            convert_file_transfer(&plaintext.unwrap())?
+        }
         MraMessageType::Call |
-        MraMessageType::BirthdayReminder |
-        MraMessageType::Cartoon |
-        MraMessageType::VideoCall |
-        MraMessageType::ConferenceUsersChange |
-        MraMessageType::CartoonType2 => {
-            // FIXME
-            (vec![RichText::make_plain(plaintext.unwrap_or("AAA!".to_owned()))], Typed::Regular(Default::default()))
+        MraMessageType::VideoCall => {
+            require_format_clue(plaintext.is_some(), mra_msg, conv_name, "call text is not set")?;
+            let text = plaintext.unwrap();
+
+            match process_call(&text, internal_id, mra_msg, conv_name, timestamp, ongoing_call_msg_id, prev_msgs)? {
+                Some(text_and_typed) => text_and_typed,
+                None => return Ok(None),
+            }
+        }
+        MraMessageType::ConferenceUsersChange => {
+            require_format_clue(conference_user_changed_payload.is_some(), mra_msg, conv_name,
+                                "conference user changed payload is not set")?;
+            convert_conference_user_changed_record(conv_name, mra_msg, conference_user_changed_payload.unwrap(), users)?
         }
         MraMessageType::MicroblogRecordBroadcast |
         MraMessageType::MicroblogRecordDirected => {
-            require_format_clue(plaintext.is_some(), mra_msg, conv_name, "expected microblog plaintext")?;
+            require_format_clue(plaintext.is_some(), mra_msg, conv_name, "microblog plaintext is not set")?;
             require_format_clue(rtf.is_none(), mra_msg, conv_name, "unexpected microblog RTF")?;
             convert_microblog_record(&plaintext.unwrap(), microblog_record_target_name.as_deref())
         }
-        MraMessageType::LocationChange |
-        MraMessageType::Sticker => {
-            // FIXME
-            (vec![RichText::make_plain(plaintext.unwrap_or("AAA!".to_owned()))], Typed::Regular(Default::default()))
+        MraMessageType::LocationChange => {
+            require_format_clue(location.is_some(), mra_msg, conv_name, "location is not set")?;
+
+            (vec![RichText::make_plain("(Location changed)".to_owned())],
+             Typed::Regular(MessageRegular {
+                 content_option: Some(Content {
+                     sealed_value_optional: Some(ContentSvo::Location(location.unwrap()))
+                 }),
+                 ..Default::default()
+             }))
         }
         MraMessageType::Empty => {
             unreachable!()
@@ -596,23 +654,48 @@ pub(super) fn merge_conversations(
     Ok(())
 }
 
-/// Merge new messages into old ones, skipping overlapping duplicate messages.
-/// Note that "duplicate" messages have different source IDs, and might actually have slight time differences.
+/// Merge new messages into old ones, skipping all new messages that are already stored.
+/// Note that old and new messages have different source IDs, and might actually have slight time differences.
 fn merge_messages(pretty_conv_name: String, new_msgs: Vec<Message>, msgs: &mut Vec<Message>) -> EmptyRes {
+    log::debug!("Merging conv {pretty_conv_name}: {} <- {}", msgs.len(), new_msgs.len());
     if msgs.is_empty() {
         // Trivial case
         msgs.extend(new_msgs);
-        return Ok(());
     } else if new_msgs.is_empty() {
-        return Ok(());
-    } else if let Some(old_idx) = find_overpalling_subset(&msgs, &new_msgs) {
-        msgs.truncate(msgs.len() - old_idx);
-        msgs.extend(new_msgs);
+        // NOOP
     } else {
-        msgs.extend(new_msgs);
+        let old_len = msgs.len();
+        let last_internal_id = msgs.last().map(|m| m.internal_id).unwrap_or_default();
+
+        let first_new_idx = first_start_of_new_slice(&msgs, &new_msgs);
+        msgs.extend(new_msgs.into_iter().skip(first_new_idx));
+
+        for (new_msg, internal_id) in msgs.iter_mut().skip(old_len).zip((last_internal_id + 1)..) {
+            new_msg.internal_id = internal_id;
+        }
     }
 
     Ok(())
+}
+
+/// Find the first index of new message that isn't contained in old messages.
+/// (When both new and old DBs are present, new DB might have some messages missing.)
+fn first_start_of_new_slice(old_msgs: &[Message], new_msgs: &[Message]) -> usize {
+    const MAX_TIMESTAMP_DIFF: i64 = 10;
+    let last_old_msg = old_msgs.last().unwrap(); // At this point, both old and new msgs are not empty
+    for (idx, new_msg) in new_msgs.iter().enumerate() {
+        if new_msg.text == last_old_msg.text &&
+            new_msg.typed == last_old_msg.typed &&
+            (new_msg.timestamp - last_old_msg.timestamp).abs() <= MAX_TIMESTAMP_DIFF
+        {
+            // Next message is truly new
+            return idx + 1;
+        } else if new_msg.timestamp - last_old_msg.timestamp > MAX_TIMESTAMP_DIFF {
+            // No intersections, all messages are new
+            return idx;
+        }
+    }
+    0
 }
 
 //
@@ -703,7 +786,7 @@ impl Debug for DbMessageHeader {
 enum MessageSectionType {
     Plaintext = 0x00,
     AuthorName = 0x02,
-    OtherAccount2 = 0x03,
+    OtherAccountInUnreads = 0x03,
     MyAccount = 0x04,
     OtherAccount = 0x05,
     /// Exact content format depends on the message type

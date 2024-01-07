@@ -5,8 +5,8 @@ use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::path::PathBuf;
-use encoding_rs::Encoding;
 
+use encoding_rs::Encoding;
 use lazy_static::lazy_static;
 use num_traits::FromPrimitive;
 use regex::{Captures, Regex};
@@ -28,6 +28,7 @@ mod db;
 pub struct MailRuAgentDataLoader;
 
 type DatasetMap = HashMap<String, MraDatasetEntry>;
+type TextAndTyped = (Vec<RichTextElement>, message::Typed);
 
 const CONFERENCE_USER_JOINED: u32 = 0x03;
 const CONFERENCE_USER_LEFT: u32 = 0x05;
@@ -131,18 +132,20 @@ fn find_timestamp_delta(
     {
         for (other_username, old_msgs, new_msgs) in new_conv.iter()
             .filter_map(|(k, nv)| old_entry.cwms.get(k).map(|ov| (k, &ov.messages, &nv.0)))
-            .filter(|(k, ov, nv)| !ov.is_empty() && !nv.is_empty())
+            .filter(|(_, ov, nv)| !ov.is_empty() && !nv.is_empty())
         {
             log::debug!("Analyzing conversation between {myself_username} and {other_username}");
 
-            if let Some(old_idx) = find_overpalling_subset(&old_msgs, &new_msgs) {
+            if let Some(old_idx) = find_message_index(&new_msgs[0], &old_msgs) {
                 let delta = new_msgs[0].timestamp - old_msgs[old_idx].timestamp;
                 // Timestamps often differs by a few seconds beyond the normal timezone difference.
                 // Let's round it within 15-minutes precision
                 const DIV: f64 = 60.0 * 15.0;
                 let delta = ((delta as f64 / DIV).round() * DIV) as i64;
-                log::debug!("Timestamp delta determined to be {delta} ({} hrs)", (delta as f64 / 60.0 / 60.0));
-                return Ok(Some(delta));
+                if delta.abs() < 24 * 60 * 60 {
+                    log::debug!("Timestamp delta determined to be {delta} ({} hrs)", (delta as f64 / 60.0 / 60.0));
+                    return Ok(Some(delta));
+                }
             }
         }
     }
@@ -150,21 +153,13 @@ fn find_timestamp_delta(
     Ok(None)
 }
 
-/// If there is a trailing subslice of `old_msgs` that match leading subslice of `new_msgs`
-/// (judging by the text and typed parts only), find the `old_msgs` index of the first element.
-fn find_overpalling_subset(old_msgs: &[Message], new_msgs: &[Message]) -> Option<usize> {
-    'old_idx_loop:
-    for old_idx in (0..old_msgs.len()).rev() {
-        let old_msgs_subset = &old_msgs[old_idx..];
-        if old_msgs_subset.len() > new_msgs.len() { break; }
-        let new_msgs_subset = &new_msgs[..old_msgs_subset.len()];
-        for (old_msg, new_msg) in old_msgs_subset.iter().zip(new_msgs_subset.iter()) {
-            // PracticallyEq requires too much context, but direct Typed equality should do fine here
-            if old_msg.text != new_msg.text || old_msg.typed != new_msg.typed {
-                continue 'old_idx_loop;
-            }
+/// Find an index of a given message within messages slice (judging by the text and typed parts only).
+fn find_message_index(msg: &Message, msgs: &[Message]) -> Option<usize> {
+    for (idx, other_msg) in msgs.iter().enumerate().rev() {
+        // PracticallyEq requires too much context, but direct Typed equality should do fine here
+        if other_msg.text == msg.text && other_msg.typed == msg.typed {
+            return Some(idx);
         }
-        return Some(old_idx);
     }
     return None;
 }
@@ -268,13 +263,62 @@ fn collect_users_from_conference_user_changed_record(
     Ok(())
 }
 
+fn convert_cartoon(src: &str) -> Result<TextAndTyped> {
+    let (_id, emoji_option) = match SMILE_TAG_REGEX.captures(&src) {
+        Some(captures) => (captures.name("id").unwrap().as_str(),
+                           captures.name("alt").and_then(|smiley| smiley_to_emoji(smiley.as_str()))),
+        None => bail!("Unexpected cartoon source: {src}")
+    };
+
+    Ok((vec![], message::Typed::Regular(MessageRegular {
+        content_option: Some(Content {
+            sealed_value_optional: Some(ContentSvo::Sticker(ContentSticker {
+                path_option: None,
+                width: 0,
+                height: 0,
+                thumbnail_path_option: None,
+                emoji_option,
+            }))
+        }),
+        ..Default::default()
+    })))
+}
+
+fn convert_file_transfer(text: &str) -> Result<TextAndTyped> {
+    // We can get file names from the outgoing messages.
+    // Mail.Ru allowed us to send several files in one message, so we unite them here.
+    let text_parts = text.split('\n').collect_vec();
+    let file_name_option = if text_parts.len() >= 3 {
+        let file_paths: Vec<&str> = text_parts.smart_slice(1..-1).iter().map(|&s|
+            s.trim()
+                .rsplitn(3, ' ')
+                .nth(2)
+                .context("Unexpected file path format!"))
+            .try_collect()?;
+        Some(file_paths.iter().join(", "))
+    } else {
+        None
+    };
+    Ok((vec![], message::Typed::Regular(MessageRegular {
+        content_option: Some(Content {
+            sealed_value_optional: Some(ContentSvo::File(ContentFile {
+                path_option: None,
+                file_name_option,
+                mime_type_option: None,
+                thumbnail_path_option: None,
+            }))
+        }),
+        ..Default::default()
+    })))
+}
+
 /// Turns out this format is shared exactly between old and new formats
 fn convert_conference_user_changed_record(
     conv_name: &str,
     mra_msg: &impl MraMessage,
     payload: &[u8],
     users: &HashMap<String, User>,
-) -> Result<(Vec<RichTextElement>, message::Typed)> {
+) -> Result<TextAndTyped> {
     let (change_tpe, payload) = next_u32(payload);
     // We don't care about user names here because they're already set by collect_datasets
     let service = match change_tpe {
@@ -312,6 +356,91 @@ fn convert_conference_user_changed_record(
     };
 
     Ok((vec![], message::Typed::Service(MessageService { sealed_value_optional: Some(service) })))
+}
+
+/// Returns `None` if this message should be discarded
+fn process_call(
+    text: &str,
+    internal_id: i64,
+    mra_msg: &impl MraMessage,
+    conv_name: &str,
+    timestamp: i64,
+    ongoing_call_msg_id: &mut Option<i64>,
+    prev_msgs: &mut [Message],
+) -> Result<Option<TextAndTyped>> {
+    const BEGIN_CONNECTING: &str = "Устанавливается соединение...";
+    const BEGIN_CONNECTING_2: &str = "Устанавливается соединение";
+    const BEGIN_I_CALL: &str = "Звонок от вашего собеседника";
+    const BEGIN_I_VCALL: &str = "Видеозвонок от вашего собеседника";
+    const BEGIN_O_CALL: &str = "Вы звоните собеседнику. Ожидание ответа...";
+    const BEGIN_STARTED: &str = "Начался разговор";
+
+    const END_HANG: &str = "Звонок завершен";
+    const END_VHANG: &str = "Видеозвонок завершен";
+    const END_CONN_FAILED: &str = "Не удалось установить соединение. Попробуйте позже.";
+    const END_I_CANCELLED: &str = "Вы отменили звонок";
+    const END_I_CANCELLED_2: &str = "Вы отклонили звонок";
+    const END_I_VCANCELLED: &str = "Вы отменили видеозвонок";
+    const END_I_VCANCELLED_2: &str = "Вы отклонили видеозвонок"; // This one might not be real
+    const END_O_CANCELLED: &str = "Собеседник отменил звонок";
+    const END_O_CANCELLED_2: &str = "Собеседник отклонил ваш звонок";
+    const END_O_VCANCELLED: &str = "Собеседник отменил видеозвонок";
+
+    // MRA is not very rigid in propagating all the statuses.
+    match text {
+        BEGIN_CONNECTING | BEGIN_CONNECTING_2 | BEGIN_I_CALL | BEGIN_I_VCALL | BEGIN_O_CALL | BEGIN_STARTED => {
+            if ongoing_call_msg_id.is_some_and(|id| internal_id - id <= 5) {
+                // If call is already (recently) marked, do nothing
+                return Ok(None);
+            } else {
+                // Save call ID to later amend with duration and status.
+                *ongoing_call_msg_id = Some(internal_id);
+            }
+        }
+        END_HANG | END_VHANG |
+        END_CONN_FAILED |
+        END_I_CANCELLED | END_I_CANCELLED_2 | END_I_VCANCELLED | END_I_VCANCELLED_2 |
+        END_O_CANCELLED | END_O_CANCELLED_2 | END_O_VCANCELLED => {
+            if ongoing_call_msg_id.is_some_and(|id| internal_id - id <= 50) {
+                let msg_id = ongoing_call_msg_id.unwrap();
+                let msg = prev_msgs.iter_mut().rfind(|m| m.internal_id == msg_id).unwrap();
+                let start_time = msg.timestamp;
+                let discard_reason_option = match text {
+                    END_HANG | END_VHANG => None,
+                    END_CONN_FAILED => Some("Failed to connect"),
+                    END_I_CANCELLED | END_I_CANCELLED_2 | END_I_VCANCELLED | END_I_VCANCELLED_2 => Some("Declined by you"),
+                    END_O_CANCELLED | END_O_CANCELLED_2 | END_O_VCANCELLED => Some("Declined by user"),
+                    _ => unreachable!()
+                };
+                match msg.typed_mut() {
+                    message::Typed::Service(MessageService { sealed_value_optional: Some(ServiceSvo::PhoneCall(call)), .. }) => {
+                        call.duration_sec_option = Some((timestamp - start_time) as i32);
+                        call.discard_reason_option = discard_reason_option.map(|s| s.to_owned());
+                    }
+                    etc => {
+                        require_format_clue(false, mra_msg, conv_name,
+                                            &format!("unexpected ongoing call type: {etc:?}"))?;
+                        unreachable!()
+                    }
+                };
+                *ongoing_call_msg_id = None;
+            }
+            // Either way, this message itself isn't supposed to have a separate entry.
+            return Ok(None);
+        }
+        etc => {
+            require_format_clue(false, mra_msg, conv_name,
+                                &format!("unexpected call message: {etc}"))?;
+            unreachable!()
+        }
+    }
+
+    Ok(Some((vec![], message::Typed::Service(MessageService {
+        sealed_value_optional: Some(ServiceSvo::PhoneCall(MessageServicePhoneCall {
+            duration_sec_option: None,
+            discard_reason_option: None,
+        }))
+    }))))
 }
 
 //
@@ -833,7 +962,7 @@ fn smiley_to_emoji(smiley: &str) -> Option<String> {
         ":Смущаюсь:" => Some("🤭"),
         ":Стыдно:" => Some("🫣"),
         ":Удивляюсь:" | ":Ты что!:" | ":Фига:" | ":Ой, ё:" => Some("😯"),
-        ":Сейчас расплачусь:" | ":Извини:" => Some("🥺"),
+        ":Сейчас расплачусь:" | ":Извини:" | ":Скучаю:" => Some("🥺"),
         ":Хны...!:" => Some("😢"),
         ":Плохо:" | ":В печали:" => Some("😔"),
         ":Рыдаю:" => Some("😭"),
@@ -841,7 +970,7 @@ fn smiley_to_emoji(smiley: &str) -> Option<String> {
         ":Виноват:" => Some("😅"),
         ":Сумасшествие:" | ":А я сошла с ума...:" => Some("🤪"),
         ":Целую:" => Some("😘"),
-        ":Влюбленный:" | ":Влюблён:" => Some("😍️"),
+        ":Влюбленный:" | ":Влюблён:" | ":С любовью:" => Some("😍️"),
         ":Поцелуй:" => Some("💋"),
         ":Поцеловали:" => Some("🥰"),
         ":Купидон:" | ":На крыльях любви:" => Some("💘️"),
