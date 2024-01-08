@@ -1,9 +1,10 @@
 use std::fs;
 use itertools::Itertools;
 use pretty_assertions::{assert_eq, assert_ne};
+use uuid::Uuid;
 
 use crate::*;
-use crate::dao::ChatHistoryDao;
+use crate::dao::{ChatHistoryDao, UserCacheForDataset, WithCache};
 use crate::protobuf::history::*;
 
 use super::*;
@@ -117,6 +118,82 @@ fn merge_users_updating_chat_name() -> EmptyRes {
     assert_eq!(new_chats[1].chat.name_option.as_deref(), Some("ChangedUserFN-2 ChangedUserLN-2"));
     assert_eq!(new_chats[2].chat.tpe, ChatType::Personal as i32);
     assert_eq!(new_chats[2].chat.name_option.as_deref(), Some("ChangedUserFN-3 ChangedUserLN-3"));
+
+    Ok(())
+}
+
+#[test]
+fn merge_multiple_datasets() -> EmptyRes {
+    let msgs = vec![create_regular_message(1, 1)];
+    let mut helper = MergerHelper::new_as_is(2, msgs.clone(), msgs);
+
+    let other_ds = Dataset {
+        uuid: Some(PbUuid { value: Uuid::parse_str("12345678-1234-1234-1234-123456789ABC").unwrap().to_string() }),
+        alias: "Another dataset".to_owned(),
+    };
+    let other_ds_users = vec![create_user(other_ds.uuid(), 123), create_user(other_ds.uuid(), 456)];
+    let other_tmp_dir = TmpDir::new();
+    let other_ds_root = DatasetRoot(other_tmp_dir.path.clone());
+
+    {
+        let cache = helper.m.dao_holder.dao.get_cache_mut_unchecked();
+        let mut cache = cache.inner.borrow_mut();
+
+        cache.datasets.push(other_ds.clone());
+        cache.users.insert(other_ds.uuid().clone(), UserCacheForDataset {
+            myself_id: other_ds_users[0].id(),
+            user_by_id: other_ds_users.iter().cloned().map(|u| (u.id(), u)).collect(),
+        });
+    }
+
+    let other_chat = create_personal_chat(other_ds.uuid(), 1, &other_ds_users[0],
+                                          other_ds_users.iter().map(|u| u.id).collect_vec(), 3);
+    let other_chat_msgs = (1..=other_chat.msg_count)
+        .map(|i| create_regular_message(i as usize, other_ds_users[0].id as usize))
+        .collect_vec();
+
+    helper.m.dao_holder.dao.ds_roots.insert(other_ds.uuid().clone(), other_ds_root.clone());
+    helper.m.dao_holder.dao.cwms.insert(other_ds.uuid().clone(), vec![ChatWithMessages {
+        chat: Some(other_chat.clone()),
+        messages: other_chat_msgs.clone(),
+    }]);
+
+    let (new_dao, new_ds, _tmpdir) = merge(
+        &helper,
+        dont_replace_both_users(),
+        vec![ChatMergeDecision::Merge {
+            chat_id: ChatId(1),
+            message_merges: vec![
+                MessagesMergeDecision::DontReplace(MergeAnalysisSectionConflict {
+                    first_master_msg_id: first_id(&helper.m.msgs),
+                    last_master_msg_id: last_id(&helper.m.msgs),
+                    first_slave_msg_id: first_id(&helper.s.msgs),
+                    last_slave_msg_id: last_id(&helper.s.msgs),
+                })
+            ],
+        }],
+    );
+    assert_eq!(new_dao.datasets()?.iter().sorted_by_key(|ds| &ds.uuid().value).collect_vec(),
+               vec![new_ds.clone(), other_ds.clone()].iter().sorted_by_key(|ds| &ds.uuid().value).collect_vec());
+    assert_eq!(new_dao.users(other_ds.uuid())?,
+               other_ds_users);
+    assert_eq!(new_dao.chats(other_ds.uuid())?.into_iter().map(|cwd| cwd.chat).collect_vec(),
+               vec![other_chat.clone()]);
+
+    let new_other_ds_root = new_dao.dataset_root(other_ds.uuid())?;
+    for (old_cwd, new_cwd) in helper.m.dao_holder.dao.chats(other_ds.uuid())?.iter()
+        .zip(new_dao.chats(other_ds.uuid())?.iter())
+    {
+        assert!(PracticalEqTuple::new(&old_cwd.chat, &other_ds_root, old_cwd)
+            .practically_equals(&PracticalEqTuple::new(&new_cwd.chat, &new_other_ds_root, new_cwd))?);
+
+        let new_msgs = new_dao.first_messages(&other_chat, usize::MAX)?;
+        assert_eq!(new_msgs.len(), other_chat_msgs.len());
+        for (old_m, new_m) in other_chat_msgs.iter().zip(new_msgs.iter()) {
+            assert_practically_equals(old_m, &other_ds_root, old_cwd,
+                                      new_m, &new_other_ds_root, new_cwd);
+        }
+    }
 
     Ok(())
 }
@@ -1021,7 +1098,6 @@ fn merge_chats_content_appended_on_match() -> EmptyRes {
 //
 // Helpers
 //
-
 
 fn first_id<M, Id>(map: &MsgsMap<M>) -> Id where M: WithTypedId<Item=Id> {
     map.first_key_value().unwrap().1.typed_id()

@@ -36,7 +36,7 @@ impl HistoryDaoService for Arc<Mutex<ChatHistoryManagerServer>> {
             }
             let new_db_file = new_storage_path.join(SqliteDao::FILENAME);
             let sqlite_dao = SqliteDao::create(&new_db_file)?;
-            sqlite_dao.copy_all_from(dao)?;
+            sqlite_dao.copy_datasets_from(dao, &dao.datasets()?.into_iter().map(|ds| ds.uuid.unwrap()).collect_vec())?;
             new_key =  path_to_str(&new_db_file)?.to_owned();
             let name = sqlite_dao.name().to_owned();
             new_dao = Some(DaoRefCell::new(Box::new(sqlite_dao)));
