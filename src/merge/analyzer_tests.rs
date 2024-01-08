@@ -559,6 +559,23 @@ fn everything_inverted() -> EmptyRes {
     Ok(())
 }
 
+#[test]
+fn timestamp_diff() -> EmptyRes {
+    let msgs = create_messages(src_id(0));
+    let msgs_a = msgs.clone();
+    let msgs_b = msgs.iter().cloned().map(|mut m| {
+        m.timestamp += 15 * 60;
+        m
+    }).collect_vec();
+    let helper = MergerHelper::new_as_is(MAX_USER_ID, msgs_a, msgs_b);
+    let analysis_res = analyzer(&helper).analyze(helper.m.cwd(), helper.s.cwd(), "");
+    assert!(analysis_res.is_err());
+    let err = analysis_res.err().unwrap();
+    let msg = error_to_string(&err);
+    assert!(msg.contains("Time shift detected"));
+    Ok(())
+}
+
 /// "not found" should NOT conflict with "not downloaded" and vice versa
 #[test]
 fn present_absent_not_downloaded() -> EmptyRes {
