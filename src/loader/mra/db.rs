@@ -25,13 +25,13 @@ pub(super) fn load_accounts_dir(
         let path = dir_entry.path();
         let name = path_file_name(&path)?;
         if meta.is_dir() {
-            let ds_uuid = PbUuid::random();
             let entry = dataset_map.entry(name.to_owned()).or_insert_with(|| MraDatasetEntry {
-                ds: Dataset { uuid: Some(ds_uuid.clone()), alias: name.to_owned() },
+                ds: Dataset { uuid: Some(PbUuid::random()), alias: name.to_owned() },
                 ds_root: storage_path.to_path_buf(),
                 users: Default::default(),
                 cwms: Default::default(),
             });
+            let ds_uuid = entry.ds.uuid();
             let conv_map = load_account(name, &ds_uuid, &path, &mut entry.users)?;
             result.insert(name.to_owned(), conv_map);
         } else {

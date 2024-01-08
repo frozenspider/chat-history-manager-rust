@@ -78,7 +78,7 @@ fn load_mra_dbs(path: &Path, dao_name: String) -> Result<Box<InMemoryDao>> {
         parent_path
     }.to_path_buf();
 
-    let mut dataset_map: HashMap<_, _> = Default::default();
+    let mut dataset_map: DatasetMap = Default::default();
 
     log::info!("Loading {} (legacy) format", MRA_DBS);
 
