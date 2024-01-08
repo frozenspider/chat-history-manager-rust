@@ -821,7 +821,8 @@ fn init() -> TestDaos {
 
 fn init_from(src_dao: Box<InMemoryDao>, src_dir: PathBuf, src_dao_tmpdir: Option<TmpDir>) -> TestDaos {
     let (dst_dao, dst_dao_tmpdir) = create_sqlite_dao();
-    dst_dao.copy_all_from(src_dao.as_ref()).unwrap();
+    let src_dataset_uuids = src_dao.datasets().unwrap().into_iter().map(|ds| ds.uuid.unwrap()).collect_vec();
+    dst_dao.copy_datasets_from(src_dao.as_ref(), &src_dataset_uuids).unwrap();
     let ds_uuid = src_dao.datasets().unwrap()[0].uuid().clone();
     let src_ds_root = src_dao.dataset_root(&ds_uuid).unwrap();
     let dst_ds_root = dst_dao.dataset_root(&ds_uuid).unwrap();

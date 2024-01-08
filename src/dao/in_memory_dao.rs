@@ -95,6 +95,8 @@ impl InMemoryDao {
 impl WithCache for InMemoryDao {
     fn get_cache_unchecked(&self) -> &DaoCache { &self.cache }
 
+    fn get_cache_mut_unchecked(&mut self) -> &mut DaoCache { &mut self.cache }
+
     fn init_cache(&self, _inner: &mut DaoCacheInner) -> EmptyRes { Ok(()) }
 
     fn invalidate_cache(&self) -> EmptyRes { err!("Cannot invalidate cache of in-memory DAO!") }

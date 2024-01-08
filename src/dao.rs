@@ -14,6 +14,9 @@ pub trait WithCache {
     /// For internal use
     fn get_cache_unchecked(&self) -> &DaoCache;
 
+    /// For internal use
+    fn get_cache_mut_unchecked(&mut self) -> &mut DaoCache;
+
     /// For internal use: lazily initialize the cache, and return a reference to it
     fn init_cache(&self, inner: &mut DaoCacheInner) -> EmptyRes;
 

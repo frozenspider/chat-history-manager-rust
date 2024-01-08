@@ -13,6 +13,8 @@ mod tests;
 
 const BATCH_SIZE: usize = 1000;
 
+/// Creates a new database containing dataset merged according to supplied merge decisions, as well as the rest of
+/// `master_dao` datasets copied as-is.
 /// user_merges and chat_merges should contain decisions for ALL users and chats.
 pub fn merge_datasets(
     sqlite_dao_dir: &Path,
@@ -65,6 +67,12 @@ pub fn merge_datasets(
         let master = DaoMergeEntities { dao: master_dao, ds: master_ds, users: master_users, cwds: master_cwds };
         let slave = DaoMergeEntities { dao: slave_dao, ds: slave_ds, users: slave_users, cwds: slave_cwds };
         let new_dataset = merge_inner(&mut new_dao, master, slave, user_merges, chat_merges)?;
+        let other_master_dataset_uuids = master_dao.datasets()?
+            .into_iter()
+            .map(|ds| ds.uuid.unwrap())
+            .filter(|ds_uuid| ds_uuid != master_ds.uuid())
+            .collect_vec();
+        new_dao.copy_datasets_from(master_dao, &other_master_dataset_uuids)?;
         Ok((new_dao, new_dataset))
     }, |_, t| log::info!("Datasets merged in {t} ms"))
 }

@@ -107,9 +107,17 @@ impl SqliteDao {
         }
     }
 
-    pub fn copy_all_from(&self, src: &dyn ChatHistoryDao) -> EmptyRes {
+    pub fn copy_datasets_from(&self, src: &dyn ChatHistoryDao, src_dataset_uuids: &[PbUuid]) -> EmptyRes {
         measure(|| {
-            let src_datasets = src.datasets()?;
+            let src_datasets = src.datasets()?
+                .into_iter()
+                .filter(|ds| src_dataset_uuids.contains(ds.uuid()))
+                .collect_vec();
+
+            require!(src_datasets.len() == src_dataset_uuids.len(),
+                     "Not all datasets found in source!");
+            require!(!self.datasets()?.iter().any(|ds| src_dataset_uuids.contains(ds.uuid())),
+                     "Some dataset UUIDs are already in use!");
 
             for src_ds in src_datasets.iter() {
                 let ds_uuid = src_ds.uuid();
@@ -183,7 +191,7 @@ impl SqliteDao {
 
             self.invalidate_cache()?;
 
-            require!(src_datasets.len() == self.datasets()?.len(), "Datasets have different sizes after merge!");
+            assert!(self.datasets()?.len() >= src_datasets.len(), "Some datasets are missing after merge!");
 
             for src_ds in src_datasets.iter() {
                 let ds_uuid = src_ds.uuid();
@@ -248,6 +256,8 @@ impl SqliteDao {
 
 impl WithCache for SqliteDao {
     fn get_cache_unchecked(&self) -> &DaoCache { &self.cache }
+
+    fn get_cache_mut_unchecked(&mut self) -> &mut DaoCache { &mut self.cache }
 
     fn init_cache(&self, inner: &mut DaoCacheInner) -> EmptyRes {
         use schema::*;
