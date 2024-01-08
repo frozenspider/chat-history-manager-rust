@@ -228,9 +228,9 @@ impl ChatHistoryDao for InMemoryDao {
 }
 
 impl ShiftableChatHistoryDao for InMemoryDao {
-    fn shift_dataset_time(&mut self, uuid: PbUuid, hours_shift: i32) -> EmptyRes {
+    fn shift_dataset_time(&mut self, uuid: &PbUuid, hours_shift: i32) -> EmptyRes {
         let timestamp_shift: i64 = (hours_shift * 60 * 60).into();
-        let cwms = self.cwms.get_mut(&uuid).unwrap();
+        let cwms = self.cwms.get_mut(uuid).unwrap();
         for cwm in cwms.iter_mut() {
             for m in cwm.messages.iter_mut() {
                 m.timestamp += timestamp_shift;

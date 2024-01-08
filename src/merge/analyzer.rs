@@ -92,12 +92,14 @@ impl<'a> DatasetDiffAnalyzer<'a> {
                 ((Some(mm), Some(sm)), NoState) if mm.source_id_option.is_some() && mm.source_id_option == sm.source_id_option => {
                     // Checking if there's a timestamp shift
                     {
-                        let mut mm = mm.clone();
-                        mm.0.timestamp = sm.timestamp;
-                        if matches(&mm, sm)? {
+                        let is_timestamp_diff = {
+                            let mut mm = mm.clone();
+                            mm.0.timestamp = sm.timestamp;
+                            matches(&mm, sm)?
+                        };
+                        if is_timestamp_diff {
                             let (ahead_behind, diff_sec) = {
                                 let ts_diff = sm.timestamp - mm.timestamp;
-                                assert!(ts_diff != 0);
                                 if ts_diff > 0 {
                                     ("ahead of", ts_diff)
                                 } else {

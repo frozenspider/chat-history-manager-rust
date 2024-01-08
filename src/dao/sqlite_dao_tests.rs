@@ -337,8 +337,8 @@ fn inserts() -> EmptyRes {
         assert_eq!(dst_cwd.members, src_cwd.members);
         assert_eq!(dst_cwd.last_msg_option, None);
 
-        let dst_pet = PracticalEqTuple::new(&dst_cwd.chat, &dst_ds_root, &dst_cwd);
-        let src_pet = PracticalEqTuple::new(&src_cwd.chat, &src_ds_root, &src_cwd);
+        let dst_pet = Tup::new(&dst_cwd.chat, &dst_ds_root, &dst_cwd);
+        let src_pet = Tup::new(&src_cwd.chat, &src_ds_root, &src_cwd);
         assert!(dst_pet.practically_equals(&src_pet)?);
 
         // Inserting messages
@@ -352,8 +352,8 @@ fn inserts() -> EmptyRes {
         assert_eq!(dst_dao.last_messages(&dst_cwd.chat, usize::MAX)?.len(), src_msgs.len());
 
         for (dst_msg, src_msg) in dst_dao.first_messages(&dst_cwd.chat, usize::MAX)?.iter().zip(src_msgs.iter()) {
-            let dst_pet = PracticalEqTuple::new(dst_msg, &dst_ds_root, &dst_cwd);
-            let src_pet = PracticalEqTuple::new(src_msg, &src_ds_root, &src_cwd);
+            let dst_pet = Tup::new(dst_msg, &dst_ds_root, &dst_cwd);
+            let src_pet = Tup::new(src_msg, &src_ds_root, &src_cwd);
             assert!(dst_pet.practically_equals(&src_pet)?);
         }
     }
@@ -660,37 +660,47 @@ fn combine_chats() -> EmptyRes {
     Ok(())
 }
 
-#[ignore]
 #[test]
 fn shift_dataset_time() -> EmptyRes {
+    let daos = init();
+    let mut dao = daos.dst_dao;
+
+    assert_eq!(dao.datasets()?.len(), 1);
+    dao.as_shiftable()?.shift_dataset_time(&daos.ds_uuid, 8)?;
+    dao.as_shiftable()?.shift_dataset_time(&daos.ds_uuid, -5)?;
+    const TIMESTAMP_DIFF: i64 = 3 * 60 * 60;
+
+    let src_chats = daos.src_dao.chats(&daos.ds_uuid)?;
+    let dst_chats = dao.chats(&daos.ds_uuid)?;
+    assert_eq!(src_chats.len(), dst_chats.len());
+
+    for (src_cwd, dst_cwd) in src_chats.iter().zip(dst_chats.iter()) {
+        assert_eq!(src_cwd.chat, dst_cwd.chat);
+
+        let all_src_msgs = daos.src_dao.last_messages(&src_cwd.chat, src_cwd.chat.msg_count as usize)?;
+        let all_dst_msgs = dao.last_messages(&dst_cwd.chat, dst_cwd.chat.msg_count as usize)?;
+        assert_eq!(all_src_msgs.len(), all_dst_msgs.len());
+
+        for (src_msg, dst_msg) in all_src_msgs.iter().zip(all_dst_msgs.iter()) {
+            assert_eq!(dst_msg.timestamp - src_msg.timestamp, TIMESTAMP_DIFF);
+
+            let src_pet = Tup::new(src_msg, &daos.src_ds_root, &src_cwd);
+            let dst_pet = Tup::new(dst_msg, &daos.dst_ds_root, &dst_cwd);
+            assert!(!src_pet.practically_equals(&dst_pet)?, "Src: {src_msg:?}\nDst: {dst_msg:?}");
+
+            let mut dst_msg = dst_msg.clone();
+            dst_msg.timestamp -= TIMESTAMP_DIFF;
+            if let Some(Typed::Regular(MessageRegular {
+                                           edit_timestamp_option: Some(ref mut edit_timestamp), ..
+                                       })) = dst_msg.typed {
+                *edit_timestamp -= TIMESTAMP_DIFF;
+            }
+            let dst_pet = Tup::new(&dst_msg, &daos.dst_ds_root, &dst_cwd);
+            assert!(src_pet.practically_equals(&dst_pet)?, "Src: {src_msg:?}\nDst: {dst_msg:?}");
+        }
+    }
     Ok(())
 }
-
-/*
-test("shift dataset time") {
-  val chat = h2dao.chats(dsUuid).head.chat
-  def getMsg() = {
-    h2dao.firstMessages(chat, 1).head
-  }
-  val msg0 = getMsg()
-
-  {
-    // +8
-    h2dao.shiftDatasetTime(dsUuid, 8)
-    val msg1 = getMsg()
-    assert(msg1.internalId == msg0.internalId)
-    assert(msg1.time == msg0.time.plusHours(8))
-  }
-
-  {
-    // +8 -5
-    h2dao.shiftDatasetTime(dsUuid, -5)
-    val msg1 = getMsg()
-    assert(msg1.internalId == msg0.internalId)
-    assert(msg1.time == msg0.time.plusHours(3))
-  }
-}
-*/
 
 #[test]
 fn backups() -> EmptyRes {
