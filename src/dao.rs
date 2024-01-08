@@ -209,7 +209,7 @@ pub trait MutableChatHistoryDao: ChatHistoryDao {
 
 pub trait ShiftableChatHistoryDao: ChatHistoryDao {
     /// Shift time of all timestamps in the dataset to accommodate timezone differences.
-    fn shift_dataset_time(&mut self, uuid: PbUuid, hours_shift: i32) -> EmptyRes;
+    fn shift_dataset_time(&mut self, uuid: &PbUuid, hours_shift: i32) -> EmptyRes;
 }
 
 type UserCache = HashMap<PbUuid, UserCacheForDataset>;

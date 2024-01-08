@@ -611,11 +611,16 @@ fn parse_regular_message(message_json: &mut MessageJson,
 
     let json_path = message_json.json_path.clone();
 
+    // Telegram has been observed to use 1970-ish edit times, probably signifying message not being edited
+    const FIRST_POSSIBLE_VALID_TIMESTAMP: i64 = 650000000;
     if let Some(ref edited) = message_json.field_opt_str("edited_unixtime")? {
         message_json.add_required("edited");
         regular_msg.edit_timestamp_option = Some(parse_timestamp(edited)?);
     } else if let Some(ref edited) = message_json.field_opt_str("edited")? {
-        regular_msg.edit_timestamp_option = Some(*parse_datetime(edited)?);
+        let edit_timestamp = *parse_datetime(edited)?;
+        if edit_timestamp > FIRST_POSSIBLE_VALID_TIMESTAMP {
+            regular_msg.edit_timestamp_option = Some(edit_timestamp);
+        }
     }
     regular_msg.forward_from_name_option = match message_json.field_opt("forwarded_from")? {
         None => None,

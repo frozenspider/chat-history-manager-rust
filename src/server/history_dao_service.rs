@@ -221,7 +221,7 @@ impl HistoryDaoService for Arc<Mutex<ChatHistoryManagerServer>> {
     async fn shift_dataset_time(&self, req: Request<ShiftDatasetTimeRequest>) -> TonicResult<Empty> {
         with_dao_by_key!(self, req, dao, {
             let uuid = req.uuid.as_ref().context("Dataset was empty!")?.clone();
-            dao.as_shiftable()?.shift_dataset_time(uuid, req.hours_shift)?;
+            dao.as_shiftable()?.shift_dataset_time(&uuid, req.hours_shift)?;
             Ok(Empty {})
         })
     }

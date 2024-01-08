@@ -514,12 +514,7 @@ impl ChatHistoryDao for SqliteDao {
     }
 
     fn as_shiftable(&mut self) -> Result<&mut dyn ShiftableChatHistoryDao> {
-        // H2 query:
-        // UPDATE messages SET
-        //   time      = DATEADD(HOUR, $hrs, time),
-        //   edit_time = DATEADD(HOUR, $hrs, edit_time)
-        // WHERE ds_uuid = ${dsUuid}
-        err!("Dataset time cannot be shifted for a persistent DB")
+        Ok(self)
     }
 }
 
@@ -990,6 +985,28 @@ impl MutableChatHistoryDao for SqliteDao {
         self.copy_messages(conn, &msgs, chat.id,
                            &uuid_bytes, src_ds_root, &dst_ds_root)?;
 
+        Ok(())
+    }
+}
+
+impl ShiftableChatHistoryDao for SqliteDao {
+    fn shift_dataset_time(&mut self, uuid: &PbUuid, hours_shift: i32) -> EmptyRes {
+        // Messages aren't cached so no need to invalidate cache
+        let mut conn = self.conn.borrow_mut();
+        let conn = conn.deref_mut();
+
+        let uuid = Uuid::parse_str(&uuid.value).expect("Invalid UUID!");
+        let timestamp_shift = hours_shift * 60 * 60;
+        sql_query(r"
+            UPDATE message SET
+              time_sent   = time_sent + ?,
+              time_edited = time_edited + ?
+            WHERE ds_uuid = ?
+        ")
+            .bind::<sql_types::Integer, _>(timestamp_shift)
+            .bind::<sql_types::Integer, _>(timestamp_shift)
+            .bind::<sql_types::Binary, _>(uuid.as_ref())
+            .execute(conn)?;
         Ok(())
     }
 }
