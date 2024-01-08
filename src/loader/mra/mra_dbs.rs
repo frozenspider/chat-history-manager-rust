@@ -325,7 +325,7 @@ fn convert_message(
     mra_msg: &MraLegacyMessage<'_>,
     internal_id: i64,
     myself_username: &str,
-    conv_name: &str,
+    conv_username: &str,
     users: &HashMap<String, User>,
     prev_msgs: &mut [Message],
     ongoing_call_msg_id: &mut Option<i64>,
@@ -338,7 +338,7 @@ fn convert_message(
     let source_id_option = Some(mra_msg.sequential_id as i64);
 
     let from_me = mra_msg.is_from_me()?;
-    let mut from_username = (if from_me { myself_username } else { conv_name }).to_owned();
+    let mut from_username = (if from_me { myself_username } else { conv_username }).to_owned();
 
     let tpe = mra_msg.get_tpe()?;
 
@@ -358,7 +358,7 @@ fn convert_message(
                 // RGBA bytes, ignoring
                 let payload = &payload[4..];
                 // Might be followed by empty bytes
-                require_format(payload.iter().all(|b| *b == 0), mra_msg, conv_name)?;
+                require_format(payload.iter().all(|b| *b == 0), mra_msg, conv_username)?;
 
                 parse_rtf(&rtf)?
             } else {
@@ -375,7 +375,7 @@ fn convert_message(
             let rtf = utf16le_to_string(rtf_bytes)?;
             // RGBA bytes, ignoring
             let payload = &payload[4..];
-            require_format(payload.is_empty(), mra_msg, conv_name)?;
+            require_format(payload.is_empty(), mra_msg, conv_username)?;
 
             let rtes = parse_rtf(&rtf)?;
             (rtes, Typed::Service(MessageService {
@@ -391,9 +391,9 @@ fn convert_message(
             // It does not carry call information per se.
             let payload = mra_msg.payload;
             let payload = validate_skip_chunk(payload, mra_msg.text.as_bytes())?;
-            require_format(payload.is_empty(), mra_msg, conv_name)?;
+            require_format(payload.is_empty(), mra_msg, conv_username)?;
 
-            match process_call(&text, internal_id, mra_msg, conv_name, timestamp, ongoing_call_msg_id, prev_msgs)? {
+            match process_call(&text, internal_id, mra_msg, conv_username, timestamp, ongoing_call_msg_id, prev_msgs)? {
                 Some(text_and_typed) => text_and_typed,
                 None => return Ok(None),
             }
@@ -401,7 +401,7 @@ fn convert_message(
         MraMessageType::BirthdayReminder => {
             let payload = mra_msg.payload;
             let payload = validate_skip_chunk(payload, mra_msg.text.as_bytes())?;
-            require_format(payload.is_empty(), mra_msg, conv_name)?;
+            require_format(payload.is_empty(), mra_msg, conv_username)?;
 
             (vec![RichText::make_plain(text)], Typed::Service(MessageService {
                 sealed_value_optional: Some(ServiceSvo::Notice(MessageServiceNotice {}))
@@ -411,13 +411,13 @@ fn convert_message(
             let payload = mra_msg.payload;
             // Source is a <SMILE> tag
             let (src_bytes, payload) = next_sized_chunk(payload)?;
-            require_format(payload.is_empty(), mra_msg, conv_name)?;
+            require_format(payload.is_empty(), mra_msg, conv_username)?;
             let src = utf16le_to_string(src_bytes)?;
 
-            convert_cartoon(&src).with_context(|| context(mra_msg, conv_name))?
+            convert_cartoon(&src).with_context(|| context(mra_msg, conv_username))?
         }
         MraMessageType::ConferenceUsersChange => {
-            convert_conference_user_changed_record(conv_name, mra_msg, mra_msg.payload, users)?
+            convert_conference_user_changed_record(conv_username, mra_msg, mra_msg.payload, users)?
         }
         MraMessageType::MicroblogRecordBroadcast |
         MraMessageType::MicroblogRecordDirected => {
@@ -431,7 +431,7 @@ fn convert_message(
             } else { None };
             // Next 8 bytes is some timestamp we don't really care about
             let payload = &payload[8..];
-            require_format(payload.is_empty(), mra_msg, conv_name)?;
+            require_format(payload.is_empty(), mra_msg, conv_username)?;
             convert_microblog_record(&text, target_name.as_deref())
         }
         MraMessageType::ConferenceMessagePlaintext => {
@@ -441,7 +441,7 @@ fn convert_message(
             // Author email
             let (author_email_bytes, payload) = next_sized_chunk(payload)?;
             from_username = String::from_utf8(author_email_bytes.to_vec())?;
-            require_format(payload.is_empty(), mra_msg, conv_name)?;
+            require_format(payload.is_empty(), mra_msg, conv_username)?;
 
             let text = replace_smiles_with_emojis(&text);
             (vec![RichText::make_plain(text)], Typed::Regular(Default::default()))
@@ -456,11 +456,11 @@ fn convert_message(
             // Author email (only present for others' messages)
             require_format_clue(
                 payload.is_empty() == from_me,
-                mra_msg, conv_name,
+                mra_msg, conv_username,
                 "Expected message payload to be empty for self messages only!\nMessage: {mra_msg:?}")?;
             if !from_me {
                 let (author_email_bytes, payload) = next_sized_chunk(payload)?;
-                require_format(payload.is_empty(), mra_msg, conv_name)?;
+                require_format(payload.is_empty(), mra_msg, conv_username)?;
                 from_username = String::from_utf8(author_email_bytes.to_vec())?
             };
 

@@ -212,7 +212,7 @@ fn convert_microblog_record(
 fn collect_users_from_conference_user_changed_record(
     users: &mut HashMap<String, User>,
     ds_uuid: &PbUuid,
-    conv_name: &str,
+    conv_username: &str,
     mra_msg: &impl MraMessage,
     payload: &[u8],
 ) -> EmptyRes {
@@ -232,14 +232,14 @@ fn collect_users_from_conference_user_changed_record(
                 names.push(utf16le_to_string(name_bytes)?);
             }
             let (num_invited_user_emails, mut payload) = next_u32_size(payload);
-            require_format(num_invited_user_names == num_invited_user_emails, mra_msg, conv_name)?;
+            require_format(num_invited_user_names == num_invited_user_emails, mra_msg, conv_username)?;
 
             for _ in 0..num_invited_user_names {
                 let (username_bytes, payload2) = next_sized_chunk(payload)?;
                 payload = payload2;
                 usernames.push(utf16le_to_string(username_bytes)?);
             }
-            require_format(payload.is_empty(), mra_msg, conv_name)?;
+            require_format(payload.is_empty(), mra_msg, conv_username)?;
 
             for (username, name_or_email) in usernames.into_iter().zip(names.into_iter()) {
                 upsert_user(users, ds_uuid, &username, Some(name_or_email));
@@ -248,7 +248,7 @@ fn collect_users_from_conference_user_changed_record(
         CONFERENCE_USER_LEFT => {
             let (name_bytes, payload) = next_sized_chunk(payload)?;
             let (email_bytes, payload) = next_sized_chunk(payload)?;
-            require_format(payload.is_empty(), mra_msg, conv_name)?;
+            require_format(payload.is_empty(), mra_msg, conv_username)?;
 
             upsert_user(users,
                         ds_uuid,
@@ -256,7 +256,7 @@ fn collect_users_from_conference_user_changed_record(
                         Some(utf16le_to_string(name_bytes)?));
         }
         etc => {
-            require_format_clue(false, mra_msg, conv_name,
+            require_format_clue(false, mra_msg, conv_username,
                                 &format!("Unexpected conference user change type {etc}"))?;
         }
     };
@@ -314,7 +314,7 @@ fn convert_file_transfer(text: &str) -> Result<TextAndTyped> {
 
 /// Turns out this format is shared exactly between old and new formats
 fn convert_conference_user_changed_record(
-    conv_name: &str,
+    conv_username: &str,
     mra_msg: &impl MraMessage,
     payload: &[u8],
     users: &HashMap<String, User>,
@@ -338,7 +338,7 @@ fn convert_conference_user_changed_record(
                 payload = payload2;
                 emails.push(utf16le_to_string(email_bytes)?);
             }
-            require_format(payload.is_empty(), mra_msg, conv_name)?;
+            require_format(payload.is_empty(), mra_msg, conv_username)?;
 
             let members = emails.iter().map(|e| users[e].pretty_name()).collect_vec();
             ServiceSvo::GroupInviteMembers(MessageServiceGroupInviteMembers { members })
@@ -346,7 +346,7 @@ fn convert_conference_user_changed_record(
         CONFERENCE_USER_LEFT => {
             let (_name_bytes, payload) = next_sized_chunk(payload)?;
             let (email_bytes, payload) = next_sized_chunk(payload)?;
-            require_format(payload.is_empty(), mra_msg, conv_name)?;
+            require_format(payload.is_empty(), mra_msg, conv_username)?;
 
             let email = utf16le_to_string(email_bytes)?;
             let members = vec![users[&email].pretty_name()];
@@ -363,7 +363,7 @@ fn process_call(
     text: &str,
     internal_id: i64,
     mra_msg: &impl MraMessage,
-    conv_name: &str,
+    conv_username: &str,
     timestamp: i64,
     ongoing_call_msg_id: &mut Option<i64>,
     prev_msgs: &mut [Message],
@@ -418,7 +418,7 @@ fn process_call(
                         call.discard_reason_option = discard_reason_option.map(|s| s.to_owned());
                     }
                     etc => {
-                        require_format_clue(false, mra_msg, conv_name,
+                        require_format_clue(false, mra_msg, conv_username,
                                             &format!("unexpected ongoing call type: {etc:?}"))?;
                         unreachable!()
                     }
@@ -429,7 +429,7 @@ fn process_call(
             return Ok(None);
         }
         etc => {
-            require_format_clue(false, mra_msg, conv_name,
+            require_format_clue(false, mra_msg, conv_username,
                                 &format!("unexpected call message: {etc}"))?;
             unreachable!()
         }
@@ -503,22 +503,22 @@ trait MraMessage: Debug {
 // Assertions
 //
 
-fn context(mra_msg: &impl MraMessage, conv_name: &str) -> String {
-    format!("Unexpected {:?} message format\nConversation: {conv_name}, message: {mra_msg:?}", mra_msg.get_tpe().unwrap())
+fn context(mra_msg: &impl MraMessage, conv_username: &str) -> String {
+    format!("Unexpected {:?} message format\nConversation: {conv_username}, message: {mra_msg:?}", mra_msg.get_tpe().unwrap())
 }
 
-fn require_format(cond: bool, mra_msg: &impl MraMessage, conv_name: &str) -> EmptyRes {
-    require!(cond, "Unexpected {:?} message format\nConversation: {conv_name}, message: {mra_msg:?}", mra_msg.get_tpe()?);
+fn require_format(cond: bool, mra_msg: &impl MraMessage, conv_username: &str) -> EmptyRes {
+    require!(cond, "Unexpected {:?} message format\nConversation: {conv_username}, message: {mra_msg:?}", mra_msg.get_tpe()?);
     Ok(())
 }
 
-fn require_format_clue(cond: bool, mra_msg: &impl MraMessage, conv_name: &str, clue: &str) -> EmptyRes {
-    require!(cond, "Unexpected {:?} message format: {clue}\nConversation: {conv_name}, message: {mra_msg:?}", mra_msg.get_tpe()?);
+fn require_format_clue(cond: bool, mra_msg: &impl MraMessage, conv_username: &str, clue: &str) -> EmptyRes {
+    require!(cond, "Unexpected {:?} message format: {clue}\nConversation: {conv_username}, message: {mra_msg:?}", mra_msg.get_tpe()?);
     Ok(())
 }
 
-fn require_format_with_clue(cond: bool, mra_msg: &impl MraMessage, conv_name: &str, clue: impl Fn() -> String) -> EmptyRes {
-    require!(cond, "Unexpected {:?} message format: {}\nConversation: {conv_name}, message: {mra_msg:?}", mra_msg.get_tpe()?, clue());
+fn require_format_with_clue(cond: bool, mra_msg: &impl MraMessage, conv_username: &str, clue: impl Fn() -> String) -> EmptyRes {
+    require!(cond, "Unexpected {:?} message format: {}\nConversation: {conv_username}, message: {mra_msg:?}", mra_msg.get_tpe()?, clue());
     Ok(())
 }
 
