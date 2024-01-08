@@ -136,15 +136,26 @@ fn find_timestamp_delta(
         {
             log::debug!("Analyzing conversation between {myself_username} and {other_username}");
 
-            if let Some(old_idx) = find_message_index(&new_msgs[0], &old_msgs) {
-                let delta = new_msgs[0].timestamp - old_msgs[old_idx].timestamp;
-                // Timestamps often differs by a few seconds beyond the normal timezone difference.
-                // Let's round it within 15-minutes precision
-                const DIV: f64 = 60.0 * 15.0;
-                let delta = ((delta as f64 / DIV).round() * DIV) as i64;
-                if delta.abs() < 24 * 60 * 60 {
-                    log::debug!("Timestamp delta determined to be {delta} ({} hrs)", (delta as f64 / 60.0 / 60.0));
-                    return Ok(Some(delta));
+            // First new message that doesn't have earlier duplicates
+            let first_viable_new_msg = new_msgs.iter()
+                .enumerate()
+                .find(|(idx, msg)| !new_msgs.iter().skip(*idx + 1).any(|msg2| msg_eq(msg, msg2)))
+                .map(|(_, msg)| msg);
+
+            if let Some(first_viable_new_msg) = first_viable_new_msg {
+                // Find an equivalent message within old messages.
+                // Note that for simplicity we don't check old message's relative uniqueness, leaving us vulnerable
+                // to this unlikely corner case.
+                if let Some(old_msg) = old_msgs.iter().rev().find(|old_msg| msg_eq(old_msg, first_viable_new_msg)) {
+                    let delta = first_viable_new_msg.timestamp - old_msg.timestamp;
+                    // Timestamps often differs by a few seconds beyond the normal timezone difference.
+                    // Let's round it within 15-minutes precision
+                    const DIV: f64 = 60.0 * 15.0;
+                    let delta = ((delta as f64 / DIV).round() * DIV) as i64;
+                    if delta.abs() < 24 * 60 * 60 {
+                        log::debug!("Timestamp delta determined to be {delta} ({} hrs)", (delta as f64 / 60.0 / 60.0));
+                        return Ok(Some(delta));
+                    }
                 }
             }
         }
@@ -153,15 +164,10 @@ fn find_timestamp_delta(
     Ok(None)
 }
 
-/// Find an index of a given message within messages slice (judging by the text and typed parts only).
-fn find_message_index(msg: &Message, msgs: &[Message]) -> Option<usize> {
-    for (idx, other_msg) in msgs.iter().enumerate().rev() {
-        // PracticallyEq requires too much context, but direct Typed equality should do fine here
-        if other_msg.text == msg.text && other_msg.typed == msg.typed {
-            return Some(idx);
-        }
-    }
-    return None;
+/// Whether or not two messages are equal, judging by the text and typed parts only.
+fn msg_eq(msg1: &Message, msg2: &Message) -> bool {
+    // PracticallyEq requires too much context, but direct Typed equality should do fine here
+    msg1.text == msg2.text && msg1.typed == msg2.typed
 }
 
 fn change_timestamps(timestamp_diff: i64, dataset_map: &mut HashMap<String, MraDatasetEntry>) {

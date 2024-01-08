@@ -630,7 +630,7 @@ pub(super) fn merge_conversations(
                 }
             });
 
-            merge_messages(format!("{myself_username} with {conv_username}"),
+            merge_messages(&format!("{myself_username} with {conv_username}"),
                            new_msgs,
                            &mut cwm.messages)?;
 
@@ -657,8 +657,8 @@ pub(super) fn merge_conversations(
 
 /// Merge new messages into old ones, skipping all new messages that are already stored.
 /// Note that old and new messages have different source IDs, and might actually have slight time differences.
-fn merge_messages(pretty_conv_name: String, new_msgs: Vec<Message>, msgs: &mut Vec<Message>) -> EmptyRes {
-    log::debug!("Merging conv {pretty_conv_name}: {} <- {}", msgs.len(), new_msgs.len());
+fn merge_messages(pretty_conv_name: &str, new_msgs: Vec<Message>, msgs: &mut Vec<Message>) -> EmptyRes {
+    log::debug!("{pretty_conv_name}: Merging conv (old {} <- new {})", msgs.len(), new_msgs.len());
     if msgs.is_empty() {
         // Trivial case
         msgs.extend(new_msgs);
@@ -668,7 +668,7 @@ fn merge_messages(pretty_conv_name: String, new_msgs: Vec<Message>, msgs: &mut V
         let old_len = msgs.len();
         let last_internal_id = msgs.last().map(|m| m.internal_id).unwrap_or_default();
 
-        let first_new_idx = first_start_of_new_slice(&msgs, &new_msgs);
+        let first_new_idx = first_start_of_new_slice(pretty_conv_name, &msgs, &new_msgs);
         msgs.extend(new_msgs.into_iter().skip(first_new_idx));
 
         for (new_msg, internal_id) in msgs.iter_mut().skip(old_len).zip((last_internal_id + 1)..) {
@@ -681,21 +681,27 @@ fn merge_messages(pretty_conv_name: String, new_msgs: Vec<Message>, msgs: &mut V
 
 /// Find the first index of new message that isn't contained in old messages.
 /// (When both new and old DBs are present, new DB might have some messages missing.)
-fn first_start_of_new_slice(old_msgs: &[Message], new_msgs: &[Message]) -> usize {
+fn first_start_of_new_slice(pretty_conv_name: &str, old_msgs: &[Message], new_msgs: &[Message]) -> usize {
     const MAX_TIMESTAMP_DIFF: i64 = 10;
     let last_old_msg = old_msgs.last().unwrap(); // At this point, both old and new msgs are not empty
     for (idx, new_msg) in new_msgs.iter().enumerate() {
-        if new_msg.text == last_old_msg.text &&
-            new_msg.typed == last_old_msg.typed &&
+        if msg_eq(new_msg, last_old_msg) &&
             (new_msg.timestamp - last_old_msg.timestamp).abs() <= MAX_TIMESTAMP_DIFF
         {
             // Next message is truly new
+            log::debug!("{pretty_conv_name}: Intersection ends at index {}", idx + 1);
             return idx + 1;
         } else if new_msg.timestamp - last_old_msg.timestamp > MAX_TIMESTAMP_DIFF {
-            // No intersections, all messages are new
+            // No intersections, all messages starting from this one are new
+            if idx == 0 {
+                log::debug!("{pretty_conv_name}: All new messages are new");
+            } else {
+                log::debug!("{pretty_conv_name}: New messages start at index {}", idx);
+            }
             return idx;
         }
     }
+    log::warn!("{pretty_conv_name}: No intersections between old and new DB found for conversation!");
     0
 }
 

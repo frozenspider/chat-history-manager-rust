@@ -67,7 +67,7 @@ fn init_logger() {
             let target = record.target();
 
             let thread = std::thread::current();
-            writeln!(buf, "{} {} {} - {} [{}]",
+            writeln!(buf, "{} {: <5} {} - {} [{}]",
                      timestamp, level, target, buf.style().value(record.args()),
                      thread.name().unwrap_or("<unnamed>"))
         })
