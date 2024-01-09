@@ -264,7 +264,6 @@ fn process_conversation(
     let mut interlocutor_ids = HashSet::from([MYSELF_ID]);
     let mut internal_id = 0;
     for mra_msg in db_msgs {
-        // Using -1 as a placeholder internal_id
         if let Some(msg) = convert_message(mra_msg, internal_id, myself_username, conv_username, users,
                                            &mut msgs, &mut ongoing_call_msg_id)? {
             interlocutor_ids.insert(UserId(msg.from_id));
@@ -744,7 +743,7 @@ impl Debug for DbMessage {
             }
         };
         formatter.field("header", &self.header);
-        formatter.field("payload", &format!("{:02X?}", self.payload));
+        formatter.field("payload", &bytes_to_pretty_string(&self.payload, usize::MAX));
         formatter.finish()
     }
 }
@@ -777,11 +776,11 @@ impl Debug for DbMessageHeader {
         let flags = self.flags;
         formatter.field("flags", &format!("{flags:#010b}"));
         let unknown1 = self._unknown1.clone();
-        formatter.field("_unknown1", &format!("{unknown1:02X?}"));
+        formatter.field("_unknown1", &bytes_to_pretty_string(&unknown1, usize::MAX));
         let time = self.filetime;
         formatter.field("filetime", &time);
         let unknown2 = self._unknown2.clone();
-        formatter.field("_unknown2", &format!("{unknown2:02X?}"));
+        formatter.field("_unknown2", &bytes_to_pretty_string(&unknown2, usize::MAX));
         let some_timestamp_or_0 = self.some_timestamp_or_0;
         formatter.field("some_timestamp_or_0", &some_timestamp_or_0);
         formatter.finish()

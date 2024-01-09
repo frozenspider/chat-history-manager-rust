@@ -609,6 +609,7 @@ impl Debug for MraLegacyMessage<'_> {
         };
         formatter.field("author", &self.author.to_utf8());
         formatter.field("text", &self.text.to_utf8());
+        formatter.field("header", self.header);
         formatter.field("payload_offset", &format!("{:#010x}", self.payload_offset));
         formatter.field("payload", &bytes_to_pretty_string(self.payload, usize::MAX));
         formatter.finish()

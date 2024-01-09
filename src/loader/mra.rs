@@ -532,6 +532,9 @@ fn require_format_with_clue(cond: bool, mra_msg: &impl MraMessage, conv_username
 // Helper functions
 //
 
+#[macro_export]
+macro_rules! copy_packed_pirmitive { ($e:expr) => { { let v = $e; v }};}
+
 /// Create or update user by username, possibly setting a first name if it's not an email too.
 fn upsert_user(users: &mut HashMap<String, User>,
                ds_uuid: &PbUuid,
@@ -655,7 +658,11 @@ fn bytes_to_pretty_string(bytes: &[u8], columns: usize) -> String {
     for row in bytes.chunks(columns) {
         for group in row.chunks(4) {
             for b in group {
-                result.push_str(&format!("{b:02x}"));
+                if *b == 0x00 {
+                    result.push_str("..");
+                } else {
+                    result.push_str(&format!("{b:02x}"));
+                }
             }
             result.push(' ');
         }
