@@ -532,8 +532,9 @@ fn require_format_with_clue(cond: bool, mra_msg: &impl MraMessage, conv_username
 // Helper functions
 //
 
+/// Clone a field from a packed structure, useful for debugging
 #[macro_export]
-macro_rules! copy_packed_pirmitive { ($e:expr) => { { let v = $e; v }};}
+macro_rules! clone_packed { ($e:expr) => { { let v = $e; v.clone() }};}
 
 /// Create or update user by username, possibly setting a first name if it's not an email too.
 fn upsert_user(users: &mut HashMap<String, User>,

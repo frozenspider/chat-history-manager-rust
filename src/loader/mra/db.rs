@@ -96,37 +96,35 @@ fn load_conversation_messages<'a>(conv_username: &str, db_bytes: &'a [u8]) -> Re
     let mut db_bytes = db_bytes;
     let mut offset = 0;
     while !db_bytes.is_empty() {
-        let (message_bytes, rest_bytes) = next_sized_chunk(db_bytes)?;
-        let offset_shift = message_bytes.len();
+        let (bytes, rest_bytes) = next_sized_chunk(db_bytes)?;
+        let offset_shift = bytes.len();
         let (message_len_again, rest_bytes) = next_u32_size(rest_bytes);
-        require!(message_len_again == message_bytes.len(),
-                 "Message was not followed by duplicated length!\nMessage bytes: {message_bytes:02X?}");
+        require!(message_len_again == bytes.len(),
+                 "Message was not followed by duplicated length!\nMessage bytes: {bytes:02X?}");
 
-        let message_bytes = {
-            let (wrapped_bytes, remaining_bytes) = next_sized_chunk(message_bytes)?;
+        let bytes = {
+            let (wrapped_bytes, remaining_bytes) = next_sized_chunk(bytes)?;
             require!(remaining_bytes.len() == 4);
             require!(read_u32(remaining_bytes, 0) as usize == wrapped_bytes.len());
             wrapped_bytes
         };
 
-        // This is inherently unsafe. The only thing we can do is to check a magic number right after.
-        let header = unsafe {
-            let header_ptr = message_bytes.as_ptr() as *const DbMessageHeader;
-            header_ptr.as_ref::<'a>().unwrap().clone()
-        };
-        require!(header.magic_number == MSG_HEADER_MAGIC_NUMBER && header.magic_value_one == 1 && header.padding2 == 0,
+        let (magic_number, bytes) = next_u32(bytes);
+        require!(magic_number == MSG_HEADER_MAGIC_NUMBER,
+                 "Incorrect magic number for message at offset {offset:#010x}");
+
+        let (header, bytes) = DbMessageHeader::next_header(bytes, offset)?;
+        require!(header.full_length as usize == message_len_again + 8,
                  "Incorrect header for message at offset {offset:#010x}: {header:?}");
 
-        let bytes = &message_bytes[mem::size_of::<DbMessageHeader>()..];
         let (payload, bytes) = next_sized_chunk(bytes)?;
 
         let mut mra_msg = DbMessage { offset, header, payload: payload.to_vec(), sections: vec![] };
         require_format_clue(bytes.is_empty(), &mra_msg, conv_username, "incorrect remainder")?;
 
         // Not really sure what is the meaning of this, but empty messages can be identified by this signature.
-        // They could have different "types", and this signature doesn't seem obviously meaningful for non-empty messages.
-        if &mra_msg.header._unknown1[2..=3] == &[0x4A, 0x00] {
-            require_format(mra_msg.payload == vec![1, 0, 0, 0, 0], &mra_msg, conv_username)?;
+        if &mra_msg.payload == &[1, 0, 0, 0, 0] {
+            // TODO
         } else {
             require_format_clue(mra_msg.payload.len() > 13, &mra_msg, conv_username, "payload is too short")?;
             let (_unknown, mut payload) = next_n_bytes::<5>(&mra_msg.payload);
@@ -148,6 +146,10 @@ fn load_conversation_messages<'a>(conv_username: &str, db_bytes: &'a [u8]) -> Re
 
         // If message has no sections, it's a weird placeholder message we don't really care about
         if !mra_msg.sections.is_empty() {
+            // Sanity checking filetime, using year 1995 for that
+            const MIN_FILETIME: u64 = 124500000000000000;
+            require_format_clue(mra_msg.header.filetime > MIN_FILETIME, &mra_msg, conv_username,
+                                "filetime is not known")?;
             result.push(mra_msg);
         }
 
@@ -284,11 +286,7 @@ fn convert_message(
     prev_msgs: &mut [Message],
     ongoing_call_msg_id: &mut Option<i64>,
 ) -> Result<Option<Message>> {
-    let timestamp = match filetime_to_timestamp(mra_msg.header.filetime) {
-        0 => mra_msg.header.some_timestamp_or_0 as i64,
-        v => v
-    };
-    require_format_clue(timestamp != 0, mra_msg, conv_username, "timestamp is not known")?;
+    let timestamp = filetime_to_timestamp(mra_msg.header.filetime);
 
     let from_me = mra_msg.is_from_me()?;
     let mut from_username = (if from_me { myself_username } else { conv_username }).to_owned();
@@ -751,15 +749,17 @@ impl Debug for DbMessage {
 #[repr(C, packed)]
 #[derive(Clone, PartialEq, Eq)]
 struct DbMessageHeader {
-    /// Matches MSG_HEADER_MAGIC_NUMBER
-    magic_number: u32,
     /// == 1
     magic_value_one: u8,
     /// Known variants are listed in MraMessageType
     tpe_u8: u8,
     /// Only FLAG_INCOMING is known
     flags: u8,
-    _unknown1: [u8; 10],
+    padding1: u16,
+    /// Length of the entire message including prefix and suffix lengths
+    full_length: u32,
+    /// Offset of another message this message refers to, exact meaning is unknown
+    addr: u32,
     /// WinApi FILETIME
     filetime: u64,
     _unknown2: [u8; 4],
@@ -768,21 +768,32 @@ struct DbMessageHeader {
     padding2: u128,
 }
 
+impl DbMessageHeader {
+    fn next_header(bs: &[u8], offset: usize) -> Result<(DbMessageHeader, &[u8])> {
+        const HEADER_SIZE: usize = mem::size_of::<DbMessageHeader>();
+        require!(bs.len() >= HEADER_SIZE, "Byte slice at offset {offset:#010x} is too short to fit a header!");
+
+        // This is safe as all header fields can fit any byte sequence - which we ensured is long enough.
+        let header = unsafe {
+            let header_ptr = bs.as_ptr() as *const DbMessageHeader;
+            header_ptr.as_ref().unwrap().clone()
+        };
+        require!(header.magic_value_one == 1 && header.padding1 == 0 && header.padding2 == 0,
+                 "Incorrect header for message at offset {offset:#010x}: {header:?}");
+
+        Ok((header, &bs[HEADER_SIZE..]))
+    }
+}
+
 impl Debug for DbMessageHeader {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
         let mut formatter = formatter.debug_struct("Header");
-        let tpe_u8 = self.tpe_u8;
-        formatter.field("type_u8", &format!("{tpe_u8:#04X}"));
-        let flags = self.flags;
-        formatter.field("flags", &format!("{flags:#010b}"));
-        let unknown1 = self._unknown1.clone();
-        formatter.field("_unknown1", &bytes_to_pretty_string(&unknown1, usize::MAX));
-        let time = self.filetime;
-        formatter.field("filetime", &time);
-        let unknown2 = self._unknown2.clone();
-        formatter.field("_unknown2", &bytes_to_pretty_string(&unknown2, usize::MAX));
-        let some_timestamp_or_0 = self.some_timestamp_or_0;
-        formatter.field("some_timestamp_or_0", &some_timestamp_or_0);
+        formatter.field("type_u8", &format!("{:#04x}", clone_packed!(self.tpe_u8)));
+        formatter.field("flags", &format!("{:#010b}", clone_packed!(self.flags)));
+        formatter.field("addr", &format!("{:#010x}", clone_packed!(self.addr)));
+        formatter.field("filetime", &clone_packed!(self.filetime));
+        formatter.field("_unknown2", &bytes_to_pretty_string(&clone_packed!(self._unknown2), usize::MAX));
+        formatter.field("some_timestamp_or_0", &clone_packed!(self.some_timestamp_or_0));
         formatter.finish()
     }
 }
