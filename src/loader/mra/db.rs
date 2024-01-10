@@ -120,14 +120,18 @@ fn load_conversation_messages<'a>(conv_username: &str, db_bytes: &'a [u8]) -> Re
         let (payload, bytes) = next_sized_chunk(bytes)?;
 
         let mut mra_msg = DbMessage { offset, header, payload: payload.to_vec(), sections: vec![] };
-        require_format_clue(bytes.is_empty(), &mra_msg, conv_username, "incorrect remainder")?;
 
-        // Not really sure what is the meaning of this, but empty messages can be identified by this signature.
-        if &mra_msg.payload == &[1, 0, 0, 0, 0] {
+        require_format_clue(bytes.is_empty(), &mra_msg, conv_username, "incorrect remainder")?;
+        require_format_clue(payload[0] == 0x01, &mra_msg, conv_username, "incorrect payload magic")?;
+
+        let (payload_inner_length, payload) = next_u32_size(&payload[1..]);
+        require_format_clue(payload_inner_length == payload.len(), &mra_msg, conv_username,
+                            "incorrect payload inner length")?;
+
+        if payload_inner_length == 0 {
             // TODO
         } else {
-            require_format_clue(mra_msg.payload.len() > 13, &mra_msg, conv_username, "payload is too short")?;
-            let (_unknown, mut payload) = next_n_bytes::<5>(&mra_msg.payload);
+            let mut payload = payload;
 
             // Getting sections out of payload
             while !payload.is_empty() {
