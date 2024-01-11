@@ -5,7 +5,7 @@
 /// Known issues/limitations:
 /// * Some smile types are not converted and left as-is since there's no reference too see how they looked like.
 /// * In rare cases, Russian text is double-encoded as cp1251 within UTF-16 LE. Distorted text is passed as-is.
-/// * Timestamps are as if local timezone was UTC, and actual timezone is not known.
+/// * Timestamps are in some weird timezone (looks to be UTC+1?), and actual timezone is not known.
 ///
 /// Following references were helpful in reverse engineering the format (in Russian):
 /// * https://xakep.ru/2012/11/30/mailru-agent-hack/
@@ -330,9 +330,9 @@ fn convert_message(
     prev_msgs: &mut [Message],
     ongoing_call_msg_id: &mut Option<i64>,
 ) -> Result<Option<Message>> {
-    // Note that this timestamp is in UTC, not in local timezone! And there's no known way to get the actual timezone
+    // Note that this timestamp is in wrong timezone, and there's no known way to get the actual timezone
     // difference unless we have a newer DB format with messages overlap.
-    let timestamp = filetime_to_timestamp(mra_msg.header.filetime_utc);
+    let timestamp = filetime_to_timestamp(mra_msg.header.filetime_wrong_tz);
 
     // Since messages cannot be deleted, message number should be persistent across different DB snapshots
     let source_id_option = Some(mra_msg.sequential_id as i64);
@@ -536,8 +536,8 @@ struct MraLegacyMessageHeader {
     prev_id: u32,
     next_id: u32,
     _unknown1: u32,
-    /// WinApi FILETIME but local timezone is treated as if it was UTC
-    filetime_utc: u64,
+    /// WinApi FILETIME but as if it was taken with incorrect timezone
+    filetime_wrong_tz: u64,
     /// Known variants are listed in MraMessageType
     tpe_u32: u32,
     flag_outgoing: u8,

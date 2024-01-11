@@ -120,8 +120,9 @@ fn load_mra_dbs(path: &Path, dao_name: String) -> Result<Box<InMemoryDao>> {
     )))
 }
 
-/// Old MRA format treated local timezone as UTC, while newer format treats timezone properly.
-/// There's also an overlap between old and new messages, so we use it to try to determine timezone difference.
+/// Old MRA format has invalid timezone while newer format treats timezone properly.
+/// There's also a (possible) overlap between old and new messages, so we use it to try to determine
+/// timezone difference.
 fn find_timestamp_delta(
     old_dataset_map: &HashMap<String, MraDatasetEntry>,
     new_conv_maps: &HashMap<String, db::ConversationsMap>,

@@ -67,9 +67,15 @@ fn load_account(
 
         let db_bytes = fs::read(db_file)?;
 
-        let mut msgs = load_conversation_messages(&conv_username, &db_bytes)?;
+        let msgs = load_conversation_messages(&conv_username, &db_bytes)?;
+
+        let mut msgs = remove_bad_messages(&format!("{myself_username} with {conv_username}"), msgs)?;
+
         // Messages might be out of order
         msgs.sort_by_key(|m| m.header.filetime);
+
+        // Remove duplicates
+        msgs.dedup_by(|a, b| a.header.filetime == b.header.filetime && a.sections == b.sections);
 
         db_msgs_map.insert(conv_username, msgs);
     }
@@ -90,7 +96,7 @@ fn load_account(
     Ok(result)
 }
 
-/// Filters out empty (placeholder?) messages.
+/// Loads all messages as-is
 fn load_conversation_messages<'a>(conv_username: &str, db_bytes: &'a [u8]) -> Result<Vec<DbMessage>> {
     let mut result = vec![];
     let mut db_bytes = db_bytes;
@@ -100,7 +106,8 @@ fn load_conversation_messages<'a>(conv_username: &str, db_bytes: &'a [u8]) -> Re
         let offset_shift = bytes.len();
         let (message_len_again, rest_bytes) = next_u32_size(rest_bytes);
         require!(message_len_again == bytes.len(),
-                 "Message was not followed by duplicated length!\nMessage bytes: {bytes:02X?}");
+                 "Message was not followed by duplicated length!\nMessage bytes: {}",
+                 bytes_to_pretty_string(bytes, usize::MAX));
 
         let bytes = {
             let (wrapped_bytes, remaining_bytes) = next_sized_chunk(bytes)?;
@@ -128,39 +135,88 @@ fn load_conversation_messages<'a>(conv_username: &str, db_bytes: &'a [u8]) -> Re
         require_format_clue(payload_inner_length == payload.len(), &mra_msg, conv_username,
                             "incorrect payload inner length")?;
 
-        if payload_inner_length == 0 {
-            // TODO
-        } else {
-            let mut payload = payload;
-
-            // Getting sections out of payload
-            while !payload.is_empty() {
-                payload = {
-                    let (section_type, payload) = next_u32(payload);
-                    let section_type: MessageSectionType = FromPrimitive::from_u32(section_type)
-                        .with_context(|| format!("unknown message section: {section_type}"))?;
-                    // No matter what the section is, it's sized
-                    let (section_bytes, payload) = next_sized_chunk(payload)?;
-                    mra_msg.sections.push((section_type, section_bytes.to_vec()));
-                    payload
-                }
+        // Getting sections out of payload
+        let mut payload = payload;
+        while !payload.is_empty() {
+            payload = {
+                let (section_type_u32, payload) = next_u32(payload);
+                let section_type: Option<MessageSectionType> = FromPrimitive::from_u32(section_type_u32);
+                require_format_with_clue(section_type.is_some(), &mra_msg, conv_username,
+                                         || format!("unknown message section: {section_type_u32}"))?;
+                // No matter what the section is, it's sized
+                let (section_bytes, payload) = next_sized_chunk(payload)?;
+                mra_msg.sections.push((section_type.unwrap(), section_bytes.to_vec()));
+                payload
             }
-            mra_msg.sections.sort_by_key(|pair| pair.0);
         }
+        mra_msg.sections.sort_by_key(|pair| pair.0);
 
-        // If message has no sections, it's a weird placeholder message we don't really care about
-        if !mra_msg.sections.is_empty() {
+        // Placeholder message of type Empty are expected to always have some timestamp set.
+        if mra_msg.header.tpe_u8 == MraMessageType::Empty as u8 {
+            require_format(mra_msg.header.some_timestamp_or_0 > 0, &mra_msg, conv_username)?;
+        } else {
             // Sanity checking filetime, using year 1995 for that
             const MIN_FILETIME: u64 = 124500000000000000;
             require_format_clue(mra_msg.header.filetime > MIN_FILETIME, &mra_msg, conv_username,
                                 "filetime is not known")?;
-            result.push(mra_msg);
         }
+        result.push(mra_msg);
 
         offset += offset_shift + 8;
         db_bytes = rest_bytes;
     }
     Ok(result)
+}
+
+/// Removes empty and "phantom" messages.
+/// Phantom messages appear about one hour before real messages. I couldn't determine exact relation between the two,
+/// so using best guess to separate and remove them.
+/// These messages seem to be incorrectly copied over from mra.dbs, and in DB snapshots taken after 2015
+/// they're observed to have proper counterparts.
+/// However, in DB between 2014 and 2015 proper messages only exist in mra.dbs, and it's therefore not possible to
+/// establish valid timestamps shift for mra.dbs.
+///
+/// Note that messages here are in the order they were read in.
+fn remove_bad_messages(pretty_conv_name: &str, mra_msgs: Vec<DbMessage>) -> Result<Vec<DbMessage>> {
+    // Identified the following characteristics of phantom messages them:
+    // * Non-zero _unknown and some_timestamp_or_0 fields.
+    // * These values are shared by at least one placeholder record that:
+    //   * May or may not be of type Empty.
+    //   * May or may not mention an exact address of a phantom message.
+    //   * Could come right before the phantom message, or some time after it.
+    // * Has a timestamp below a certain value (see below)
+
+    // Established to fall between 1399725764 and 1399727019, picked as a middle point between the two
+    const MAX_PHANTOM_TIMESTAMP: i32 = 1399726392;
+
+    let referenced: HashSet<(_, _)> = mra_msgs.iter()
+        .filter(|m| m.sections.is_empty() && m.header.some_timestamp_or_0 > 0 && m.header._unknown > 0)
+        .map(|m| (m.header.some_timestamp_or_0, m.header._unknown))
+        .collect();
+
+    let mut bad_indices = HashSet::new();
+    for (idx, mra_msg) in mra_msgs.iter().enumerate() {
+        if !mra_msg.sections.is_empty() &&
+            mra_msg.header._unknown != 0 &&
+            mra_msg.header.some_timestamp_or_0 > 0 &&
+            mra_msg.header.some_timestamp_or_0 <= MAX_PHANTOM_TIMESTAMP &&
+            referenced.contains(&(mra_msg.header.some_timestamp_or_0, mra_msg.header._unknown))
+        {
+            bad_indices.insert(idx);
+        }
+    }
+
+    if !bad_indices.is_empty() {
+        log::debug!(r#"{pretty_conv_name}: Found {} "phantom" messages"#, bad_indices.len());
+    }
+
+    bad_indices.extend(mra_msgs.iter().enumerate().filter(|(_, m)| m.sections.is_empty()).map(|(idx, _)| idx));
+
+    Ok(mra_msgs.into_iter()
+        .enumerate()
+        .filter(|(i, _)| !bad_indices.contains(i))
+        .map(|(_, m)| m)
+        .collect_vec())
 }
 
 fn collect_users(
@@ -766,7 +822,9 @@ struct DbMessageHeader {
     addr: u32,
     /// WinApi FILETIME
     filetime: u64,
-    _unknown2: [u8; 4],
+    /// No idea what that is, but it doesn't look like a bit set. It's also not random, is shared between some messages,
+    /// and its values seem to fall in certain range.
+    _unknown: u32,
     /// Might slightly differ from filetime
     some_timestamp_or_0: i32,
     padding2: u128,
@@ -794,9 +852,10 @@ impl Debug for DbMessageHeader {
         let mut formatter = formatter.debug_struct("Header");
         formatter.field("type_u8", &format!("{:#04x}", clone_packed!(self.tpe_u8)));
         formatter.field("flags", &format!("{:#010b}", clone_packed!(self.flags)));
-        formatter.field("addr", &format!("{:#010x}", clone_packed!(self.addr)));
+        let addr_string = if self.addr == 0 { "NULL".to_owned() } else { format!("{:#010x}", clone_packed!(self.addr)) };
+        formatter.field("addr", &format!("{addr_string:<10}"));
         formatter.field("filetime", &clone_packed!(self.filetime));
-        formatter.field("_unknown2", &bytes_to_pretty_string(&clone_packed!(self._unknown2), usize::MAX));
+        formatter.field("_unknown", &format!("{:#010x}", clone_packed!(self._unknown)));
         formatter.field("some_timestamp_or_0", &clone_packed!(self.some_timestamp_or_0));
         formatter.finish()
     }
