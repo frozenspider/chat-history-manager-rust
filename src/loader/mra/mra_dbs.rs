@@ -161,6 +161,7 @@ fn load_messages<'a>(
             msg_id_option = u32_ptr_to_option(header.prev_id);
             sequential_id += 1;
         }
+        msgs.sort_by_key(|m| m.header.filetime_wrong_tz);
         result.push(MraLegacyConversationWithMessages { conv, msgs });
     }
 
@@ -234,7 +235,6 @@ pub(super) fn collect_datasets(
             msgs_with_context.push((mra_msg, myself_username.clone(), from_username));
         }
     }
-    msgs_with_context.sort_unstable_by_key(|mwc| mwc.0.header.filetime_utc);
 
     // Iterating from the end to work on the last state
     for (mra_msg, dataset_key, from_username) in msgs_with_context.into_iter().rev() {
