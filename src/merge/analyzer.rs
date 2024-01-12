@@ -28,22 +28,29 @@ impl<'a> DatasetDiffAnalyzer<'a> {
         Ok(DatasetDiffAnalyzer { m_dao, m_root, s_dao, s_root })
     }
 
-    /** Note that we can only detect conflicts if data source supports source IDs. */
+    /// Note that we can only detect conflicts if data source supports source IDs.
+    /// If `force_conflicts` is set, everything starting at first mismatch and ending just before trailing match
+    /// (if any) will be merged into a single conflict if possible
     pub fn analyze(
         &self,
         master_cwd: &ChatWithDetails,
         slave_cwd: &ChatWithDetails,
         title: &str,
+        force_conflicts: bool,
     ) -> Result<Vec<MergeAnalysisSection>> {
         measure(|| {
-            self.analyze_inner(
+            let mut analysis = self.analyze_inner(
                 AnalysContext {
                     mm_stream: messages_stream(self.m_dao, &master_cwd.chat, MasterMessage, |m| m.0.internal_id())?,
                     m_cwd: master_cwd,
                     sm_stream: messages_stream(self.s_dao, &slave_cwd.chat, SlaveMessage, |m| m.0.internal_id())?,
                     s_cwd: slave_cwd,
                 }
-            )
+            )?;
+            if force_conflicts {
+                analysis = enforce_conflicts(analysis)?;
+            }
+            Ok(analysis)
         }, |_, t| log::info!("Chat {title} analyzed in {t} ms"))
     }
 
@@ -202,6 +209,71 @@ impl<'a> DatasetDiffAnalyzer<'a> {
         };
 
         Ok(acc)
+    }
+}
+
+/// Everything starting at first mismatch and ending just before trailing match (if any) will be merged into
+/// a single conflict if possible
+fn enforce_conflicts(analysis: Vec<MergeAnalysisSection>) -> Result<Vec<MergeAnalysisSection>> {
+    macro_rules! is_match { ($expr:expr) => { matches!($expr, MergeAnalysisSection::Match(_)) }; }
+    if analysis.len() <= 1 || analysis.iter().all(|a| is_match!(a)) {
+        return Ok(analysis);
+    }
+    let start_idx_inc = analysis.iter().position(|a| !is_match!(a)).unwrap_or_default();
+    let end_idx_exc = if is_match!(analysis.last().unwrap()) {
+        analysis.len() - 1
+    } else {
+        analysis.len()
+    };
+
+    let mut first_master_msg_id = None;
+    let mut last_master_msg_id = None;
+    let mut first_slave_msg_id = None;
+    let mut last_slave_msg_id = None;
+    macro_rules! set_option {
+        ($opt_name:ident, $v:ident, $only_if_empty:literal) => {
+            if !$only_if_empty || $opt_name.is_none() { $opt_name = Some($v.$opt_name); }
+        };
+    }
+
+    for idx in start_idx_inc..end_idx_exc {
+        match &analysis[idx] {
+            MergeAnalysisSection::Match(v) => {
+                set_option!(first_master_msg_id, v, true);
+                set_option!(last_master_msg_id, v, false);
+                set_option!(first_slave_msg_id, v, true);
+                set_option!(last_slave_msg_id, v, false);
+            }
+            MergeAnalysisSection::Retention(v) => {
+                set_option!(first_master_msg_id, v, true);
+                set_option!(last_master_msg_id, v, false);
+            }
+            MergeAnalysisSection::Addition(v) => {
+                set_option!(first_slave_msg_id, v, true);
+                set_option!(last_slave_msg_id, v, false);
+            }
+            MergeAnalysisSection::Conflict(v) => {
+                set_option!(first_master_msg_id, v, true);
+                set_option!(last_master_msg_id, v, false);
+                set_option!(first_slave_msg_id, v, true);
+                set_option!(last_slave_msg_id, v, false);
+            }
+        }
+    }
+
+    match (first_master_msg_id, last_master_msg_id, first_slave_msg_id, last_slave_msg_id) {
+        (Some(first_master_msg_id), Some(last_master_msg_id), Some(first_slave_msg_id), Some(last_slave_msg_id)) => {
+            let conflict = MergeAnalysisSection::Conflict(MergeAnalysisSectionConflict {
+                first_master_msg_id,
+                last_master_msg_id,
+                first_slave_msg_id,
+                last_slave_msg_id,
+            });
+            let mut analysis = analysis;
+            analysis.splice(start_idx_inc..end_idx_exc, vec![conflict]);
+            Ok(analysis)
+        }
+        _ => Ok(analysis)
     }
 }
 

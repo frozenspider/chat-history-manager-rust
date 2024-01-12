@@ -714,6 +714,7 @@ message AnalyzeRequest {
   string slave_dao_key = 3;
   PbUuid slave_ds_uuid = 4 [(scalapb.field).no_box = true];
 
+  bool force_conflicts = 6;
   repeated ChatIdPair chat_id_pairs = 5;
 }
 message ChatIdPair {
