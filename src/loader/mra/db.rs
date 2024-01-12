@@ -492,7 +492,7 @@ fn convert_message(
             Some(parse_rtf(&rtf).with_context(|| context(mra_msg, conv_username))?)
         }
         (_, Some(text)) => {
-            let text = replace_smiles_with_emojis(&text);
+            let text = normalize_plaintext(&text);
             Some(vec![RichText::make_plain(text)])
         }
         _ => {

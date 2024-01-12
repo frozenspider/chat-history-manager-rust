@@ -362,7 +362,7 @@ fn convert_message(
 
                 parse_rtf(&rtf)?
             } else {
-                let text = replace_smiles_with_emojis(&text);
+                let text = normalize_plaintext(&text);
                 vec![RichText::make_plain(text)]
             };
 
@@ -443,7 +443,7 @@ fn convert_message(
             from_username = String::from_utf8(author_email_bytes.to_vec())?;
             require_format(payload.is_empty(), mra_msg, conv_username)?;
 
-            let text = replace_smiles_with_emojis(&text);
+            let text = normalize_plaintext(&text);
             (vec![RichText::make_plain(text)], Typed::Regular(Default::default()))
         }
         MraMessageType::ConferenceMessageRtf => {

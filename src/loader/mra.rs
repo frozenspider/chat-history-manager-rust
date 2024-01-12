@@ -207,7 +207,7 @@ fn convert_microblog_record(
     raw_text: &str,
     target_name: Option<&str>,
 ) -> (Vec<RichTextElement>, message::Typed) {
-    let text = replace_smiles_with_emojis(&raw_text);
+    let text = normalize_plaintext(&raw_text);
     let text = format!("{}{}", target_name.map(|n| format!("(To {n})\n")).unwrap_or_default(), text);
     (vec![RichText::make_plain(text)], message::Typed::Service(MessageService {
         sealed_value_optional: Some(ServiceSvo::StatusTextChanged(MessageServiceStatusTextChanged {}))
@@ -774,7 +774,7 @@ fn parse_rtf(rtf: &str) -> Result<Vec<RichTextElement>> {
     let mut enc = get_rtf_charset(DEFAULT_ENC_ID);
 
     // Text of current styled section
-    let mut curr_text: Option<String> = None;
+    let mut curr_text: String = "".to_owned();
 
     // Bytes of currently constructed UTF-16 LE string
     let mut unicode_bytes: Vec<u8> = vec![];
@@ -784,24 +784,22 @@ fn parse_rtf(rtf: &str) -> Result<Vec<RichTextElement>> {
 
     // Returned text is mutable and should be appended.
     // Calling this will flush Unicode string under construction (if any).
-    macro_rules! flush_and_get_curr_text {
+    macro_rules! flush_text_buffers {
         () => {{
-            let text = curr_text.get_or_insert_with(|| "".to_owned());
             assert!(unicode_bytes.is_empty() || charset_bytes.is_empty());
             // Flush the existing constructed string, if any
             if !unicode_bytes.is_empty() {
-                text.push_str(&utf16le_to_string(&unicode_bytes)?);
+                curr_text.push_str(&utf16le_to_string(&unicode_bytes)?.replace("\r\n", "\n"));
                 unicode_bytes.clear();
             }
             if !charset_bytes.is_empty() {
                 if let Some(enc) = enc {
-                    text.push_str(&to_utf8(&charset_bytes, enc)?);
+                    curr_text.push_str(&to_utf8(&charset_bytes, enc)?.replace("\r\n", "\n"));
                 } else {
-                    text.push_str("?");
+                    curr_text.push_str("?");
                 }
                 charset_bytes.clear();
             }
-            text
         }};
     }
 
@@ -823,13 +821,13 @@ fn parse_rtf(rtf: &str) -> Result<Vec<RichTextElement>> {
     // Commits current styled section to a result, clearing current text.
     macro_rules! commit_section {
         () => {
-            let text = flush_and_get_curr_text!();
-            let text = text.trim();
+            flush_text_buffers!();
+            let text = curr_text.trim();
             if !text.is_empty() {
-                let text = replace_smiles_with_emojis(text);
+                let text = normalize_plaintext(text);
                 result.push(make_rich_text(text, &style));
             }
-            curr_text.take();
+            curr_text.clear();
         };
     }
 
@@ -867,14 +865,14 @@ fn parse_rtf(rtf: &str) -> Result<Vec<RichTextElement>> {
             Token::ControlWord { name, arg: Some(arg) } if name == "'" && arg >= 0 => {
                 // If Unicode was being contructed, commit it first
                 if !unicode_bytes.is_empty() {
-                    flush_and_get_curr_text!();
+                    flush_text_buffers!();
                 }
                 charset_bytes.push(arg as u8);
             }
             Token::ControlWord { name, arg: Some(arg) } if name == "u" => {
                 // If charset-encoded string was being contructed, commit it first
                 if !charset_bytes.is_empty() {
-                    flush_and_get_curr_text!();
+                    flush_text_buffers!();
                 }
                 // As per spec, "Unicode values greater than 32767 must be expressed as negative numbers",
                 // but Mail.Ru doesn't seem to care.
@@ -884,11 +882,11 @@ fn parse_rtf(rtf: &str) -> Result<Vec<RichTextElement>> {
                 skip_next_char = true;
             }
             Token::ControlWord { name, arg: Some(font_num) } if name == "f" => {
-                flush_and_get_curr_text!();
+                flush_text_buffers!();
                 enc = fonttbl_charsets[font_num as usize];
             }
             Token::ControlWord { name, .. } if name == "plain" => {
-                flush_and_get_curr_text!();
+                flush_text_buffers!();
                 enc = get_rtf_charset(DEFAULT_ENC_ID);
             }
             Token::Text(t) => {
@@ -901,14 +899,18 @@ fn parse_rtf(rtf: &str) -> Result<Vec<RichTextElement>> {
                 // Only flush text if string is actually appended, otherwise it might interrupt
                 // multi-code-points charactes, like those with surrogates.
                 if !str.is_empty() {
-                    flush_and_get_curr_text!().push_str(str);
+                    flush_text_buffers!();
+                    curr_text.push_str(str);
                 }
             }
             Token::Newline(_) => {
-                flush_and_get_curr_text!().push('\n');
+                // \r\n is parsed as a single newline token
+                flush_text_buffers!();
+                curr_text.push('\n');
             }
             Token::ControlSymbol(c) => {
-                flush_and_get_curr_text!().push(c);
+                flush_text_buffers!();
+                curr_text.push(c);
             }
             Token::ControlBin(_) =>
                 bail!("Unexpected RTF token {token:?} in {rtf}"),
@@ -928,9 +930,11 @@ fn to_utf8<'a>(bytes: &'a [u8], enc: &'static Encoding) -> Result<Cow<'a, str>> 
     }
 }
 
-/// Replaces <SMILE> tags and inline smiles with emojis
-fn replace_smiles_with_emojis(s_org: &str) -> String {
-    let s = SMILE_TAG_REGEX.replace_all(s_org, |capt: &Captures| {
+/// Replaces \r\n and \r with \n, and <SMILE> tags and inline smiles with emojis
+fn normalize_plaintext(s: &str) -> String {
+    let s = s.replace("\r\n", "\n").replace('\r', "\n");
+
+    let s = SMILE_TAG_REGEX.replace_all(&s, |capt: &Captures| {
         if let Some(smiley) = capt.name("alt") {
             let smiley = smiley.as_str();
             let emoji_option = smiley_to_emoji(smiley);
