@@ -54,6 +54,21 @@ macro_rules! coerce_enum {
     }};
 }
 
+/// Since std::assert_matches::assert_matches is unstable...
+#[macro_export]
+macro_rules! assert_matches {
+    ($expr:expr, $pat:pat) => {{
+        let value = $expr;
+        assert!(matches!(value, $pat), "Expected value to match {}! Value:\n{:#?}",
+                stringify!($pat), value);
+    }};
+    ($expr:expr, $pat:pat, $($arg:tt)*) => {{
+        let value = $expr;
+        assert!(matches!(value, $pat), "Expected value to match {}! Value:\n{:#?}\nContext: {}",
+                stringify!($pat), value, format_args!($($arg)*));
+    }};
+}
+
 pub fn rng() -> &'static mut SmallRng {
     let ptr = RNG.with(|rng: &UnsafeCell<SmallRng>| rng.get());
     unsafe { &mut *ptr }

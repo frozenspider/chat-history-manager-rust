@@ -63,7 +63,7 @@ fn loading_2023_10() -> EmptyRes {
         let msgs = dao.first_messages(&chat, 99999)?;
 
         msgs.iter().for_each(|m| {
-            assert!(matches!(m.typed(), Typed::Regular(_)));
+            assert_matches!(m.typed(), Typed::Regular(_));
         });
 
         assert_eq!(msgs[0], Message {

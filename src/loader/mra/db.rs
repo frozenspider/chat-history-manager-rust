@@ -5,6 +5,10 @@ use std::fmt::Formatter;
 
 use super::*;
 
+#[cfg(test)]
+#[path = "db_tests.rs"]
+mod tests;
+
 const MSG_HEADER_MAGIC_NUMBER: u32 = 0x2D;
 
 const FLAG_INCOMING: u8 = 0b100;
@@ -65,17 +69,19 @@ fn load_account(
         let conv_username = path_file_name(&db_file)?.smart_slice(..-3).to_owned();
         if conv_username == "unreads" { continue; }
 
+        let pretty_conv_name = format!("{myself_username} with {conv_username}");
+
         let db_bytes = fs::read(db_file)?;
 
         let msgs = load_conversation_messages(&conv_username, &db_bytes)?;
 
-        let mut msgs = remove_bad_messages(&format!("{myself_username} with {conv_username}"), msgs)?;
+        let mut msgs = remove_bad_messages(&pretty_conv_name, msgs)?;
 
         // Messages might be out of order
-        msgs.sort_by_key(|m| m.header.filetime);
-
-        // Remove duplicates
-        msgs.dedup_by(|a, b| a.header.filetime == b.header.filetime && a.sections == b.sections);
+        if let Err(e) = sort_messages(&mut msgs) {
+            // Order of the same element is not well established (but hopefully stable across DB snapshots)
+            log::warn!("{pretty_conv_name}: {}", e);
+        }
 
         db_msgs_map.insert(conv_username, msgs);
     }
@@ -126,7 +132,7 @@ fn load_conversation_messages<'a>(conv_username: &str, db_bytes: &'a [u8]) -> Re
 
         let (payload, bytes) = next_sized_chunk(bytes)?;
 
-        let mut mra_msg = DbMessage { offset, header, payload: payload.to_vec(), sections: vec![] };
+        let mut mra_msg = DbMessage { offset: offset as u32, header, payload: payload.to_vec(), sections: vec![] };
 
         require_format_clue(bytes.is_empty(), &mra_msg, conv_username, "incorrect remainder")?;
         require_format_clue(payload[0] == 0x01, &mra_msg, conv_username, "incorrect payload magic")?;
@@ -168,7 +174,7 @@ fn load_conversation_messages<'a>(conv_username: &str, db_bytes: &'a [u8]) -> Re
     Ok(result)
 }
 
-/// Removes empty and "phantom" messages.
+/// Removes empty, duplicate and "phantom" messages.
 /// Phantom messages appear about one hour before real messages. I couldn't determine exact relation between the two,
 /// so using best guess to separate and remove them.
 /// These messages seem to be incorrectly copied over from mra.dbs, and in DB snapshots taken after 2015
@@ -212,11 +218,63 @@ fn remove_bad_messages(pretty_conv_name: &str, mra_msgs: Vec<DbMessage>) -> Resu
 
     bad_indices.extend(mra_msgs.iter().enumerate().filter(|(_, m)| m.sections.is_empty()).map(|(idx, _)| idx));
 
+    // Remove duplicates
+    let mut msg_hashes = HashSet::new();
+    for (idx, mra_msg) in mra_msgs.iter().enumerate() {
+        if !msg_hashes.insert((mra_msg.header.filetime, &mra_msg.sections)) {
+            bad_indices.insert(idx);
+        }
+    }
+
     Ok(mra_msgs.into_iter()
         .enumerate()
         .filter(|(i, _)| !bad_indices.contains(i))
         .map(|(_, m)| m)
         .collect_vec())
+}
+
+fn sort_messages(msgs: &mut Vec<DbMessage>) -> EmptyRes {
+    if msgs.is_empty() { return Ok(()); }
+
+    msgs.sort_by_key(|m| m.header.filetime);
+
+    let mut problematic_filetimes = vec![];
+
+    for idx1 in 0..(msgs.len() - 1) {
+        let next_seq_idx = {
+            let ft_1 = msgs[idx1].header.filetime;
+            ((idx1 + 1)..msgs.len())
+                .find(|idx| msgs[*idx].header.filetime > ft_1)
+                .unwrap_or(msgs.len())
+        };
+
+        // Sort a section [idx1; next_seq_idx) starting from the end.
+        // If all messages have NULL target address, their order is left unchanged.
+        // One corner case we can't distinguish is when next_message_addr is actually 0 and not NULL.
+        if msgs[(idx1 + 1)..next_seq_idx].iter().all(|m| m.header.next_message_addr == 0) {
+            continue;
+        }
+        let mut lookup_next_messsage_addr = 0;
+        'outer: for target_idx in ((idx1 + 1)..next_seq_idx).rev() {
+            for idx2 in (idx1..=target_idx).rev() {
+                if msgs[idx2].header.next_message_addr == lookup_next_messsage_addr {
+                    lookup_next_messsage_addr = msgs[idx2].offset;
+                    msgs.swap(target_idx, idx2);
+                    // Last message is in position now
+                    continue 'outer;
+                }
+            }
+            problematic_filetimes.push(msgs[idx1].header.filetime);
+        }
+        if next_seq_idx > idx1 + 1 && msgs[idx1].header.next_message_addr != msgs[idx1 + 1].offset {
+            problematic_filetimes.push(msgs[idx1].header.filetime)
+        }
+    }
+
+    problematic_filetimes.dedup();
+    require!(problematic_filetimes.is_empty(),
+             "Incorrect same-filetime messages linked list! (FT = {:?})", problematic_filetimes);
+    Ok(())
 }
 
 fn collect_users(
@@ -741,7 +799,7 @@ fn merge_messages(pretty_conv_name: &str, new_msgs: Vec<Message>, msgs: &mut Vec
 fn first_start_of_new_slice(pretty_conv_name: &str, old_msgs: &[Message], new_msgs: &[Message]) -> usize {
     const MAX_TIMESTAMP_DIFF: i64 = 10;
     let last_old_msg = old_msgs.last().unwrap(); // At this point, both old and new msgs are not empty
-    for (idx, new_msg) in new_msgs.iter().enumerate() {
+    for (idx, new_msg) in new_msgs.iter().enumerate().rev() {
         if msg_eq(new_msg, last_old_msg) &&
             (new_msg.timestamp - last_old_msg.timestamp).abs() <= MAX_TIMESTAMP_DIFF
         {
@@ -767,8 +825,9 @@ fn first_start_of_new_slice(pretty_conv_name: &str, old_msgs: &[Message], new_ms
 //
 
 /// Made to own its content to simplify moving it around.
+#[derive(Clone, PartialEq, Eq, Default)]
 struct DbMessage {
-    offset: usize,
+    offset: u32,
     header: DbMessageHeader,
     payload: Vec<u8>,
     /// Parsed from payload
@@ -807,7 +866,7 @@ impl Debug for DbMessage {
 }
 
 #[repr(C, packed)]
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq, Default)]
 struct DbMessageHeader {
     /// == 1
     magic_value_one: u8,
@@ -818,8 +877,9 @@ struct DbMessageHeader {
     padding1: u16,
     /// Length of the entire message including prefix and suffix lengths
     full_length: u32,
-    /// Offset of another message this message refers to, exact meaning is unknown
-    addr: u32,
+    /// Offset of another message this message refers to.
+    /// For regular messages this is used to establish order between messages with the same filetime.
+    next_message_addr: u32,
     /// WinApi FILETIME
     filetime: u64,
     /// No idea what that is, but it doesn't look like a bit set. It's also not random, is shared between some messages,
@@ -852,8 +912,12 @@ impl Debug for DbMessageHeader {
         let mut formatter = formatter.debug_struct("Header");
         formatter.field("type_u8", &format!("{:#04x}", clone_packed!(self.tpe_u8)));
         formatter.field("flags", &format!("{:#010b}", clone_packed!(self.flags)));
-        let addr_string = if self.addr == 0 { "NULL".to_owned() } else { format!("{:#010x}", clone_packed!(self.addr)) };
-        formatter.field("addr", &format!("{addr_string:<10}"));
+        let addr_string = if self.next_message_addr == 0 {
+            "NULL".to_owned()
+        } else {
+            format!("{:#010x}", clone_packed!(self.next_message_addr))
+        };
+        formatter.field("next_message_addr", &format!("{addr_string:<10}"));
         formatter.field("filetime", &clone_packed!(self.filetime));
         formatter.field("_unknown", &format!("{:#010x}", clone_packed!(self._unknown)));
         formatter.field("some_timestamp_or_0", &clone_packed!(self.some_timestamp_or_0));
@@ -862,7 +926,7 @@ impl Debug for DbMessageHeader {
 }
 
 #[repr(u32)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, FromPrimitive)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, FromPrimitive)]
 enum MessageSectionType {
     Plaintext = 0x00,
     AuthorName = 0x02,

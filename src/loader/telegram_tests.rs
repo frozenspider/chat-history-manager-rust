@@ -102,7 +102,7 @@ fn loading_2020_01() -> EmptyRes {
 
         assert_eq!(chat.msg_count, 5);
         msgs.iter().for_each(|m| {
-            assert!(matches!(m.typed(), Typed::Regular(_)));
+            assert_matches!(m.typed(), Typed::Regular(_));
             assert_eq!(m.from_id, *member.id);
         });
         assert_eq!(
@@ -184,9 +184,9 @@ fn loading_2021_05() -> EmptyRes {
         let typed = msgs.iter().map(|m| m.typed()).collect_vec();
 
         // I wish we could use assert_matches!() already...
-        assert!(matches!(typed[0], Typed::Service(MessageService { sealed_value_optional: Some(GroupCreate(_)) })));
-        assert!(matches!(typed[1], Typed::Service(MessageService { sealed_value_optional: Some(GroupMigrateFrom(_)) })));
-        assert!(matches!(typed[2], Typed::Regular(_)));
+        assert_matches!(typed[0], Typed::Service(MessageService { sealed_value_optional: Some(GroupCreate(_)) }));
+        assert_matches!(typed[1], Typed::Service(MessageService { sealed_value_optional: Some(GroupMigrateFrom(_)) }));
+        assert_matches!(typed[2], Typed::Regular(_));
     };
     Ok(())
 }
