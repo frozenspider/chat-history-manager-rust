@@ -312,10 +312,10 @@ impl AnalysContext<'_> {
             (Some(mm), Some(sm)) => {
                 if mm.timestamp != sm.timestamp {
                     mm.timestamp.cmp(&sm.timestamp)
-                } else if let (Some(msrcid), Some(ssrcid)) = (mm.source_id_option, sm.source_id_option) {
-                    msrcid.cmp(&ssrcid)
                 } else if mm.searchable_string == sm.searchable_string {
                     Ordering::Equal
+                } else if let (Some(msrcid), Some(ssrcid)) = (mm.source_id_option, sm.source_id_option) {
+                    msrcid.cmp(&ssrcid)
                 } else {
                     panic!("Cannot compare messages {:?} and {:?}!", mm.0, sm.0)
                 }
