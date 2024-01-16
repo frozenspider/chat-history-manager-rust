@@ -184,7 +184,7 @@ fn load_conversation_messages<'a>(conv_username: &str, db_bytes: &'a [u8]) -> Re
 ///
 /// Note that messages here are in the order they were read in.
 fn remove_bad_messages(pretty_conv_name: &str, mra_msgs: Vec<DbMessage>) -> Result<Vec<DbMessage>> {
-    // Identified the following characteristics of phantom messages them:
+    // Identified the following characteristics of "legacy" phantom messages:
     // * Non-zero _unknown and some_timestamp_or_0 fields.
     // * These values are shared by at least one placeholder record that:
     //   * May or may not be of type Empty.
@@ -192,8 +192,8 @@ fn remove_bad_messages(pretty_conv_name: &str, mra_msgs: Vec<DbMessage>) -> Resu
     //   * Could come right before the phantom message, or some time after it.
     // * Has a timestamp below a certain value (see below)
 
-    // Established to fall between 1399725764 and 1399727019, picked as a middle point between the two
-    const MAX_PHANTOM_TIMESTAMP: i32 = 1399726392;
+    // Established to fall between 1399727019 and 1399740988, picked as a middle point between the two
+    const MAX_LEGACY_PHANTOM_TIMESTAMP: i32 = 1399734000;
 
     let referenced: HashSet<(_, _)> = mra_msgs.iter()
         .filter(|m| m.sections.is_empty() && m.header.some_timestamp_or_0 > 0 && m.header._unknown > 0)
@@ -205,10 +205,43 @@ fn remove_bad_messages(pretty_conv_name: &str, mra_msgs: Vec<DbMessage>) -> Resu
         if !mra_msg.sections.is_empty() &&
             mra_msg.header._unknown != 0 &&
             mra_msg.header.some_timestamp_or_0 > 0 &&
-            mra_msg.header.some_timestamp_or_0 <= MAX_PHANTOM_TIMESTAMP &&
+            mra_msg.header.some_timestamp_or_0 <= MAX_LEGACY_PHANTOM_TIMESTAMP &&
             referenced.contains(&(mra_msg.header.some_timestamp_or_0, mra_msg.header._unknown))
         {
             bad_indices.insert(idx);
+        }
+    }
+
+    // In addition to these, messages after the timestamp above might also be phantom.
+    // Unfortunately, the only way to know for sure is to check.
+    fn get_plaintext(m: &DbMessage) -> String {
+        let bs = m.sections.iter().find(|s| s.0 == MessageSectionType::Plaintext).map(|s| &s.1).expect("No plaintext!");
+        let s = String::from_utf8_lossy(bs);
+        s.replace("\r", "")
+    }
+    for (idx_prev, mra_msg_prev) in mra_msgs.iter().enumerate().filter(|(_, m)|
+        !m.sections.is_empty() && m.header._unknown != 0 && m.header.some_timestamp_or_0 > MAX_LEGACY_PHANTOM_TIMESTAMP)
+    {
+        const SEC_DIFF: u64 = 3600;
+        const SEC_DIFF_DELTA: u64 = 30;
+        const MIN_SEC_DIFF: u64 = SEC_DIFF - SEC_DIFF_DELTA;
+        const MAX_SEC_DIFF: u64 = SEC_DIFF + SEC_DIFF_DELTA;
+        const MIN_FT_DIFF: u64 = MIN_SEC_DIFF * 10_000_000;
+        const MAX_FT_DIFF: u64 = MAX_SEC_DIFF * 10_000_000;
+
+        let pt_prev = get_plaintext(mra_msg_prev);
+
+        for mra_msg in mra_msgs[(idx_prev + 1)..].iter().filter(|m|
+            !m.sections.is_empty() && m.header.filetime >= mra_msg_prev.header.filetime)
+        {
+            let ft_diff = mra_msg.header.filetime - mra_msg_prev.header.filetime;
+            if ft_diff < MIN_FT_DIFF { continue; }
+            if ft_diff > MAX_FT_DIFF { break; }
+
+            if get_plaintext(mra_msg) == pt_prev {
+                bad_indices.insert(idx_prev);
+                break;
+            }
         }
     }
 
@@ -773,13 +806,13 @@ pub(super) fn merge_conversations(
 /// Merge new messages into old ones, skipping all new messages that are already stored.
 /// Note that old and new messages have different source IDs, and might actually have slight time differences.
 fn merge_messages(pretty_conv_name: &str, new_msgs: Vec<Message>, msgs: &mut Vec<Message>) -> EmptyRes {
-    log::debug!("{pretty_conv_name}: Merging conv (old {} <- new {})", msgs.len(), new_msgs.len());
     if msgs.is_empty() {
         // Trivial case
         msgs.extend(new_msgs);
     } else if new_msgs.is_empty() {
         // NOOP
     } else {
+        log::debug!("{pretty_conv_name}: Merging conv (old {} <- new {})", msgs.len(), new_msgs.len());
         let old_len = msgs.len();
         let last_internal_id = msgs.last().map(|m| m.internal_id).unwrap_or_default();
 
