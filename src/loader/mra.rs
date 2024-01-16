@@ -292,10 +292,30 @@ fn convert_cartoon(src: &str) -> Result<TextAndTyped> {
 }
 
 fn convert_file_transfer(text: &str) -> Result<TextAndTyped> {
+    let text = normalize_plaintext(text);
     // We can get file names from the outgoing messages.
     // Mail.Ru allowed us to send several files in one message, so we unite them here.
-    let text_parts = text.split('\n').collect_vec();
-    let file_name_option = if text_parts.len() >= 3 {
+    // There are several formats Mail.Ru uses for these messages:
+    // Legacy 1:
+    //      <Message>
+    //      file_1_path (file_1_size file_1_size_unit)
+    //      file_2_path (file_2_size file_2_size_unit)
+    //      ...
+    //      <Total size message>: total_size total_size_unit
+    // Legacy 2:
+    //      Передача файлов
+    // Legacy 3:
+    //      Получены файлы
+    // New:
+    //      file_1_path;file_1_size;file_2_path;file_2_size;...
+    let file_name_option = if text.ends_with(";") {
+        let text_parts = text.split(';').collect_vec();
+        Some(text_parts.as_slice().chunks_exact(2).map(|c| c[0]).join(", "))
+    } else if text == "Передача файлов" || text == "Получены файлы" {
+        None
+    } else {
+        let text_parts = text.split('\n').collect_vec();
+        require!(text_parts.len() >= 3, "Unknown file transfer message format: {}", text);
         let file_paths: Vec<&str> = text_parts.smart_slice(1..-1).iter().map(|&s|
             s.trim()
                 .rsplitn(3, ' ')
@@ -303,8 +323,6 @@ fn convert_file_transfer(text: &str) -> Result<TextAndTyped> {
                 .context("Unexpected file path format!"))
             .try_collect()?;
         Some(file_paths.iter().join(", "))
-    } else {
-        None
     };
     Ok((vec![], message::Typed::Regular(MessageRegular {
         content_option: Some(Content {
