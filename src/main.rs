@@ -18,7 +18,7 @@ fn main() {
     args.next(); // Consume first argument, which is a command itself.
     let command = args.next();
     if let Err(e) = execute_command(command, args.collect()) {
-        eprintln!("Error occurred!\n{}", error_to_string(&e));
+        eprintln!("Error: {}", error_to_string(&e));
         let backtrace = e.backtrace();
         // Backtrace is defined as just "&impl Debug + Display", so to make sure we actually have a backtrace
         // we have to use a rather dirty workaround - if backtrace is not available, its string representation
@@ -67,7 +67,7 @@ fn init_logger() {
             let target = record.target();
 
             let thread = std::thread::current();
-            writeln!(buf, "{} {} {} - {} [{}]",
+            writeln!(buf, "{} {: <5} {} - {} [{}]",
                      timestamp, level, target, buf.style().value(record.args()),
                      thread.name().unwrap_or("<unnamed>"))
         })

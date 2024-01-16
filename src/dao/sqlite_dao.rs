@@ -136,7 +136,7 @@ impl SqliteDao {
                             Ok(utils::user::serialize(u, *u == src_myself, &raw_ds.uuid))
                         }).try_collect()?;
                         insert_into(user::table).values(&raw_users).execute(txn)?;
-                        Ok::<_, anyhow::Error>(())
+                        ok(())
                     })?;
 
                     let src_ds_root = src.dataset_root(ds_uuid)?;
@@ -167,7 +167,7 @@ impl SqliteDao {
                                         })
                                     .collect_vec())
                                 .execute(txn)?;
-                            Ok::<_, anyhow::Error>(())
+                            ok(())
                         })?;
 
                         const BATCH_SIZE: usize = 5_000;
@@ -555,7 +555,7 @@ impl MutableChatHistoryDao for SqliteDao {
                 backup.run_to_completion(PAGES_PER_STEP, PAUSE_BETWEEN_PAGES, None)?;
             }
 
-            let list_backups = move || Ok::<_, anyhow::Error>(list_all_files(&backup_path, false)?
+            let list_backups = move || ok(list_all_files(&backup_path, false)?
                 .into_iter()
                 .filter(|f| {
                     let name = path_file_name(f).unwrap();

@@ -171,6 +171,10 @@ pub type StdResult<T, E> = std::result::Result<T, E>;
 pub type Result<T> = anyhow::Result<T>;
 pub type EmptyRes = Result<()>;
 
+/// To avoid specifying `Ok` type signature
+#[inline(always)]
+pub fn ok<T>(v: T) -> Result<T> { Ok(v) }
+
 #[macro_export]
 macro_rules! err {
     ($($arg:tt)*) => {{
@@ -191,7 +195,7 @@ macro_rules! require {
 }
 
 pub fn error_to_string(e: &anyhow::Error) -> String {
-    format!("{:#}", e)
+    format!("{:?}", e)
 }
 
 pub trait ToResult<T> {

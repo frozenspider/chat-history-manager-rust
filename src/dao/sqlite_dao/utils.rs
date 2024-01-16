@@ -580,7 +580,7 @@ pub mod message {
                 is_deleted: deserialize_bool(raw.m.is_deleted),
                 forward_from_name_option: raw.m.forward_from_name,
                 reply_to_message_id_option: raw.m.reply_to_message_id,
-                content_option: raw.mc.map(|mc| Ok::<_, anyhow::Error>(Content {
+                content_option: raw.mc.map(|mc| ok(Content {
                     sealed_value_optional: Some(deserialize_content(mc)?)
                 })).transpose()?,
             }),

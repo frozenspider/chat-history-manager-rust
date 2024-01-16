@@ -45,6 +45,8 @@ impl InMemoryDao {
         cache_inner.initialized = true;
         for DatasetEntry { ds, ds_root, myself_id, users, cwms } in data {
             assert!(users.iter().any(|u| u.id() == myself_id));
+            assert!(users.iter().all(|u| u.ds_uuid == ds.uuid));
+            assert!(cwms.iter().all(|cwm| cwm.chat.as_ref().unwrap().ds_uuid == ds.uuid));
             let ds_uuid = ds.uuid().clone();
             cache_inner.datasets.push(ds);
             cache_inner.users.insert(ds_uuid.clone(), UserCacheForDataset {
