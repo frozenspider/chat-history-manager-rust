@@ -1,4 +1,4 @@
-use std::collections::Bound;
+use std::collections::{Bound, HashSet};
 use std::ffi::OsStr;
 use std::fmt::Debug;
 use std::fs::File;
@@ -12,6 +12,7 @@ pub use anyhow::{anyhow, bail, Context};
 pub use std::error::Error as StdError;
 use chrono::Local;
 use hashers::fx_hash::FxHasher;
+use itertools::Itertools;
 use lazy_static::lazy_static;
 use unicode_segmentation::UnicodeSegmentation;
 
@@ -266,4 +267,14 @@ pub fn transpose_option_result<T>(x: Option<Result<T>>) -> Result<Option<T>> {
 
 pub fn transpose_option_std_result<T, E: StdError + Send + Sync + 'static>(x: Option<StdResult<T, E>>) -> Result<Option<T>> {
     x.map_or(Ok(None), |v| Ok(v.map(Some)?))
+}
+
+pub fn without_indices<T>(vec: Vec<T>, indices_to_remove: impl IntoIterator<Item=usize>) -> Vec<T> {
+    let indices_to_remove: HashSet<_> = indices_to_remove.into_iter().collect();
+    if indices_to_remove.is_empty() { return vec; }
+    vec.into_iter()
+        .enumerate()
+        .filter(|(i, _)| !indices_to_remove.contains(i))
+        .map(|(_, m)| m)
+        .collect_vec()
 }

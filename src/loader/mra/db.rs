@@ -83,6 +83,8 @@ fn load_account(
             log::warn!("{pretty_conv_name}: {}", e);
         }
 
+        let msgs = remove_duplicates(&pretty_conv_name, msgs);
+
         db_msgs_map.insert(conv_username, msgs);
     }
 
@@ -174,7 +176,7 @@ fn load_conversation_messages<'a>(conv_username: &str, db_bytes: &'a [u8]) -> Re
     Ok(result)
 }
 
-/// Removes empty, duplicate and "phantom" messages.
+/// Removes empty and "phantom" messages.
 /// Phantom messages appear about one hour before real messages. I couldn't determine exact relation between the two,
 /// so using best guess to separate and remove them.
 /// These messages seem to be incorrectly copied over from mra.dbs, and in DB snapshots taken after 2015
@@ -249,21 +251,34 @@ fn remove_bad_messages(pretty_conv_name: &str, mra_msgs: Vec<DbMessage>) -> Resu
         log::debug!(r#"{pretty_conv_name}: Found {} "phantom" messages"#, bad_indices.len());
     }
 
+    // Remove empty messages
     bad_indices.extend(mra_msgs.iter().enumerate().filter(|(_, m)| m.sections.is_empty()).map(|(idx, _)| idx));
 
-    // Remove duplicates
-    let mut msg_hashes = HashSet::new();
-    for (idx, mra_msg) in mra_msgs.iter().enumerate() {
-        if !msg_hashes.insert((mra_msg.header.filetime, &mra_msg.sections)) {
-            bad_indices.insert(idx);
+    Ok(without_indices(mra_msgs, bad_indices))
+}
+
+/// Sometimes, message occur several times (with <2 second difference).
+/// While we can't always be sure those messages weren't sent manually, we still remove them.
+/// This should be called on a sorted vector.
+fn remove_duplicates(pretty_conv_name: &str, mra_msgs: Vec<DbMessage>) -> Vec<DbMessage> {
+    const MAX_FT_DIFF: u64 = 20_000_000;
+    let mut bad_indices = HashSet::new();
+    for idx1 in 0..mra_msgs.len() {
+        let msg_prev = &mra_msgs[idx1];
+        for idx2 in (idx1 + 1)..mra_msgs.len() {
+            let msg = &mra_msgs[idx2];
+            if msg.header.filetime - msg_prev.header.filetime > MAX_FT_DIFF { break; }
+            if msg.sections == msg_prev.sections {
+                bad_indices.insert(idx2);
+            }
         }
     }
 
-    Ok(mra_msgs.into_iter()
-        .enumerate()
-        .filter(|(i, _)| !bad_indices.contains(i))
-        .map(|(_, m)| m)
-        .collect_vec())
+    if !bad_indices.is_empty() {
+        log::debug!(r#"{pretty_conv_name}: Found {} duplicate messages"#, bad_indices.len());
+    }
+
+    without_indices(mra_msgs, bad_indices)
 }
 
 fn sort_messages(msgs: &mut Vec<DbMessage>) -> EmptyRes {
