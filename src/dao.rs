@@ -334,7 +334,7 @@ pub fn get_datasets_diff(master_dao: &dyn ChatHistoryDao,
 
                     for (j, (master_msg, slave_msg)) in master_messages.iter().zip(slave_messages.iter()).enumerate() {
                         let master_pet = PracticalEqTuple::new(master_msg, &master_ds_root, master_cwd);
-                        let slave_pet = PracticalEqTuple::new(slave_msg, &slave_ds_root, &slave_cwd);
+                        let slave_pet = PracticalEqTuple::new(slave_msg, &slave_ds_root, slave_cwd);
                         check_diff!(master_pet.practically_equals(&slave_pet)?, false,
                                     format!("Message #{j} for chat {} differs", master_cwd.chat.qualified_name()),
                                     Some((format!("{:?}", master_msg), format!("{:?}", slave_msg))));

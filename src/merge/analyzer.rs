@@ -236,8 +236,8 @@ fn enforce_conflicts(analysis: Vec<MergeAnalysisSection>) -> Result<Vec<MergeAna
         };
     }
 
-    for idx in start_idx_inc..end_idx_exc {
-        match &analysis[idx] {
+    for analysis_entry in &analysis[start_idx_inc..end_idx_exc] {
+        match analysis_entry {
             MergeAnalysisSection::Match(v) => {
                 set_option!(first_master_msg_id, v, true);
                 set_option!(last_master_msg_id, v, false);

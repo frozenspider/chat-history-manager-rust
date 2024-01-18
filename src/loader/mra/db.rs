@@ -36,7 +36,7 @@ pub(super) fn load_accounts_dir(
                 cwms: Default::default(),
             });
             let ds_uuid = entry.ds.uuid();
-            let conv_map = load_account(name, &ds_uuid, &path, &mut entry.users)?;
+            let conv_map = load_account(name, ds_uuid, &path, &mut entry.users)?;
             result.insert(name.to_owned(), conv_map);
         } else {
             log::warn!("{} is not a directory, ignored", name);
@@ -98,14 +98,14 @@ fn load_account(
 
     let mut result: ConversationsMap = Default::default();
     for (conv_username, db_msgs) in db_msgs_map.into_iter() {
-        let (new_msgs, interlocutor_ids) = process_conversation(&db_msgs, myself_username, &conv_username, &users)?;
+        let (new_msgs, interlocutor_ids) = process_conversation(&db_msgs, myself_username, &conv_username, users)?;
         result.insert(conv_username, (new_msgs, interlocutor_ids));
     }
     Ok(result)
 }
 
 /// Loads all messages as-is
-fn load_conversation_messages<'a>(conv_username: &str, db_bytes: &'a [u8]) -> Result<Vec<DbMessage>> {
+fn load_conversation_messages(conv_username: &str, db_bytes: &[u8]) -> Result<Vec<DbMessage>> {
     let mut result = vec![];
     let mut db_bytes = db_bytes;
     let mut offset = 0;
@@ -219,7 +219,7 @@ fn remove_bad_messages(pretty_conv_name: &str, mra_msgs: Vec<DbMessage>) -> Resu
     fn get_plaintext(m: &DbMessage) -> String {
         let bs = m.sections.iter().find(|s| s.0 == MessageSectionType::Plaintext).map(|s| &s.1).expect("No plaintext!");
         let s = String::from_utf8_lossy(bs);
-        s.replace("\r", "")
+        s.replace('\r', "")
     }
     for (idx_prev, mra_msg_prev) in mra_msgs.iter().enumerate().filter(|(_, m)|
         !m.sections.is_empty() && m.header._unknown != 0 && m.header.some_timestamp_or_0 > MAX_LEGACY_PHANTOM_TIMESTAMP)
@@ -265,8 +265,7 @@ fn remove_duplicates(pretty_conv_name: &str, mra_msgs: Vec<DbMessage>) -> Vec<Db
     let mut bad_indices = HashSet::new();
     for idx1 in 0..mra_msgs.len() {
         let msg_prev = &mra_msgs[idx1];
-        for idx2 in (idx1 + 1)..mra_msgs.len() {
-            let msg = &mra_msgs[idx2];
+        for (idx2, msg) in mra_msgs.iter().enumerate().skip(idx1 + 1) {
             if msg.header.filetime - msg_prev.header.filetime > MAX_FT_DIFF { break; }
             if msg.sections == msg_prev.sections {
                 bad_indices.insert(idx2);
@@ -511,7 +510,7 @@ fn convert_message(
         ($new_text:expr) => {{
             let new_text = $new_text;
             if !new_text.is_empty() {
-                if new_text.starts_with(r#"{\rtf"#) {
+                if new_text.starts_with(r"{\rtf") {
                     set_option!(rtf, new_text);
                 } else {
                     set_option!(plaintext, new_text);
@@ -651,10 +650,10 @@ fn convert_message(
 
     let get_rtes = || ok(match (rtf.as_ref(), plaintext.as_ref()) {
         (Some(rtf), _) => {
-            Some(parse_rtf(&rtf).with_context(|| context(mra_msg, conv_username))?)
+            Some(parse_rtf(rtf).with_context(|| context(mra_msg, conv_username))?)
         }
         (_, Some(text)) => {
-            let text = normalize_plaintext(&text);
+            let text = normalize_plaintext(text);
             Some(vec![RichText::make_plain(text)])
         }
         _ => {
@@ -831,7 +830,7 @@ fn merge_messages(pretty_conv_name: &str, new_msgs: Vec<Message>, msgs: &mut Vec
         let old_len = msgs.len();
         let last_internal_id = msgs.last().map(|m| m.internal_id).unwrap_or_default();
 
-        let first_new_idx = first_start_of_new_slice(pretty_conv_name, &msgs, &new_msgs);
+        let first_new_idx = first_start_of_new_slice(pretty_conv_name, msgs, &new_msgs);
         msgs.extend(new_msgs.into_iter().skip(first_new_idx));
 
         for (new_msg, internal_id) in msgs.iter_mut().skip(old_len).zip((last_internal_id + 1)..) {

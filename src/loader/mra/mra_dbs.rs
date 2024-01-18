@@ -15,16 +15,16 @@ use super::*;
 
 const MSG_HEADER_MAGIC_NUMBER: u32 = 0x38;
 
-pub(super) fn load_convs_with_msgs<'a>(dbs_bytes: &'a [u8]) -> Result<Vec<MraLegacyConversationWithMessages<'a>>> {
-    let offsets_table: &[u32] = load_offsets_table(&dbs_bytes)?;
-    let convs = load_conversations(&dbs_bytes, offsets_table)?;
-    load_messages(&dbs_bytes, offsets_table, convs)
+pub(super) fn load_convs_with_msgs(dbs_bytes: &[u8]) -> Result<Vec<MraLegacyConversationWithMessages<'_>>> {
+    let offsets_table: &[u32] = load_offsets_table(dbs_bytes)?;
+    let convs = load_conversations(dbs_bytes, offsets_table)?;
+    load_messages(dbs_bytes, offsets_table, convs)
 }
 
 fn load_offsets_table(dbs_bytes: &[u8]) -> Result<&[u32]> {
     const OFFSETS_TABLE_OFFSET: usize = 0x10;
     const OFFSETS_MAGIC_NUMBER: u32 = 0x04;
-    let offsets_table_addr = read_u32(&dbs_bytes, OFFSETS_TABLE_OFFSET) as usize;
+    let offsets_table_addr = read_u32(dbs_bytes, OFFSETS_TABLE_OFFSET) as usize;
     let offsets_table: &[u32] = {
         let u8_slice = &dbs_bytes[offsets_table_addr..];
         require!(offsets_table_addr % 4 == 0 && u8_slice.len() % 4 == 0,

@@ -208,7 +208,7 @@ fn convert_microblog_record(
     raw_text: &str,
     target_name: Option<&str>,
 ) -> (Vec<RichTextElement>, message::Typed) {
-    let text = normalize_plaintext(&raw_text);
+    let text = normalize_plaintext(raw_text);
     let text = format!("{}{}", target_name.map(|n| format!("(To {n})\n")).unwrap_or_default(), text);
     (vec![RichText::make_plain(text)], message::Typed::Service(MessageService {
         sealed_value_optional: Some(ServiceSvo::StatusTextChanged(MessageServiceStatusTextChanged {}))
@@ -271,7 +271,7 @@ fn collect_users_from_conference_user_changed_record(
 }
 
 fn convert_cartoon(src: &str) -> Result<TextAndTyped> {
-    let (_id, emoji_option) = match SMILE_TAG_REGEX.captures(&src) {
+    let (_id, emoji_option) = match SMILE_TAG_REGEX.captures(src) {
         Some(captures) => (captures.name("id").unwrap().as_str(),
                            captures.name("alt").and_then(|smiley| smiley_to_emoji(smiley.as_str()))),
         None => bail!("Unexpected cartoon source: {src}")
@@ -308,7 +308,7 @@ fn convert_file_transfer(text: &str) -> Result<TextAndTyped> {
     //      Получены файлы
     // New:
     //      file_1_path;file_1_size;file_2_path;file_2_size;...
-    let file_name_option = if text.ends_with(";") {
+    let file_name_option = if text.ends_with(';') {
         let text_parts = text.split(';').collect_vec();
         Some(text_parts.as_slice().chunks_exact(2).map(|c| c[0]).join(", "))
     } else if text == "Передача файлов" || text == "Получены файлы" {
@@ -582,10 +582,6 @@ fn read_n_bytes<const N: usize>(bytes: &[u8], shift: usize) -> [u8; N] {
 
 fn read_u32(bytes: &[u8], shift: usize) -> u32 {
     u32::from_le_bytes(read_n_bytes(bytes, shift))
-}
-
-fn next_n_bytes<const N: usize>(bytes: &[u8]) -> ([u8; N], &[u8]) {
-    (bytes[..N].try_into().unwrap(), &bytes[N..])
 }
 
 fn next_u32(bytes: &[u8]) -> (u32, &[u8]) {
@@ -941,7 +937,7 @@ fn parse_rtf(rtf: &str) -> Result<Vec<RichTextElement>> {
 }
 
 fn to_utf8<'a>(bytes: &'a [u8], enc: &'static Encoding) -> Result<Cow<'a, str>> {
-    let (res, had_errors) = enc.decode_without_bom_handling(&bytes);
+    let (res, had_errors) = enc.decode_without_bom_handling(bytes);
     if !had_errors {
         Ok(res)
     } else {
