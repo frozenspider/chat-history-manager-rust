@@ -3,15 +3,13 @@
 use std::fmt::format;
 use chrono::Duration;
 use chrono::prelude::*;
-use itertools::Itertools;
 use lazy_static::lazy_static;
 use pretty_assertions::{assert_eq, assert_ne};
 
 use super::MergeAnalysisSection::*;
 
-use crate::*;
+use crate::prelude::*;
 use crate::dao::ChatHistoryDao;
-use crate::protobuf::history::*;
 use crate::protobuf::history::message::Typed;
 
 use super::*;

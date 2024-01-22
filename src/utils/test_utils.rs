@@ -13,9 +13,8 @@ use rand::{Rng, SeedableRng};
 use rand::rngs::SmallRng;
 use uuid::Uuid;
 
-use crate::*;
+use crate::prelude::*;
 use crate::dao::ChatHistoryDao;
-use crate::protobuf::history::*;
 
 lazy_static! {
     pub static ref BASE_DATE: DateTime<FixedOffset> = dt("2019-01-02 11:15:21", None);

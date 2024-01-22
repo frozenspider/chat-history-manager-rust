@@ -8,10 +8,7 @@ use lazy_static::lazy_static;
 use regex::Regex;
 use uuid::Uuid;
 
-use crate::protobuf::history::*;
-
-use super::*;
-
+use crate::prelude::*;
 pub mod entity_equality;
 
 pub const UNNAMED: &str = "[unnamed]";

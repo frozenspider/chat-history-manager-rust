@@ -4,11 +4,15 @@ use const_format::concatcp;
 use diesel::prelude::*;
 use diesel::sql_query;
 use diesel::sql_types::*;
+use itertools::Itertools;
 use uuid::Uuid;
 
+use crate::dao::{DaoCacheInner, UserCacheForDataset};
+use crate::dao::sqlite_dao::{self, subpaths};
+use crate::prelude::*;
 use crate::protobuf::history::message::Typed;
 
-use super::*;
+use super::mapping::*;
 
 pub fn serialize_arr(v: &[String]) -> Option<String> {
     if v.is_empty() { None } else { Some(v.iter().join(";;;")) }
@@ -315,7 +319,7 @@ pub mod message {
         macro_rules! copy_path {
             ($obj:ident.$field:ident, $thumb:expr, $subpath:expr) => {
                 $obj.$field.as_ref().map(|v|
-                    copy_file(&v, $thumb, $subpath,chat_id, src_ds_root, dst_ds_root)
+                    sqlite_dao::copy_file(&v, $thumb, $subpath,chat_id, src_ds_root, dst_ds_root)
                 ).transpose()?.flatten()
             };
         }
@@ -435,8 +439,8 @@ pub mod message {
                                       src_ds_root: &DatasetRoot,
                                       dst_ds_root: &DatasetRoot) -> Result<RawMessageContent> {
         let path = photo.path_option.as_ref().map(|path|
-            copy_file(path, &None, &subpaths::PHOTOS,
-                      chat_id, src_ds_root, dst_ds_root)
+            sqlite_dao::copy_file(path, &None, &subpaths::PHOTOS,
+                                  chat_id, src_ds_root, dst_ds_root)
         ).transpose()?.flatten();
         Ok(RawMessageContent {
             element_type: "photo".to_owned(),

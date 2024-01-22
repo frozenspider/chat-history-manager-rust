@@ -2,8 +2,8 @@ use std::cmp;
 use std::path::{Path, PathBuf};
 
 use deepsize::DeepSizeOf;
+use itertools::Itertools;
 
-use crate::*;
 use crate::protobuf::history::message::Typed;
 
 use super::*;

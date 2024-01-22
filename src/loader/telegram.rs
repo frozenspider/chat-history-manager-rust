@@ -1,4 +1,3 @@
-use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::num::ParseIntError;
 use std::ops::Deref;
@@ -9,16 +8,15 @@ use chrono::NaiveDate;
 use itertools::Itertools;
 use lazy_static::lazy_static;
 use regex::Regex;
+use simd_json::borrowed::Object;
+use simd_json::BorrowedValue;
+use simd_json::prelude::*;
 
-use crate::*;
 use crate::dao::in_memory_dao::InMemoryDao;
 use crate::loader::DataLoader;
-use crate::protobuf::*;
-use crate::protobuf::history::*;
+use crate::prelude::*;
 // Reexporting JSON utils for simplicity.
 pub use crate::utils::json_utils::*;
-
-use super::*;
 
 mod parser_full;
 mod parser_single;
@@ -49,7 +47,7 @@ impl DataLoader for TelegramDataLoader {
         if !path.exists() {
             bail!("{} not found in {}", RESULT_JSON, path_to_str(src_path)?);
         }
-        if !first_line(&path)?.starts_with('{') {
+        if !super::first_line(&path)?.starts_with('{') {
             bail!("{} is not a valid JSON file", path_to_str(&path)?);
         }
         Ok(())
@@ -479,7 +477,7 @@ fn parse_message(json_path: &str,
                  ds_uuid: &PbUuid,
                  users: &mut Users,
                  member_ids: &mut HashSet<UserId, Hasher>) -> Result<ParsedMessage> {
-    use history::message::Typed;
+    use message::Typed;
 
     fn hash_set<const N: usize>(arr: [&str; N]) -> HashSet<&str, Hasher> {
         let mut result = HashSet::with_capacity_and_hasher(100, hasher());
@@ -606,8 +604,7 @@ fn parse_message(json_path: &str,
 
 fn parse_regular_message(message_json: &mut MessageJson,
                          regular_msg: &mut MessageRegular) -> EmptyRes {
-    use history::*;
-    use history::content::SealedValueOptional;
+    use content::SealedValueOptional;
 
     let json_path = message_json.json_path.clone();
 
@@ -795,8 +792,7 @@ fn parse_regular_message(message_json: &mut MessageJson,
 
 fn parse_service_message(message_json: &mut MessageJson,
                          service_msg: &mut MessageService) -> Result<ShouldProceed> {
-    use history::*;
-    use history::message_service::SealedValueOptional;
+    use message_service::SealedValueOptional;
 
     // Null members are added as unknown
     fn parse_members(message_json: &mut MessageJson) -> Result<Vec<String>> {

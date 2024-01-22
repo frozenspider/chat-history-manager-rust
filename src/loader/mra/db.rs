@@ -2,6 +2,8 @@
 /// Note that when both new and old DBs are present, new DB might have some messages missing!
 
 use std::fmt::Formatter;
+use std::fs;
+use itertools::Itertools;
 
 use super::*;
 
@@ -779,7 +781,7 @@ pub(super) fn merge_conversations(
                 ChatWithMessages {
                     chat: Some(Chat {
                         ds_uuid: Some(ds_uuid.clone()),
-                        id: hash_to_id(&conv_username),
+                        id: loader::hash_to_id(&conv_username),
                         name_option: Some(conv_username.clone()),
                         source_type: SourceType::Mra as i32,
                         tpe: -1, // Will be changed later

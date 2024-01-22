@@ -1,22 +1,19 @@
-use std::cell::{RefCell};
-use std::collections::HashSet;
+use std::cell::RefCell;
 use std::default::Default;
 use std::fs;
-use std::ops::{DerefMut};
+use std::ops::DerefMut;
 use std::path::{Path, PathBuf};
-use chrono::Local;
 
+use chrono::Local;
 use diesel::{delete, insert_into, sql_query, sql_types, update};
 use diesel::migration::MigrationSource;
 use diesel::prelude::*;
 use diesel::sqlite::Sqlite;
 use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
-use itertools::Either;
+use itertools::{Either, Itertools};
 use uuid::Uuid;
 
 use mapping::*;
-
-use crate::*;
 
 use super::*;
 

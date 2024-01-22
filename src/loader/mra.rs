@@ -2,11 +2,11 @@
 
 use std::{cmp, fmt, fs, mem, slice};
 use std::borrow::Cow;
-use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::path::PathBuf;
 
 use encoding_rs::Encoding;
+use itertools::Itertools;
 use lazy_static::lazy_static;
 use num_traits::FromPrimitive;
 use regex::{Captures, Regex};
@@ -15,12 +15,9 @@ use utf16string::{LE, WStr};
 use content::SealedValueOptional as ContentSvo;
 use message_service::SealedValueOptional as ServiceSvo;
 
-use crate::*;
 use crate::dao::in_memory_dao::{DatasetEntry, InMemoryDao};
 use crate::loader::DataLoader;
-use crate::protobuf::history::*;
-
-use super::*;
+use crate::prelude::*;
 
 mod mra_dbs;
 mod db;
@@ -562,7 +559,7 @@ fn upsert_user(users: &mut HashMap<String, User>,
                first_name_or_email: Option<String>) {
     let user = users.entry(username.to_owned()).or_insert_with(|| User {
         ds_uuid: Some(ds_uuid.clone()),
-        id: hash_to_id(username),
+        id: loader::hash_to_id(username),
         first_name_option: None,
         last_name_option: None,
         username_option: Some(username.to_owned()),

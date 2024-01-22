@@ -1,10 +1,7 @@
-// Reexporting simd_json for simplicity.
+use simd_json::BorrowedValue;
+use simd_json::prelude::*;
 
-pub use simd_json::BorrowedValue;
-pub use simd_json::borrowed::Object;
-pub use simd_json::prelude::*;
-
-use crate::*;
+use crate::prelude::*;
 
 pub struct ParseCallback<'a> {
     /// Key being processed

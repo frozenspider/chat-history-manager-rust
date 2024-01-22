@@ -1,8 +1,9 @@
 use std::cmp::Ordering;
 
-use crate::*;
+use itertools::Itertools;
+
 use crate::dao::ChatHistoryDao;
-use crate::protobuf::history::*;
+use crate::prelude::*;
 
 #[cfg(test)]
 #[path = "analyzer_tests.rs"]

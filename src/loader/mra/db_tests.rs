@@ -1,9 +1,8 @@
 #![allow(unused_imports)]
 
-use itertools::Itertools;
 use pretty_assertions::{assert_eq, assert_ne};
 
-use crate::*;
+use crate::prelude::*;
 
 use super::*;
 

@@ -1,9 +1,9 @@
 use std::cell::Ref;
 use std::sync::{Arc, Mutex};
+use itertools::Itertools;
 
 use tonic::Request;
 
-use crate::*;
 use crate::merge::analyzer::*;
 use crate::merge::merger;
 use crate::merge::merger::{ChatMergeDecision, MessagesMergeDecision, UserMergeDecision};

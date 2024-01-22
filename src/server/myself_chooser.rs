@@ -1,9 +1,9 @@
 use tokio::runtime::Handle;
 use tonic::transport::Channel;
 
-use crate::*;
+use crate::choose_myself_service_client::ChooseMyselfServiceClient;
 
-use super::*;
+use crate::prelude::*;
 
 pub struct MyselfChooserImpl {
     pub runtime_handle: Handle,

@@ -1,14 +1,12 @@
 #![allow(unused_imports)]
 
 use chrono::prelude::*;
-use itertools::Itertools;
 use lazy_static::lazy_static;
 use pretty_assertions::{assert_eq, assert_ne};
 
 use crate::{NoChooser, User};
 use crate::dao::ChatHistoryDao;
 use crate::entity_utils::*;
-use crate::protobuf::history::*;
 use crate::protobuf::history::content::SealedValueOptional::*;
 use crate::protobuf::history::message::*;
 use crate::protobuf::history::message_service::SealedValueOptional::*;

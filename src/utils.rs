@@ -1,6 +1,6 @@
 use std::collections::{Bound, HashSet};
+pub use std::error::Error as StdError;
 use std::ffi::OsStr;
-use std::fmt::Debug;
 use std::fs::File;
 use std::hash::{BuildHasher, BuildHasherDefault, Hasher as StdHasher};
 use std::io::{BufReader, Read};
@@ -9,7 +9,6 @@ use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 pub use anyhow::{anyhow, bail, Context};
-pub use std::error::Error as StdError;
 use chrono::Local;
 use hashers::fx_hash::FxHasher;
 use itertools::Itertools;

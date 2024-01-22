@@ -3,7 +3,6 @@
 use std::cmp;
 use std::fs::File;
 
-use itertools::Itertools;
 use pretty_assertions::{assert_eq, assert_ne};
 use regex::Regex;
 
@@ -11,7 +10,6 @@ use crate::NoChooser;
 use crate::dao::ChatHistoryDao;
 use crate::entity_utils::*;
 use crate::loader::Loader;
-use crate::protobuf::history::*;
 use crate::protobuf::history::message::*;
 
 use super::*;

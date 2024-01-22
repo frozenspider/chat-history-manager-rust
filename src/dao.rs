@@ -1,11 +1,11 @@
 use std::cell::{Ref, RefCell};
-use std::collections::HashMap;
 use std::path::Path;
 use std::thread::JoinHandle;
-use deepsize::DeepSizeOf;
 
-use crate::*;
-use crate::protobuf::history::*;
+use deepsize::DeepSizeOf;
+use itertools::Itertools;
+
+use crate::prelude::*;
 
 pub mod in_memory_dao;
 pub mod sqlite_dao;

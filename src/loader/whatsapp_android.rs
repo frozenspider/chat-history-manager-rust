@@ -1,4 +1,3 @@
-use std::collections::{HashMap, HashSet};
 use std::collections::hash_map::Entry;
 
 use ical::VcardParser;
@@ -7,10 +6,9 @@ use num_traits::FromPrimitive;
 use regex::Regex;
 use rusqlite::{Connection, OptionalExtension, Row, Statement};
 
-use crate::*;
+use crate::prelude::*;
 use crate::dao::in_memory_dao::InMemoryDao;
 use crate::loader::DataLoader;
-use crate::protobuf::history::*;
 
 use super::*;
 

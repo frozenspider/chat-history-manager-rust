@@ -6,7 +6,7 @@ use chrono::Local;
 use const_format::concatcp;
 use itertools::{Either, Itertools};
 
-use crate::*;
+use crate::prelude::*;
 use crate::dao::ChatHistoryDao;
 use crate::dao::sqlite_dao::SqliteDao;
 use crate::loader::badoo_android::BadooAndroidDataLoader;

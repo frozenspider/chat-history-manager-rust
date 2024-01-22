@@ -1,11 +1,10 @@
-use std::collections::{HashMap, HashSet};
+use itertools::Itertools;
 
-use crate::*;
 use crate::dao::ChatHistoryDao;
 use crate::dao::MutableChatHistoryDao;
 use crate::dao::sqlite_dao::SqliteDao;
 use crate::merge::analyzer::*;
-use crate::protobuf::history::*;
+use crate::prelude::*;
 
 #[cfg(test)]
 #[path = "merger_tests.rs"]
@@ -209,6 +208,7 @@ fn merge_inner(
                             // Note: while messages match, our matching rules allow either master or slave
                             // to have missing content.
                             // We keep master messages unless slave has new content.
+                            // TODO: Update when slave has new information instead? (like filenames)
                             let master_msgs =
                                 master.dao.messages_slice(&master_cwd.chat,
                                                           v.first_master_msg_id.generalize(),

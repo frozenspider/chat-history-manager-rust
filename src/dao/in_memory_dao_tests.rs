@@ -1,6 +1,8 @@
-use pretty_assertions::assert_eq;
+#![allow(unused_imports)]
 
-use crate::*;
+use pretty_assertions::{assert_eq, assert_ne};
+
+use crate::prelude::*;
 
 use super::*;
 

@@ -5,16 +5,9 @@ extern crate num_derive;
 
 use std::path::Path;
 
-use itertools::Itertools;
+use prelude::*;
 
 use crate::dao::in_memory_dao::InMemoryDao;
-use crate::protobuf::history::User;
-#[cfg(test)]
-pub use crate::test_utils::*;
-// Reexporting utility stuff
-pub use crate::utils::*;
-pub use crate::utils::entity_utils::*;
-pub use crate::utils::entity_utils::entity_equality::*;
 
 mod protobuf;
 mod loader;
@@ -22,6 +15,18 @@ mod merge;
 mod server;
 mod dao;
 mod utils;
+
+pub mod prelude {
+    pub use std::collections::{HashMap, HashSet};
+
+    pub use crate::*;
+    pub use crate::protobuf::history::*;
+    #[cfg(test)]
+    pub use crate::test_utils::*;
+    pub use crate::utils::*;
+    pub use crate::utils::entity_utils::*;
+    pub use crate::utils::entity_utils::entity_equality::*;
+}
 
 //
 // Entry points

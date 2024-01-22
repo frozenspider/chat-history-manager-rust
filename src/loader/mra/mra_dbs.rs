@@ -11,6 +11,10 @@
 /// * https://xakep.ru/2012/11/30/mailru-agent-hack/
 /// * https://c0dedgarik.blogspot.com/2010/08/mradbs.html
 
+use itertools::Itertools;
+
+use crate::loader;
+
 use super::*;
 
 const MSG_HEADER_MAGIC_NUMBER: u32 = 0x38;
@@ -305,7 +309,7 @@ pub(super) fn convert_messages(
         entry.cwms.insert(conv_username.clone(), ChatWithMessages {
             chat: Some(Chat {
                 ds_uuid: entry.ds.uuid.clone(),
-                id: hash_to_id(&conv_username),
+                id: loader::hash_to_id(&conv_username),
                 name_option: Some(conv_username), // Will be changed later
                 source_type: SourceType::Mra as i32,
                 tpe: chat_type as i32,

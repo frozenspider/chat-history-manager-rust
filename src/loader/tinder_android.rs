@@ -1,11 +1,9 @@
-use std::collections::HashMap;
 use std::fs;
 
 use rusqlite::Connection;
 
-use crate::*;
+use crate::prelude::*;
 use crate::loader::DataLoader;
-use crate::protobuf::history::*;
 
 use super::*;
 

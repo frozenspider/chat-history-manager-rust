@@ -5,7 +5,7 @@ use deepsize::DeepSizeOf;
 use log::LevelFilter;
 use mimalloc::MiMalloc;
 
-use chat_history_manager_rust::*;
+use chat_history_manager_rust::prelude::*;
 
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;

@@ -1,15 +1,13 @@
 use std::fs;
-use chrono::{NaiveDateTime, TimeZone};
 
+use chrono::{NaiveDateTime, TimeZone};
+use itertools::Itertools;
 use lazy_static::lazy_static;
 use regex::Regex;
 
-use crate::*;
 use crate::dao::in_memory_dao::InMemoryDao;
 use crate::loader::DataLoader;
-use crate::protobuf::history::*;
-
-use super::*;
+use crate::prelude::*;
 
 #[cfg(test)]
 #[path = "whatsapp_text_tests.rs"]
@@ -36,7 +34,7 @@ impl DataLoader for WhatsAppTextDataLoader {
         if !FILENAME_REGEX.is_match(filename) {
             bail!("File {} is not named as expected", filename);
         }
-        if !TIMESTAMP_REGEX.is_match(first_line(path)?.as_str()) {
+        if !TIMESTAMP_REGEX.is_match(super::first_line(path)?.as_str()) {
             bail!("File {} does not start with a timestamp as expected", path_to_str(path)?);
         }
         Ok(())
@@ -110,7 +108,7 @@ fn parse_users(ds_uuid: &PbUuid, filename: &str, content: &str) -> Result<(User,
         phone_number_option: None,
     }, User {
         ds_uuid: Some(ds_uuid.clone()),
-        id: hash_to_id(other_name),
+        id: super::hash_to_id(other_name),
         first_name_option: if other_name.starts_with('+') { None } else { Some(other_name.to_owned()) },
         last_name_option: None,
         username_option: None,
