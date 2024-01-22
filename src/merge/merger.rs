@@ -263,7 +263,6 @@ fn merge_inner(
                         }
                         MessagesMergeDecision::DontReplace(v) => {
                             // Treat exactly as Retain
-                            // TODO: Should we analyze content and make sure nothing is lost?
                             let msgs = master.dao.messages_slice(&master_cwd.chat,
                                                                  v.first_master_msg_id.generalize(),
                                                                  v.last_master_msg_id.generalize())?;
