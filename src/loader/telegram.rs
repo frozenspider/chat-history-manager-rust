@@ -487,7 +487,8 @@ fn parse_message(json_path: &str,
     lazy_static! {
         static ref REGULAR_MSG_FIELDS: ExpectedMessageField<'static> = ExpectedMessageField {
             required_fields: hash_set(["id", "type", "date", "text", "from", "from_id"]),
-            optional_fields: hash_set(["date_unixtime", "text_entities", "forwarded_from", "via_bot", "inline_bot_buttons"]),
+            optional_fields: hash_set(["date_unixtime", "text_entities", "forwarded_from", "via_bot",
+                                       "reply_to_peer_id", "reply_to_message_id", "inline_bot_buttons"]),
         };
 
         static ref SERVICE_MSG_FIELDS: ExpectedMessageField<'static> = ExpectedMessageField {
@@ -555,7 +556,7 @@ fn parse_message(json_path: &str,
 
     let mut source_id_option: Option<i64> = None;
     let mut timestamp: Option<i64> = None;
-    let mut text: Option<Vec<RichTextElement>> = None;
+    let mut text: Vec<RichTextElement> = vec![];
 
     for (k, v) in message_json.val.iter() {
         let kr = k.as_ref();
@@ -576,32 +577,31 @@ fn parse_message(json_path: &str,
             "date" if !has_unixtime => {
                 timestamp = Some(*parse_datetime(as_str!(v, message_json.json_path, "date"))?);
             }
+            "reply_to_peer_id" => {
+                // No way to get the actual messages being answered to
+                text.push(RichText::make_italic("(Replying to a channel post)\n".to_owned()));
+            }
             "text_entities" => {
-                text = Some(parse_rich_text(&format!("{}.text_entities", message_json.json_path), v)?);
+                text.extend(parse_rich_text(&format!("{}.text_entities", message_json.json_path), v)?);
             }
             "text" if !has_text_entities => {
-                text = Some(parse_rich_text(&format!("{}.text", message_json.json_path), v)?);
+                text.extend(parse_rich_text(&format!("{}.text", message_json.json_path), v)?);
             }
             "inline_bot_buttons" => {
-                if let Some(ref mut text) = text {
-                    let button_links = parse_inline_bot_buttons(&format!("{}.inline_bot_buttons", message_json.json_path), v)?;
-                    if !button_links.is_empty() {
-                        let line_break = RichText::make_plain("\n".to_owned());
-                        for link in button_links {
-                            // Leading line break with no text is okay as it will be stripped by simplify_rich_text
-                            text.push(line_break.clone());
-                            text.push(link);
-                        }
+                let button_links = parse_inline_bot_buttons(&format!("{}.inline_bot_buttons", message_json.json_path), v)?;
+                if !button_links.is_empty() {
+                    let line_break = RichText::make_plain("\n".to_owned());
+                    for link in button_links {
+                        // Leading line break with no text is okay as it will be stripped by simplify_rich_text
+                        text.push(line_break.clone());
+                        text.push(link);
                     }
-                } else {
-                    bail!("{}: expected text to already present when parsing inline_bot_buttons", message_json.json_path);
                 }
             }
             _ => { /* Ignore, already consumed */ }
         }
     }
 
-    let text = text.with_context(|| format!("{}: text not found", message_json.json_path))?;
     let text = simplify_rich_text(text);
 
     if let Some(ref ef) = message_json.expected_fields {
@@ -642,7 +642,10 @@ fn parse_regular_message(message_json: &mut MessageJson,
         Some(forwarded_from) if forwarded_from.is_null() => Some(UNKNOWN.to_owned()),
         Some(forwarded_from) => Some(as_string!(forwarded_from, json_path, "forwarded_from")),
     };
-    regular_msg.reply_to_message_id_option = message_json.field_opt_i64("reply_to_message_id")?;
+    if let None = message_json.field_opt("reply_to_peer_id")? {
+        // Otherwise reply_to_message_id is pointless
+        regular_msg.reply_to_message_id_option = message_json.field_opt_i64("reply_to_message_id")?;
+    }
 
     let media_type_option = message_json.field_opt_str("media_type")?;
     let mime_type_option = message_json.field_opt_str("mime_type")?;

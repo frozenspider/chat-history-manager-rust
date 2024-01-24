@@ -826,6 +826,26 @@ fn loading_2023_11_diff() -> EmptyRes {
 }
 
 #[test]
+fn loading_2024_01_reply_to_channel_post() -> EmptyRes {
+    let res = resource("telegram_2024-01_reply-to-channel-post");
+    LOADER.looks_about_right(&res)?;
+
+    let dao =
+        LOADER.load(&res, &NoChooser)?;
+
+    let cwm = &dao.cwms_single_ds()[0];
+    let msgs = &cwm.messages;
+    assert_eq!(msgs.len() as i32, 1);
+
+    assert_eq!(msgs[0].text, vec![
+        RichText::make_italic("(Replying to a channel post)\n".to_owned()),
+        RichText::make_plain("My reply to a channel post!".to_owned()),
+    ]);
+
+    Ok(())
+}
+
+#[test]
 fn inline_bot_buttons() -> EmptyRes {
     let res = resource("telegram_2024-01_inline-bot-buttons");
     LOADER.looks_about_right(&res)?;

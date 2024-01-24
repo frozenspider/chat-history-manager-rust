@@ -1,0 +1,40 @@
+{
+ "about": "This is a minimalistic test.",
+ "personal_information": {
+  "user_id": 11111111
+ },
+ "profile_pictures": [],
+ "contacts": {
+  "about": "If you allow access, your contacts are continuously synced with Telegram. Thanks to this, you can easily switch to Telegram and immediately connect with friends across all your devices. We use data about your contacts to let you know when they join Telegram, and to display them by the name you set for them in your phone.\n\nYou can disable contact syncing or delete your stored contacts in Settings > Privacy & Security on Telegram's mobile apps.",
+  "list": []
+ },
+ "chats": {
+  "about": "This page lists all chats from this export.",
+  "list": [
+   {
+    "name": "Dummy Chat",
+    "type": "personal_chat",
+    "id": 123123123,
+    "messages": [
+     {
+      "id": 11111,
+      "type": "message",
+      "date": "2022-10-11T22:49:15",
+      "date_unixtime": "1665499755",
+      "from": "Aaaaa Aaaaaaaaaaa",
+      "from_id": "user11111111",
+      "reply_to_message_id": 1234567,
+      "reply_to_peer_id": "channel9876543210",
+      "text": "My reply to a channel post!",
+      "text_entities": [
+       {
+        "type": "plain",
+        "text": "My reply to a channel post!"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ }
+}
