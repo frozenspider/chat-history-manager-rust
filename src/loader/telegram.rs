@@ -1133,7 +1133,7 @@ fn parse_inline_bot_buttons(json_path: &str, json: &BorrowedValue) -> Result<Vec
                                              get_field_string!(el, json_path, "data"),
                                              false))
                 }
-                "auth" => {
+                "auth" | "callback" => {
                     // Not interesting to preserve
                     None
                 }

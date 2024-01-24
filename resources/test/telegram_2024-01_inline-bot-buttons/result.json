@@ -57,6 +57,11 @@
          "text": "Auth link",
          "data": "http://localhost/auth",
          "button_id": 123456789
+        },
+        {
+         "type": "callback",
+         "text": "Callback button",
+         "data": "{\"a\":\"aaaa\",\"b\":123456789,\"h\":\"a0b1c2\"}"
         }
        ],
        [
