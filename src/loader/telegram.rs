@@ -142,7 +142,7 @@ impl Users {
 }
 
 enum ShouldProceed {
-    ProceedMessage,
+    ProceedMessage { text_prefix: Option<String> },
     SkipMessage,
     SkipChat,
 }
@@ -505,6 +505,7 @@ fn parse_message(json_path: &str,
 
     // Determine message type an parse short user from it.
     let mut short_user: ShortUser = ShortUser::default();
+    let mut text: Vec<RichTextElement> = vec![];
     let tpe = message_json.field_str("type")?;
     let typed: Typed;
     match tpe.as_str() {
@@ -524,8 +525,11 @@ fn parse_message(json_path: &str,
             let mut service: MessageService = Default::default();
             let proceed = parse_service_message(&mut message_json, &mut service)?;
             match proceed {
-                ShouldProceed::ProceedMessage =>
-                    { /* NOOP */ }
+                ShouldProceed::ProceedMessage { text_prefix } => {
+                    if let Some(text_prefix) = text_prefix {
+                        text.push(RichText::make_plain(format!("{text_prefix}\n")));
+                    }
+                }
                 ShouldProceed::SkipMessage =>
                     return Ok(ParsedMessage::SkipMessage),
                 ShouldProceed::SkipChat =>
@@ -556,7 +560,6 @@ fn parse_message(json_path: &str,
 
     let mut source_id_option: Option<i64> = None;
     let mut timestamp: Option<i64> = None;
-    let mut text: Vec<RichTextElement> = vec![];
 
     for (k, v) in message_json.val.iter() {
         let kr = k.as_ref();
@@ -831,76 +834,93 @@ fn parse_service_message(message_json: &mut MessageJson,
             .collect::<Result<Vec<String>>>()
     }
 
-    let val: SealedValueOptional = match message_json.field_str("action")?.as_str() {
+    let (val, text_prefix): (SealedValueOptional, Option<String>) = match message_json.field_str("action")?.as_str() {
         "phone_call" =>
-            SealedValueOptional::PhoneCall(MessageServicePhoneCall {
+            (SealedValueOptional::PhoneCall(MessageServicePhoneCall {
                 duration_sec_option: message_json.field_opt_i32("duration_seconds")?,
                 discard_reason_option: message_json.field_opt_str("discard_reason")?,
-            }),
+            }), None),
         "group_call" => // Treated the same as phone_call
-            SealedValueOptional::PhoneCall(MessageServicePhoneCall {
+            (SealedValueOptional::PhoneCall(MessageServicePhoneCall {
                 duration_sec_option: message_json.field_opt_i32("duration")?,
                 discard_reason_option: None,
-            }),
+            }), None),
         "pin_message" =>
-            SealedValueOptional::PinMessage(MessageServicePinMessage {
+            (SealedValueOptional::PinMessage(MessageServicePinMessage {
                 message_id: message_json.field_i64("message_id")?
-            }),
+            }), None),
         "suggest_profile_photo" =>
-            SealedValueOptional::SuggestProfilePhoto(MessageServiceSuggestProfilePhoto {
+            (SealedValueOptional::SuggestProfilePhoto(MessageServiceSuggestProfilePhoto {
                 photo: Some(ContentPhoto {
                     path_option: message_json.field_opt_path("photo")?,
                     height: message_json.field_i32("height")?,
                     width: message_json.field_i32("width")?,
                     is_one_time: false,
                 })
-            }),
+            }), None),
         "clear_history" =>
-            SealedValueOptional::ClearHistory(MessageServiceClearHistory {}),
+            (SealedValueOptional::ClearHistory(MessageServiceClearHistory {}), None),
         "create_group" =>
-            SealedValueOptional::GroupCreate(MessageServiceGroupCreate {
+            (SealedValueOptional::GroupCreate(MessageServiceGroupCreate {
                 title: message_json.field_str("title")?,
                 members: parse_members(message_json)?,
-            }),
+            }), None),
         "edit_group_photo" =>
-            SealedValueOptional::GroupEditPhoto(MessageServiceGroupEditPhoto {
+            (SealedValueOptional::GroupEditPhoto(MessageServiceGroupEditPhoto {
                 photo: Some(ContentPhoto {
                     path_option: message_json.field_opt_path("photo")?,
                     height: message_json.field_i32("height")?,
                     width: message_json.field_i32("width")?,
                     is_one_time: false,
                 })
-            }),
+            }), None),
         "delete_group_photo" =>
-            SealedValueOptional::GroupDeletePhoto(MessageServiceGroupDeletePhoto {}),
+            (SealedValueOptional::GroupDeletePhoto(MessageServiceGroupDeletePhoto {}), None),
         "edit_group_title" =>
-            SealedValueOptional::GroupEditTitle(MessageServiceGroupEditTitle {
+            (SealedValueOptional::GroupEditTitle(MessageServiceGroupEditTitle {
                 title: message_json.field_str("title")?
-            }),
+            }), None),
         "invite_members" =>
-            SealedValueOptional::GroupInviteMembers(MessageServiceGroupInviteMembers {
+            (SealedValueOptional::GroupInviteMembers(MessageServiceGroupInviteMembers {
                 members: parse_members(message_json)?
-            }),
+            }), None),
         "remove_members" =>
-            SealedValueOptional::GroupRemoveMembers(MessageServiceGroupRemoveMembers {
+            (SealedValueOptional::GroupRemoveMembers(MessageServiceGroupRemoveMembers {
                 members: parse_members(message_json)?
-            }),
+            }), None),
         "join_group_by_link" => {
             message_json.add_required("inviter");
-            SealedValueOptional::GroupInviteMembers(MessageServiceGroupInviteMembers {
+            (SealedValueOptional::GroupInviteMembers(MessageServiceGroupInviteMembers {
                 members: vec![name_or_unnamed(&message_json.field_opt_str("actor")?)]
-            })
+            }), None)
         }
         "migrate_from_group" =>
-            SealedValueOptional::GroupMigrateFrom(MessageServiceGroupMigrateFrom {
+            (SealedValueOptional::GroupMigrateFrom(MessageServiceGroupMigrateFrom {
                 title: message_json.field_str("title")?
-            }),
+            }), None),
         "migrate_to_supergroup" =>
-            SealedValueOptional::GroupMigrateTo(MessageServiceGroupMigrateTo {}),
+            (SealedValueOptional::GroupMigrateTo(MessageServiceGroupMigrateTo {}), None),
         "invite_to_group_call" =>
-            SealedValueOptional::GroupCall(MessageServiceGroupCall {
+            (SealedValueOptional::GroupCall(MessageServiceGroupCall {
                 members: parse_members(message_json)?
-            }),
+            }), None),
+        "set_messages_ttl" => {
+            let mut period = message_json.field_i64("period")?;
+            let mut period_str = "second(s)";
+            let div_list = [
+                (60, "minute(s)"),
+                (60, "hour(s)"),
+                (24, "day(s)"),
+            ];
+            for (divisor, new_period_str) in div_list {
+                if period % divisor != 0 { break; }
+                period = period / divisor;
+                period_str = new_period_str;
+            }
+
+            (SealedValueOptional::Notice(MessageServiceNotice {}),
+             Some(format!("Messages will be auto-deleted in {period} {period_str}")))
+        }
         "edit_chat_theme" => {
             // Not really interesting to track.
             return Ok(ShouldProceed::SkipMessage);
@@ -914,7 +934,7 @@ fn parse_service_message(message_json: &mut MessageJson,
             bail!("Don't know how to parse service message for action '{etc}'"),
     };
     service_msg.sealed_value_optional = Some(val);
-    Ok(ShouldProceed::ProceedMessage)
+    Ok(ShouldProceed::ProceedMessage { text_prefix })
 }
 
 //
@@ -1088,27 +1108,34 @@ fn simplify_rich_text(mut rtes: Vec<RichTextElement>) -> Vec<RichTextElement> {
 
     fn is_whitespaces(rte: &RichTextElement) -> bool {
         match rte.val.as_ref().unwrap() {
-            Val::Plain(RtePlain { text }) |
-            Val::Bold(RteBold { text }) |
-            Val::Italic(RteItalic { text }) |
-            Val::Underline(RteUnderline { text }) |
-            Val::Strikethrough(RteStrikethrough { text }) |
-            Val::PrefmtInline(RtePrefmtInline { text }) |
-            Val::Blockquote(RteBlockquote { text }) |
-            Val::Spoiler(RteSpoiler { text }) => {
-                text.chars().all(|c| c.is_whitespace())
+            Val::Plain(_) | Val::Bold(_) | Val::Italic(_) | Val::Underline(_) | Val::Strikethrough(_) |
+            Val::PrefmtInline(_) | Val::Blockquote(_) | Val::Spoiler(_) => {
+                rte.get_text().unwrap().chars().all(|c| c.is_whitespace())
             }
-            Val::Link(_) |
-            Val::PrefmtBlock(_) => {
+            Val::Link(_) | Val::PrefmtBlock(_) => {
                 false
             }
         }
     }
 
-    // Trim leading whitespaces
-    rtes.into_iter()
-        .skip_while(is_whitespaces)
-        .collect_vec()
+    // Trim
+    let first_idx = (0..rtes.len()).find(|&idx| !is_whitespaces(&rtes[idx]));
+    if first_idx.is_none() { return vec![]; }
+    let first_idx = first_idx.unwrap();
+    if !matches!(rtes[first_idx].val, Some(Val::PrefmtBlock(_))) {
+        if let Some(text) = rtes[first_idx].get_text_mut() {
+            *text = text.trim_start().to_owned();
+        }
+    }
+
+    let last_idx = (0..rtes.len()).rfind(|&idx| !is_whitespaces(&rtes[idx]));
+    let last_idx = last_idx.unwrap();
+    if !matches!(rtes[last_idx].val, Some(Val::PrefmtBlock(_))) {
+        if let Some(text) = rtes[last_idx].get_text_mut() {
+            *text = text.trim_end().to_owned();
+        }
+    }
+    rtes[first_idx..=last_idx].to_vec()
 }
 
 fn parse_inline_bot_buttons(json_path: &str, json: &BorrowedValue) -> Result<Vec<RichTextElement>> {

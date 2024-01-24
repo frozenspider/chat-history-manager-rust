@@ -826,8 +826,8 @@ fn loading_2023_11_diff() -> EmptyRes {
 }
 
 #[test]
-fn loading_2024_01_reply_to_channel_post() -> EmptyRes {
-    let res = resource("telegram_2024-01_reply-to-channel-post");
+fn loading_2024_01() -> EmptyRes {
+    let res = resource("telegram_2024-01");
     LOADER.looks_about_right(&res)?;
 
     let dao =
@@ -835,12 +835,17 @@ fn loading_2024_01_reply_to_channel_post() -> EmptyRes {
 
     let cwm = &dao.cwms_single_ds()[0];
     let msgs = &cwm.messages;
-    assert_eq!(msgs.len() as i32, 1);
+    assert_eq!(msgs.len() as i32, 2);
 
     assert_eq!(msgs[0].text, vec![
         RichText::make_italic("(Replying to a channel post)\n".to_owned()),
         RichText::make_plain("My reply to a channel post!".to_owned()),
     ]);
+
+    assert_eq!(msgs[1].text, vec![
+        RichText::make_plain("Messages will be auto-deleted in 31 day(s)".to_owned()),
+    ]);
+    assert_matches!(&msgs[1].typed, Some(Typed::Service(MessageService { sealed_value_optional: Some(Notice(_)) })));
 
     Ok(())
 }

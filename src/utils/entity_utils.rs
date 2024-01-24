@@ -327,6 +327,48 @@ impl Message {
     }
 }
 
+impl RichTextElement {
+    pub fn get_text(&self) -> Option<&str> {
+        use rich_text_element::Val;
+        match self.val.as_ref().unwrap() {
+            Val::Plain(RtePlain { text }) |
+            Val::Bold(RteBold { text }) |
+            Val::Italic(RteItalic { text }) |
+            Val::Underline(RteUnderline { text }) |
+            Val::Strikethrough(RteStrikethrough { text }) |
+            Val::PrefmtInline(RtePrefmtInline { text }) |
+            Val::PrefmtBlock(RtePrefmtBlock { text, .. }) |
+            Val::Blockquote(RteBlockquote { text }) |
+            Val::Spoiler(RteSpoiler { text }) => {
+                Some(&text)
+            }
+            Val::Link(RteLink { text_option, .. }) => {
+                text_option.as_deref()
+            }
+        }
+    }
+
+    pub fn get_text_mut(&mut self) -> Option<&mut String> {
+        use rich_text_element::Val;
+        match self.val.as_mut().unwrap() {
+            Val::Plain(RtePlain { text }) |
+            Val::Bold(RteBold { text }) |
+            Val::Italic(RteItalic { text }) |
+            Val::Underline(RteUnderline { text }) |
+            Val::Strikethrough(RteStrikethrough { text }) |
+            Val::PrefmtInline(RtePrefmtInline { text }) |
+            Val::PrefmtBlock(RtePrefmtBlock { text, .. }) |
+            Val::Blockquote(RteBlockquote { text }) |
+            Val::Spoiler(RteSpoiler { text }) => {
+                Some(text)
+            }
+            Val::Link(RteLink { text_option, .. }) => {
+                text_option.as_mut()
+            }
+        }
+    }
+}
+
 pub struct RichText {}
 
 impl RichText {

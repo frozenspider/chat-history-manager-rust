@@ -32,6 +32,18 @@
         "text": "My reply to a channel post!"
        }
       ]
+     },
+     {
+      "id": 11112,
+      "type": "service",
+      "date": "2022-10-11T22:49:15",
+      "date_unixtime": "1665499755",
+      "actor": "Aaaaa Aaaaaaaaaaa",
+      "actor_id": "user11111111",
+      "action": "set_messages_ttl",
+      "period": 2678400,
+      "text": "",
+      "text_entities": []
      }
     ]
    }
