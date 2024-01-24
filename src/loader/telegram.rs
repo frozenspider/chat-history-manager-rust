@@ -212,8 +212,8 @@ fn parse_telegram_file(path: &Path, ds: Dataset, myself_chooser: &dyn MyselfChoo
         let chat = cwm.chat.as_ref().context("Chat absent!")?;
         for member_id in chat.member_ids() {
             if !users.id_to_user.contains_key(&member_id) {
-                return err!("No member with id={} found for chat with id={} '{}'",
-                            *member_id, chat.id, name_or_unnamed(&chat.name_option));
+                bail!("No member with id={} found for chat with id={} '{}'",
+                      *member_id, chat.id, name_or_unnamed(&chat.name_option));
             }
         }
     }
@@ -487,7 +487,7 @@ fn parse_message(json_path: &str,
     lazy_static! {
         static ref REGULAR_MSG_FIELDS: ExpectedMessageField<'static> = ExpectedMessageField {
             required_fields: hash_set(["id", "type", "date", "text", "from", "from_id"]),
-            optional_fields: hash_set(["date_unixtime", "text_entities", "forwarded_from", "via_bot"]),
+            optional_fields: hash_set(["date_unixtime", "text_entities", "forwarded_from", "via_bot", "inline_bot_buttons"]),
         };
 
         static ref SERVICE_MSG_FIELDS: ExpectedMessageField<'static> = ExpectedMessageField {
@@ -535,7 +535,7 @@ fn parse_message(json_path: &str,
             short_user.id = parse_user_id(message_json.field("actor_id")?)?;
             short_user.full_name_option = message_json.field_opt_str("actor")?;
         }
-        etc => return err!("Unknown message type: {}", etc),
+        etc => bail!("Unknown message type: {}", etc),
     }
 
     // Normalize user ID.
@@ -582,22 +582,40 @@ fn parse_message(json_path: &str,
             "text" if !has_text_entities => {
                 text = Some(parse_rich_text(&format!("{}.text", message_json.json_path), v)?);
             }
+            "inline_bot_buttons" => {
+                if let Some(ref mut text) = text {
+                    let button_links = parse_inline_bot_buttons(&format!("{}.inline_bot_buttons", message_json.json_path), v)?;
+                    if !button_links.is_empty() {
+                        let line_break = RichText::make_plain("\n".to_owned());
+                        for link in button_links {
+                            // Leading line break with no text is okay as it will be stripped by simplify_rich_text
+                            text.push(line_break.clone());
+                            text.push(link);
+                        }
+                    }
+                } else {
+                    bail!("{}: expected text to already present when parsing inline_bot_buttons", message_json.json_path);
+                }
+            }
             _ => { /* Ignore, already consumed */ }
         }
     }
 
+    let text = text.with_context(|| format!("{}: text not found", message_json.json_path))?;
+    let text = simplify_rich_text(text);
+
     if let Some(ref ef) = message_json.expected_fields {
         if !ef.required_fields.is_empty() {
-            return err!("Message fields not found: {:?}", ef.required_fields);
+            bail!("{}: message fields not found: {:?}", message_json.json_path, ef.required_fields);
         }
     }
 
     Ok(ParsedMessage::Ok(Box::new(Message::new(
         *NO_INTERNAL_ID,
         source_id_option,
-        timestamp.unwrap(),
+        timestamp.with_context(|| format!("{}: timestamp not set", message_json.json_path))?,
         from_id,
-        text.unwrap(),
+        text,
         typed,
     ))))
 }
@@ -783,7 +801,7 @@ fn parse_regular_message(message_json: &mut MessageJson,
                 vcard_path_option,
             }))
         }
-        _ => return err!("Couldn't determine content type for '{:?}'", message_json.val)
+        _ => bail!("Couldn't determine content type for '{:?}'", message_json.val)
     };
 
     regular_msg.content_option = content_val.map(|v| Content { sealed_value_optional: Some(v) });
@@ -890,7 +908,7 @@ fn parse_service_message(message_json: &mut MessageJson,
             return Ok(ShouldProceed::SkipChat);
         }
         etc =>
-            return err!("Don't know how to parse service message for action '{etc}'"),
+            bail!("Don't know how to parse service message for action '{etc}'"),
     };
     service_msg.sealed_value_optional = Some(val);
     Ok(ShouldProceed::ProceedMessage)
@@ -910,7 +928,7 @@ fn parse_rich_text(json_path: &str, rt_json: &BorrowedValue) -> Result<Vec<RichT
     }
 
     // Empty plain strings are discarded
-    let mut rtes = match rt_json {
+    let rtes = match rt_json {
         BorrowedValue::Static(StaticNode::Null) =>
             Ok(vec![]),
         BorrowedValue::String(s) => {
@@ -925,7 +943,7 @@ fn parse_rich_text(json_path: &str, rt_json: &BorrowedValue) -> Result<Vec<RichT
                     BorrowedValue::Object(obj) =>
                         parse_rich_text_object(json_path, obj)?,
                     etc =>
-                        return err!("Don't know how to parse RichText element '{:?}'", etc)
+                        bail!("Don't know how to parse RichText element '{:?}'", etc)
                 };
                 if let Some(val) = val {
                     result.push(val)
@@ -937,35 +955,16 @@ fn parse_rich_text(json_path: &str, rt_json: &BorrowedValue) -> Result<Vec<RichT
             err!("Don't know how to parse RichText container '{:?}'", etc)
     }?;
 
-    // Concatenate consecutive plaintext elements
-    let mut i = 0;
-    while (i + 1) < rtes.len() {
-        use rich_text_element::Val;
-
-        let el1 = &rtes[i];
-        let el2 = &rtes[i + 1];
-        if let (Some(Val::Plain(plain1)), Some(Val::Plain(plain2))) = (&el1.val, &el2.val) {
-            let mut new_text = String::new();
-            new_text.push_str(&plain1.text);
-            new_text.push_str(&plain2.text);
-            let new_plain = RichText::make_plain(new_text);
-            rtes.splice(i..=(i + 1), vec![new_plain]);
-        } else {
-            i += 1;
-        }
-    }
-
     Ok(rtes)
 }
 
 fn parse_rich_text_object(json_path: &str,
                           rte_json: &Object) -> Result<Option<RichTextElement>> {
-    let keys =
-        rte_json.keys().map(|s| s.deref()).collect::<HashSet<&str, Hasher>>();
     macro_rules! check_keys {
-        ($keys:expr) => {
-            if keys != HashSet::<&str, Hasher>::from_iter($keys) {
-                return err!("Unexpected keys: {:?}", keys)
+        ($expected_keys:expr) => {
+            let keys: HashSet<&str, Hasher> = rte_json.keys().map(|cow| cow.deref()).collect();
+            if keys != HashSet::<&str, Hasher>::from_iter($expected_keys) {
+                bail!("Unexpected keys: {:?}", keys)
             }
         };
     }
@@ -1060,9 +1059,92 @@ fn parse_rich_text_object(json_path: &str,
             Some(RichText::make_plain(get_field_string!(rte_json, json_path, "text")))
         }
         etc =>
-            return err!("Don't know how to parse RichText element of type '{etc}' for {:?}", rte_json)
+            bail!("Don't know how to parse RichText element of type '{etc}' for {:?}", rte_json)
     };
     Ok(res)
+}
+
+fn simplify_rich_text(mut rtes: Vec<RichTextElement>) -> Vec<RichTextElement> {
+    use rich_text_element::Val;
+
+    // Concatenate consecutive plaintext elements
+    let mut i = 0;
+    while (i + 1) < rtes.len() {
+        let el1 = &rtes[i];
+        let el2 = &rtes[i + 1];
+        if let (Some(Val::Plain(plain1)), Some(Val::Plain(plain2))) = (&el1.val, &el2.val) {
+            let mut new_text = String::new();
+            new_text.push_str(&plain1.text);
+            new_text.push_str(&plain2.text);
+            let new_plain = RichText::make_plain(new_text);
+            rtes.splice(i..=(i + 1), vec![new_plain]);
+        } else {
+            i += 1;
+        }
+    }
+
+    fn is_whitespaces(rte: &RichTextElement) -> bool {
+        match rte.val.as_ref().unwrap() {
+            Val::Plain(RtePlain { text }) |
+            Val::Bold(RteBold { text }) |
+            Val::Italic(RteItalic { text }) |
+            Val::Underline(RteUnderline { text }) |
+            Val::Strikethrough(RteStrikethrough { text }) |
+            Val::PrefmtInline(RtePrefmtInline { text }) |
+            Val::Blockquote(RteBlockquote { text }) |
+            Val::Spoiler(RteSpoiler { text }) => {
+                text.chars().all(|c| c.is_whitespace())
+            }
+            Val::Link(_) |
+            Val::PrefmtBlock(_) => {
+                false
+            }
+        }
+    }
+
+    // Trim leading whitespaces
+    rtes.into_iter()
+        .skip_while(is_whitespaces)
+        .collect_vec()
+}
+
+fn parse_inline_bot_buttons(json_path: &str, json: &BorrowedValue) -> Result<Vec<RichTextElement>> {
+    let mut result = vec![];
+    let array = as_array!(json, json_path);
+    for inner_array in array.iter() {
+        let inner_array = as_array!(inner_array, json_path);
+        for el in inner_array.iter() {
+            let el = as_object!(el, json_path);
+            macro_rules! check_keys {
+                ($expected_keys:expr) => {
+                    let keys: HashSet<&str, Hasher> = el.keys().map(|cow| cow.deref()).collect();
+                    if keys != HashSet::<&str, Hasher>::from_iter($expected_keys) {
+                        bail!("Unexpected keys: {:?}", keys)
+                    }
+                };
+            }
+            let rte: Option<RichTextElement> = match get_field_str!(el, json_path, "type") {
+                "url" => {
+                    check_keys!(["type", "text", "data"]);
+                    Some(RichText::make_link(Some(get_field_string!(el, json_path, "text")),
+                                             get_field_string!(el, json_path, "data"),
+                                             false))
+                }
+                "auth" => {
+                    // Not interesting to preserve
+                    None
+                }
+                etc =>
+                    bail!("Don't know how to parse bot button element of type '{etc}'")
+            };
+
+            if let Some(rte) = rte {
+                result.push(rte);
+            }
+        }
+    }
+
+    Ok(result)
 }
 
 //

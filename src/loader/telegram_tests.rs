@@ -825,6 +825,49 @@ fn loading_2023_11_diff() -> EmptyRes {
     Ok(())
 }
 
+#[test]
+fn inline_bot_buttons() -> EmptyRes {
+    let res = resource("telegram_2024-01_inline-bot-buttons");
+    LOADER.looks_about_right(&res)?;
+
+    let dao =
+        LOADER.load(&res, &NoChooser)?;
+
+    let cwm = &dao.cwms_single_ds()[0];
+    let msgs = &cwm.messages;
+    assert_eq!(msgs.len() as i32, 5);
+
+    let button_link_1 =
+        RichText::make_link(Some("Button link 1".to_owned()), "https://www.example.com/".to_owned(), false);
+
+    assert_eq!(msgs[0].text, vec![
+        RichText::make_bold("Some initial bold text".to_owned()),
+        RichText::make_plain("\n".to_owned()),
+        button_link_1.clone(),
+        RichText::make_plain("\n".to_owned()),
+        RichText::make_link(Some("Button link 2".to_owned()), "https://t.me/".to_owned(), false),
+        RichText::make_plain("\n".to_owned()),
+        RichText::make_link(Some("Button Link 3 at second row".to_owned()), "http://localhost:80/".to_owned(), false),
+    ]);
+
+    assert_eq!(msgs[1].text, vec![
+        RichText::make_plain("Initial plain text should have a line break added to it\n".to_owned()),
+        button_link_1.clone(),
+    ]);
+
+    assert_eq!(msgs[2].text, vec![
+        button_link_1.clone(),
+    ]);
+
+    assert_eq!(msgs[3].text, vec![
+        RichText::make_plain("Only auth link".to_owned()),
+    ]);
+
+    assert_eq!(msgs[4].text, vec![]);
+
+    Ok(())
+}
+
 //
 // Helpers
 //
