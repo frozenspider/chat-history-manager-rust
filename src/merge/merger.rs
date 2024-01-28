@@ -293,7 +293,7 @@ fn merge_inner(
             }
         }
         new_chat.msg_count = msg_count as i32;
-        new_dao.update_chat(new_chat)?;
+        new_dao.update_chat(new_chat.id(), new_chat)?;
     }
 
     Ok(new_ds)

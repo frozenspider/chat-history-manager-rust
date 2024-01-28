@@ -360,13 +360,13 @@ fn inserts() -> EmptyRes {
 }
 
 #[test]
-fn update_dataset() -> EmptyRes {
+fn update_dataset_same_uuid() -> EmptyRes {
     let (mut dao, _tmp_dir) = create_sqlite_dao();
 
     let ds = dao.insert_dataset(Dataset { uuid: Some(ZERO_PB_UUID.clone()), alias: "My Dataset".to_owned() })?;
     dao.insert_user(create_user(ds.uuid(), 1), true)?;
 
-    let ds = dao.as_mutable()?.update_dataset(Dataset { uuid: ds.uuid.clone(), alias: "Renamed Dataset".to_owned() })?;
+    let ds = dao.as_mutable()?.update_dataset(ds.uuid().clone(), Dataset { uuid: ds.uuid.clone(), alias: "Renamed Dataset".to_owned() })?;
     assert_eq!(dao.datasets()?.remove(0), ds);
 
     Ok(())
@@ -408,7 +408,6 @@ fn delete_dataset() -> EmptyRes {
 
     Ok(())
 }
-
 
 #[test]
 fn update_user() -> EmptyRes {
@@ -480,7 +479,7 @@ fn update_user() -> EmptyRes {
     changed_users[0].phone_number_option = Some("+123".to_owned());
     changed_users[0].username_option = None;
 
-    assert_eq!(dao.update_user(changed_users[0].clone())?, changed_users[0]);
+    assert_eq!(dao.update_user(changed_users[0].id(), changed_users[0].clone())?, changed_users[0]);
 
     // Renaming myself should not affect private chat names
     assert_eq!(dao.chat_option(ds.uuid(), personal_chat_u2.id)?.map(|cwd| cwd.chat), Some(personal_chat_u2.clone()));
@@ -497,8 +496,8 @@ fn update_user() -> EmptyRes {
     changed_users[2].phone_number_option = None;
     changed_users[2].username_option = None;
 
-    assert_eq!(dao.update_user(changed_users[1].clone())?, changed_users[1]);
-    assert_eq!(dao.update_user(changed_users[2].clone())?, changed_users[2]);
+    assert_eq!(dao.update_user(changed_users[1].id(), changed_users[1].clone())?, changed_users[1]);
+    assert_eq!(dao.update_user(changed_users[2].id(), changed_users[2].clone())?, changed_users[2]);
 
     assert_eq!(dao.users(ds.uuid())?, changed_users);
     assert_eq!(dao.myself(ds.uuid())?, changed_users[0]);
@@ -526,6 +525,120 @@ fn update_user() -> EmptyRes {
                                    sealed_value_optional: Some(GroupCreate(MessageServiceGroupCreate { members, .. }))
                                })) = dao.first_messages(&group_chat, 1)?.remove(0).typed {
         assert_eq!(members.as_ref(), vec!["MYSELF FN", "U1 FN U1 LN", UNNAMED]);
+    }
+
+    Ok(())
+}
+
+#[test]
+fn update_user_change_id() -> EmptyRes {
+    let daos = init();
+    let mut dao = daos.dst_dao;
+
+    let old_id = UserId(777777777);
+    let new_id = UserId(112233);
+
+    assert_eq!(dao.datasets()?.len(), 1);
+    let dst_ds = dao.datasets()?.remove(0);
+    assert_eq!(dao.users(&daos.ds_uuid)?.len(), 9);
+    let old_user = dao.users(&daos.ds_uuid)?.into_iter().find(|u| u.id() == old_id).unwrap();
+
+    let old_group_cwd = dao.chats(&daos.ds_uuid)?.into_iter()
+        .find(|cwd| cwd.chat.tpe == ChatType::PrivateGroup as i32).unwrap();
+    let old_personal_cwd = dao.chats(&daos.ds_uuid)?.into_iter()
+        .find(|cwd| cwd.chat.tpe == ChatType::Personal as i32 && cwd.members.contains(&old_user)).unwrap();
+
+    let old_group_user_msgs = dao.first_messages(&old_group_cwd.chat, usize::MAX)?.into_iter()
+        .filter(|m| m.from_id == *old_id).collect_vec();
+    let old_personal_user_msgs = dao.first_messages(&old_personal_cwd.chat, usize::MAX)?.into_iter()
+        .filter(|m| m.from_id == *old_id).collect_vec();
+    assert!(old_group_user_msgs.len() > 0 && old_personal_user_msgs.len() > 0);
+
+    assert_eq!(dao.chats(dst_ds.uuid())?.len(), 4);
+
+    dao.update_user(old_id, User { id: *new_id, ..old_user.clone() })?;
+    assert_eq!(dao.users(dst_ds.uuid())?.len(), 9);
+
+    assert!(dao.users(dst_ds.uuid())?.into_iter().find(|u| u.id() == old_id).is_none());
+    let new_user = dao.users(dst_ds.uuid())?.into_iter().find(|u| u.id() == new_id).unwrap();
+    assert_eq!(new_user, User { id: *new_id, ..old_user.clone() });
+
+    let new_group_cwd = dao.chats(&daos.ds_uuid)?.into_iter()
+        .find(|cwd| cwd.chat.tpe == ChatType::PrivateGroup as i32).unwrap();
+    let new_personal_cwd = dao.chats(&daos.ds_uuid)?.into_iter()
+        .find(|cwd| cwd.chat.tpe == ChatType::Personal as i32 && cwd.members.contains(&new_user)).unwrap();
+
+    assert_eq!(new_group_cwd.members.len(), old_group_cwd.members.len());
+    assert!(new_group_cwd.members.contains(&new_user));
+
+    assert_eq!(new_personal_cwd.chat, Chat { member_ids: vec![dao.myself(&daos.ds_uuid)?.id, new_user.id], ..old_personal_cwd.chat });
+
+    let new_group_user_msgs = dao.first_messages(&new_group_cwd.chat, usize::MAX)?.into_iter()
+        .filter(|m| m.from_id == *new_id).collect_vec();
+    let new_personal_user_msgs = dao.first_messages(&new_personal_cwd.chat, usize::MAX)?.into_iter()
+        .filter(|m| m.from_id == *new_id).collect_vec();
+    assert_eq!(new_group_user_msgs.len(), old_group_user_msgs.len());
+    assert_eq!(new_personal_user_msgs.len(), old_personal_user_msgs.len());
+
+    Ok(())
+}
+
+#[test]
+fn update_chat_change_id() -> EmptyRes {
+    let daos = init();
+    let mut dao = daos.dst_dao;
+
+    let dst_files = dataset_files(&dao, &daos.ds_uuid);
+    for f in dst_files.iter() {
+        assert!(f.exists());
+    }
+    assert_eq!(dao.datasets()?.len(), 1);
+    let dst_ds = dao.datasets()?.remove(0);
+    assert_eq!(dao.users(&daos.ds_uuid)?.len(), 9);
+
+    assert_eq!(dao.chats(dst_ds.uuid())?.len(), 4);
+    let cwd = dao.chats(dst_ds.uuid())?.into_iter()
+        .find(|cwd| cwd.chat.tpe == ChatType::PrivateGroup as i32).unwrap();
+
+    let old_files = dao.first_messages(&cwd.chat, usize::MAX)?.iter()
+        .flat_map(|m| m.files(&daos.dst_ds_root)).collect_vec();
+    assert!(old_files.len() > 0);
+    let hashes: HashMap<_, _> = old_files.iter()
+        .map(|f| (path_file_name(f).unwrap().to_owned(), file_hash(f).unwrap())).collect();
+
+    let old_id = cwd.id();
+    let new_id = ChatId(112233);
+    let old_chat = cwd.chat.clone();
+    dao.update_chat(old_id, Chat { id: *new_id, ..cwd.chat })?;
+    assert_eq!(dao.chats(dst_ds.uuid())?.len(), 4);
+
+    let cwd = dao.chats(dst_ds.uuid())?.into_iter().find(|cwd| cwd.id() == new_id).unwrap();
+    assert_eq!(cwd.chat, Chat { id: *new_id, ..old_chat.clone() });
+
+    // Files must be moved to a different dir
+    for f in old_files.iter() {
+        assert!(!f.exists());
+    }
+    let new_files = dao.first_messages(&cwd.chat, usize::MAX)?.iter()
+        .flat_map(|m| m.files(&daos.dst_ds_root)).collect_vec();
+    assert_eq!(old_files.len(), new_files.len());
+    for f in new_files.iter() {
+        assert!(f.exists());
+
+        let old_hash = &hashes[path_file_name(f).unwrap()];
+        let new_hash = file_hash(f).unwrap();
+        assert_eq!(old_hash, &new_hash);
+    }
+
+    let src_cwd = daos.src_dao.chats(&daos.ds_uuid)?.into_iter().find(|cwd2| cwd2.id() == old_id).unwrap();
+    let old_messages = daos.src_dao.first_messages(&src_cwd.chat, usize::MAX)?;
+    let new_messages = dao.first_messages(&cwd.chat, usize::MAX)?;
+    assert_eq!(old_messages.len(), new_messages.len());
+
+    for (old_msg, new_msg) in old_messages.iter().zip(new_messages.iter()) {
+        let old_pet = Tup::new(old_msg, &daos.src_ds_root, &src_cwd);
+        let new_pet = Tup::new(new_msg, &daos.dst_ds_root, &cwd);
+        assert!(old_pet.practically_equals(&new_pet)?);
     }
 
     Ok(())

@@ -618,21 +618,23 @@ impl MutableChatHistoryDao for SqliteDao {
         Ok(ds)
     }
 
-    fn update_dataset(&mut self, ds: Dataset) -> Result<Dataset> {
+    fn update_dataset(&mut self, old_uuid: PbUuid, ds: Dataset) -> Result<Dataset> {
+        require!(&old_uuid == ds.uuid(), "Changing dataset UUID is not supported");
+
         self.invalidate_cache()?;
         let mut conn = self.conn.borrow_mut();
         let conn = conn.deref_mut();
 
         let raw_ds = utils::dataset::serialize(&ds);
 
-        let ds_uuid = ds.uuid.clone().unwrap();
-        let uuid = Uuid::parse_str(&ds_uuid.value).expect("Invalid UUID!");
+        let uuid = Uuid::parse_str(&old_uuid.value).expect("Invalid UUID!");
 
         use schema::*;
         let updated_rows = update(dataset::dsl::dataset)
             .filter(dataset::columns::uuid.eq(uuid.as_ref()))
             .set(raw_ds)
             .execute(conn)?;
+
         require!(updated_rows == 1, "{updated_rows} rows changed when updaing dataset {:?}", ds);
 
         Ok(ds)
@@ -719,11 +721,11 @@ impl MutableChatHistoryDao for SqliteDao {
         Ok(user)
     }
 
-    fn update_user(&mut self, user: User) -> Result<User> {
+    fn update_user(&mut self, old_id: UserId, user: User) -> Result<User> {
         let ds_uuid = user.ds_uuid.clone().unwrap();
         let is_myself = user.id() == self.myself(&ds_uuid)?.id();
 
-        let old_name = self.get_cache()?.users[&ds_uuid].user_by_id[&user.id()].pretty_name_option();
+        let old_name = self.get_cache()?.users[&ds_uuid].user_by_id[&old_id].pretty_name_option();
 
         self.invalidate_cache()?;
         let mut conn = self.conn.borrow_mut();
@@ -731,13 +733,16 @@ impl MutableChatHistoryDao for SqliteDao {
 
         let uuid = Uuid::parse_str(&ds_uuid.value).expect("Invalid UUID!");
         let raw_user = utils::user::serialize(&user, is_myself, &Vec::from(uuid.as_ref()));
+        let id_changed = user.id != *old_id;
 
         conn.transaction(|conn| {
             use schema::*;
+            defer_fk(conn)?;
+
             let updated_rows = update(user::dsl::user)
                 .filter(user::columns::ds_uuid.eq(uuid.as_ref()))
-                .filter(user::columns::id.eq(user.id))
-                .set(raw_user)
+                .filter(user::columns::id.eq(*old_id))
+                .set((user::columns::id.eq(user.id), &raw_user))
                 .execute(conn)?;
             require!(updated_rows == 1, "{updated_rows} rows changed when updaing user {:?}", user);
 
@@ -758,8 +763,21 @@ impl MutableChatHistoryDao for SqliteDao {
                     .execute(conn)?;
             }
 
-            // Update user name in "members" string field
+            // If user ID changed, we need to update membership accordingly
+            if id_changed {
+                update(message::dsl::message)
+                    .filter(message::columns::ds_uuid.eq(uuid.as_ref()))
+                    .filter(message::columns::from_id.eq(*old_id))
+                    .set(message::columns::from_id.eq(user.id))
+                    .execute(conn)?;
 
+                update(chat_member::dsl::chat_member)
+                    .filter(chat_member::columns::user_id.eq(*old_id))
+                    .set(chat_member::columns::user_id.eq(user.id))
+                    .execute(conn)?;
+            }
+
+            // Update user name in "members" string field
             if let Some(old_name) = old_name {
                 let new_name = user.pretty_name();
 
@@ -831,21 +849,88 @@ impl MutableChatHistoryDao for SqliteDao {
         Ok(chat)
     }
 
-    fn update_chat(&mut self, chat: Chat) -> Result<Chat> {
+    fn update_chat(&mut self, old_id: ChatId, chat: Chat) -> Result<Chat> {
         let mut conn = self.conn.borrow_mut();
         let conn = conn.deref_mut();
 
         let uuid = Uuid::parse_str(&chat.ds_uuid.as_ref().unwrap().value).expect("Invalid UUID!");
         let uuid_bytes = Vec::from(uuid.as_ref());
         let raw_chat = utils::chat::serialize(&chat, &uuid_bytes)?;
+        let id_changed = chat.id != *old_id;
 
-        use schema::*;
-        let updated_rows = update(chat::dsl::chat)
-            .filter(chat::columns::ds_uuid.eq(uuid.as_ref()))
-            .filter(chat::columns::id.eq(chat.id))
-            .set(raw_chat)
-            .execute(conn)?;
-        require!(updated_rows == 1, "{updated_rows} rows changed when updaing chat {}", chat.qualified_name());
+        conn.transaction(|conn| {
+            use schema::*;
+            defer_fk(conn)?;
+
+            let updated_rows = update(chat::dsl::chat)
+                .filter(chat::columns::ds_uuid.eq(uuid.as_ref()))
+                .filter(chat::columns::id.eq(*old_id))
+                .set((chat::columns::id.eq(raw_chat.id), &raw_chat))
+                .execute(conn)?;
+            require!(updated_rows == 1, "{updated_rows} rows changed when updaing chat {}", chat.qualified_name());
+
+            if id_changed {
+                update(chat::dsl::chat)
+                    .filter(chat::columns::ds_uuid.eq(uuid.as_ref()))
+                    .filter(chat::columns::main_chat_id.eq(*old_id))
+                    .set(chat::columns::main_chat_id.eq(raw_chat.id))
+                    .execute(conn)?;
+
+                update(chat_member::dsl::chat_member)
+                    .filter(chat_member::columns::ds_uuid.eq(uuid.as_ref()))
+                    .filter(chat_member::columns::chat_id.eq(*old_id))
+                    .set(chat_member::columns::chat_id.eq(raw_chat.id))
+                    .execute(conn)?;
+
+                update(message::dsl::message)
+                    .filter(message::columns::ds_uuid.eq(uuid.as_ref()))
+                    .filter(message::columns::chat_id.eq(*old_id))
+                    .set(message::columns::chat_id.eq(raw_chat.id))
+                    .execute(conn)?;
+
+                let ds_root = self.dataset_root(chat.ds_uuid())?;
+
+                let old_rel_path = chat_root_rel_path(*old_id);
+                let new_rel_path = chat_root_rel_path(raw_chat.id);
+
+                let old_path = ds_root.to_absolute(&old_rel_path);
+                let new_path = ds_root.to_absolute(&new_rel_path);
+
+                if old_path.exists() {
+                    require!(!new_path.exists(), "{} already exists", new_path.to_string_lossy());
+                    fs::rename(old_path, new_path)?;
+
+                    sql_query(r"
+                        UPDATE chat
+                        SET img_path = REPLACE(img_path, ?, ?)
+                        WHERE ds_uuid = ? AND id = ?
+                    ")
+                        .bind::<sql_types::Text, _>(&old_rel_path)
+                        .bind::<sql_types::Text, _>(&new_rel_path)
+                        .bind::<sql_types::Binary, _>(uuid.as_ref())
+                        .bind::<sql_types::BigInt, _>(chat.id)
+                        .execute(conn)?;
+
+                    sql_query(r"
+                        UPDATE message_content
+                        SET path           = REPLACE(path,           ?, ?),
+                            thumbnail_path = REPLACE(thumbnail_path, ?, ?)
+                        WHERE message_internal_id IN (
+                            SELECT internal_id FROM message
+                            WHERE ds_uuid = ? AND chat_id = ?
+                        )
+                    ")
+                        .bind::<sql_types::Text, _>(&old_rel_path)
+                        .bind::<sql_types::Text, _>(&new_rel_path)
+                        .bind::<sql_types::Text, _>(&old_rel_path)
+                        .bind::<sql_types::Text, _>(&new_rel_path)
+                        .bind::<sql_types::Binary, _>(uuid.as_ref())
+                        .bind::<sql_types::BigInt, _>(chat.id)
+                        .execute(conn)?;
+                }
+            }
+            ok(())
+        })?;
 
         Ok(chat)
     }
@@ -1101,4 +1186,9 @@ fn copy_file(src_rel_path: &str,
         log::info!("Referenced file does not exist: {src_rel_path}");
         Ok(None)
     }
+}
+
+fn defer_fk(conn: &mut SqliteConnection) -> EmptyRes {
+    sql_query("PRAGMA defer_foreign_keys = true").execute(conn)?;
+    ok(())
 }

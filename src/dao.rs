@@ -182,7 +182,7 @@ pub trait MutableChatHistoryDao: ChatHistoryDao {
     // Inserts dataset as-is, with the UUID already set.
     fn insert_dataset(&mut self, ds: Dataset) -> Result<Dataset>;
 
-    fn update_dataset(&mut self, ds: Dataset) -> Result<Dataset>;
+    fn update_dataset(&mut self, old_uuid: PbUuid, ds: Dataset) -> Result<Dataset>;
 
     /// Delete a dataset with all the related entities. Deleted dataset root will be moved to backup folder.
     fn delete_dataset(&mut self, uuid: PbUuid) -> EmptyRes;
@@ -190,13 +190,13 @@ pub trait MutableChatHistoryDao: ChatHistoryDao {
     fn insert_user(&mut self, user: User, is_myself: bool) -> Result<User>;
 
     /// Update a user, renaming relevant personal chats and updating messages mentioning that user in plaintext.
-    fn update_user(&mut self, user: User) -> Result<User>;
+    fn update_user(&mut self, old_id: UserId, user: User) -> Result<User>;
 
     /// Copies image (if any) from dataset root.
     fn insert_chat(&mut self, chat: Chat, src_ds_root: &DatasetRoot) -> Result<Chat>;
 
     /// Note that chat members won't be changed and image won't be copied/deleted.
-    fn update_chat(&mut self, chat: Chat) -> Result<Chat>;
+    fn update_chat(&mut self, old_id: ChatId, chat: Chat) -> Result<Chat>;
 
     /// Delete a chat, as well as orphan users. Deleted files will be moved to backup folder.
     fn delete_chat(&mut self, chat: Chat) -> EmptyRes;
