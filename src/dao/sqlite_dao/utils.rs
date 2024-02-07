@@ -175,7 +175,7 @@ pub mod chat {
             tpe: ChatType::serialize(chat.tpe)?,
             img_path: chat.img_path_option.clone(),
             msg_count: chat.msg_count,
-            main_chat_id: None,
+            main_chat_id: chat.main_chat_id,
         })
     }
 

@@ -471,6 +471,7 @@ service HistoryDaoService {
   // Shift time of all timestamps in the dataset to accommodate timezone differences
   rpc ShiftDatasetTime(ShiftDatasetTimeRequest) returns (Empty) {}
   rpc UpdateUser(UpdateUserRequest) returns (UpdateUserResponse) {}
+  rpc UpdateChat(UpdateChatRequest) returns (UpdateChatResponse) {}
   rpc DeleteChat(DeleteChatRequest) returns (Empty) {}
   rpc CombineChats(CombineChatsRequest) returns (Empty) {}
 }
@@ -685,6 +686,17 @@ message UpdateUserRequest {
 }
 message UpdateUserResponse {
   User user = 1 [(scalapb.field).no_box = true];
+}
+
+// Only allows modifying chat ID
+message UpdateChatRequest {
+  string key = 1;
+  PbUuid uuid = 2 [(scalapb.field).no_box = true];
+  int64 old_id = 3;
+  int64 new_id = 4;
+}
+message UpdateChatResponse {
+  Chat chat = 1 [(scalapb.field).no_box = true];
 }
 
 message DeleteChatRequest {

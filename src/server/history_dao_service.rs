@@ -236,6 +236,16 @@ impl HistoryDaoService for Arc<Mutex<ChatHistoryManagerServer>> {
         })
     }
 
+    async fn update_chat(&self, req: Request<UpdateChatRequest>) -> TonicResult<UpdateChatResponse> {
+        with_dao_by_key!(self, req, dao, {
+            let uuid = req.uuid.as_ref().context("Dataset was empty!")?.clone();
+            let old_cwd = dao.chat_option(&uuid, req.old_id)?.context("Chat not found")?;
+            let chat = Chat { id: req.new_id, ..old_cwd.chat };
+            let chat = dao.as_mutable()?.update_chat(ChatId(req.old_id), chat)?;
+            Ok(UpdateChatResponse { chat: Some(chat) })
+        })
+    }
+
     async fn delete_chat(&self, req: Request<DeleteChatRequest>) -> TonicResult<Empty> {
         with_dao_by_key!(self, req, dao, {
             let chat = req.chat.as_ref().context("Chat was empty!")?.clone();
