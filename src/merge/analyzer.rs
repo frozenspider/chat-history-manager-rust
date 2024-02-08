@@ -509,6 +509,7 @@ fn equals_with_no_mismatching_content(mm_eq: PracticalEqTuple<MasterMessage>,
             typed: Some(Regular(MessageRegular {
                 content_option: None,
                 edit_timestamp_option: None,
+                reply_to_message_id_option: None,
                 ..mr.clone()
             })),
             text: m.text.iter().map(text_to_comparable).collect_vec(),
