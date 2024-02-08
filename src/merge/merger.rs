@@ -202,13 +202,13 @@ fn merge_inner(
                 for merge_decision in message_merges {
                     let inserts: Vec<(Source, Vec<Message>)> = match merge_decision {
                         MessagesMergeDecision::Match(v) => {
-                            // We might be loading too much into memory at once!
-                            // However, messages memory footprint is pretty small, so this isn't a big concern now.
-                            //
-                            // Note: while messages match, our matching rules allow either master or slave
+                            // While messages match, our matching rules allow either master or slave
                             // to have missing content.
-                            // We keep master messages unless slave has new content.
+                            // We keep master messages (updated with slave source ID) unless slave has new content.
                             // TODO: Update when slave has new information instead? (like filenames)
+                            //
+                            // Note: We might be loading too much into memory at once!
+                            // However, messages memory footprint is pretty small, so this isn't a big concern now.
                             let master_msgs =
                                 master.dao.messages_slice(&master_cwd.chat,
                                                           v.first_master_msg_id.generalize(),
@@ -224,6 +224,9 @@ fn merge_inner(
                                     let mm_files = mm.files(&master_ds_root).into_iter().filter(|f| f.exists()).collect_vec();
                                     let sm_files = sm.files(&slave_ds_root).into_iter().filter(|f| f.exists()).collect_vec();
                                     if mm_files.len() >= sm_files.len() {
+                                        // Adopt slave source IDs
+                                        let mut mm = mm;
+                                        adopt_slave_source_ids(&mut mm, &sm);
                                         (mm, Source::Master)
                                     } else {
                                         (sm, Source::Slave)
@@ -363,6 +366,24 @@ fn fixup_members(msg: &mut Message, final_users: &[User], cwd: &ChatWithDetails)
     Ok(())
 }
 
+/// Change master message by setting all source message IDs to those from slave message.
+/// Messages are assumed to be matching.
+fn adopt_slave_source_ids(mm: &mut Message, sm: &Message) {
+    mm.source_id_option = sm.source_id_option;
+    match (mm.typed_mut(), sm.typed()) {
+        (message::Typed::Regular(mmr), message::Typed::Regular(smr)) => {
+            mmr.reply_to_message_id_option = smr.reply_to_message_id_option;
+        }
+        (message::Typed::Service(mms), message::Typed::Service(sms)) => {
+            use message_service::SealedValueOptional::*;
+            match (mms.sealed_value_optional.as_mut(), sms.sealed_value_optional.as_ref()) {
+                (Some(PinMessage(mmsv)), Some(PinMessage(smsv))) => mmsv.message_id = smsv.message_id,
+                (_, _) => { /* NOOP */ }
+            }
+        }
+        (_, _) => { unreachable!("Messages are supposed to be matching! {:?} vs {:?}", mm, sm) }
+    }
+}
 
 #[derive(Debug)]
 pub enum UserMergeDecision {
