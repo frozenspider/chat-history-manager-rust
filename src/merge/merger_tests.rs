@@ -199,9 +199,54 @@ fn merge_multiple_datasets() -> EmptyRes {
 }
 
 #[test]
+fn merge_chats_match_single_message() -> EmptyRes {
+    let msgs_a = vec![create_regular_message(1, 1)];
+    let msgs_b = vec![create_regular_message(123, 2)];
+    let helper = MergerHelper::new_as_is(2, msgs_a.clone(), msgs_b.clone());
+
+    let (new_dao, new_ds, _tmpdir) = merge(
+        &helper,
+        dont_replace_both_users(),
+        vec![ChatMergeDecision::Merge {
+            chat_id: ChatId(1),
+            message_merges: vec![
+                MessagesMergeDecision::Match(MergeAnalysisSectionMatch {
+                    first_master_msg_id: first_id(&helper.m.msgs),
+                    last_master_msg_id: first_id(&helper.m.msgs),
+                    first_slave_msg_id: first_id(&helper.s.msgs),
+                    last_slave_msg_id: first_id(&helper.s.msgs),
+                })
+            ],
+        }],
+    );
+
+    let new_chats = new_dao.chats(new_ds.uuid())?;
+    assert_eq!(new_chats.len(), 1);
+
+    let (msg_a_regular, msg_b_regular) = match (msgs_a[0].typed(), msgs_b[0].typed()) {
+        (message::Typed::Regular(a), message::Typed::Regular(b)) => { (a, b) }
+        _ => unreachable!()
+    };
+
+    let new_messages = new_dao.first_messages(&new_chats[0].chat, usize::MAX)?;
+    assert_eq!(new_messages, vec![Message {
+        internal_id: 1,
+        source_id_option: msgs_b[0].source_id_option.clone(),
+        typed: Some(message::Typed::Regular(MessageRegular {
+            reply_to_message_id_option: msg_b_regular.reply_to_message_id_option,
+            ..msg_a_regular.clone()
+        })),
+        ..msgs_a[0].clone()
+    }]);
+
+    Ok(())
+}
+
+#[test]
 fn merge_chats_keep_single_message() -> EmptyRes {
-    let msgs = vec![create_regular_message(1, 1)];
-    let helper = MergerHelper::new_as_is(2, msgs.clone(), msgs);
+    let msgs_a = vec![create_regular_message(1, 1)];
+    let msgs_b = vec![create_regular_message(2, 2)];
+    let helper = MergerHelper::new_as_is(2, msgs_a, msgs_b);
 
     let (new_dao, new_ds, _tmpdir) = merge(
         &helper,
@@ -230,6 +275,8 @@ fn merge_chats_keep_single_message() -> EmptyRes {
 
     assert_practically_equals(&helper.m.msgs[&src_id(1)].0, &helper.m.ds_root, helper.m.cwd(),
                               &new_messages[0], &new_ds_root, &new_chats[0]);
+
+    assert_eq!(new_messages[0], Message { internal_id: 1, ..helper.m.msgs[&src_id(1)].0.clone() });
 
     Ok(())
 }
