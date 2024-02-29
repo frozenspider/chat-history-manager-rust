@@ -232,10 +232,10 @@ fn merge_chats_match_single_message() -> EmptyRes {
     assert_eq!(new_messages, vec![Message {
         internal_id: 1,
         source_id_option: msgs_b[0].source_id_option.clone(),
-        typed: Some(message::Typed::Regular(MessageRegular {
+        typed: Some(message_regular! {
             reply_to_message_id_option: msg_b_regular.reply_to_message_id_option,
             ..msg_a_regular.clone()
-        })),
+        }),
         ..msgs_a[0].clone()
     }]);
 
@@ -950,7 +950,7 @@ fn members_test_helper(clue: &str,
                 BASE_DATE.timestamp(),
                 users[idx].id(),
                 vec![RichText::make_plain(format!("Message for a group service message {}", idx + 1))],
-                message::Typed::Service(MessageService { sealed_value_optional: Some(typed) }),
+                message_service!(typed),
             )
         }).collect_vec()
     }

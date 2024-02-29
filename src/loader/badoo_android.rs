@@ -175,13 +175,14 @@ impl BadooAndroidDataLoader {
                     timestamp,
                     from_id,
                     text,
-                    message::Typed::Regular(MessageRegular {
+                    message_regular! {
                         edit_timestamp_option: None,
                         is_deleted: false,
                         forward_from_name_option: None,
                         reply_to_message_id_option,
                         content_option,
-                    }), ));
+                    },
+                ));
             }
             messages.iter_mut().enumerate().for_each(|(i, m)| m.internal_id = i as i64);
 

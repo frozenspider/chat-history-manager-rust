@@ -10,7 +10,6 @@ use super::MergeAnalysisSection::*;
 
 use crate::prelude::*;
 use crate::dao::ChatHistoryDao;
-use crate::protobuf::history::message::Typed;
 
 use super::*;
 
@@ -675,7 +674,7 @@ fn present_absent_not_downloaded() -> EmptyRes {
 
     let make_msg_photo = |idx: i64, is_regular: bool, photo: &ContentPhoto| {
         let typed: message::Typed = if is_regular {
-            message::Typed::Regular(MessageRegular {
+            message_regular! {
                 edit_timestamp_option: Some((BASE_DATE.clone() + Duration::minutes(10 + idx)).timestamp()),
                 is_deleted: false,
                 reply_to_message_id_option: None,
@@ -683,13 +682,11 @@ fn present_absent_not_downloaded() -> EmptyRes {
                 content_option: Some(Content {
                     sealed_value_optional: Some(content::SealedValueOptional::Photo(photo.clone()))
                 }),
-            })
+            }
         } else {
-            message::Typed::Service(MessageService {
-                sealed_value_optional: Some(message_service::SealedValueOptional::GroupEditPhoto(
-                    MessageServiceGroupEditPhoto { photo: Some(photo.clone()) }
-                ))
-            })
+            message_service!(message_service::SealedValueOptional::GroupEditPhoto(
+                MessageServiceGroupEditPhoto { photo: Some(photo.clone()) }
+            ))
         };
         let text = vec![RichText::make_plain(format!("Message for a photo {idx}"))];
         Message {
@@ -769,10 +766,10 @@ fn present_absent_not_downloaded() -> EmptyRes {
             use content::SealedValueOptional::*;
             use message_service::SealedValueOptional::*;
             match msg.typed_mut() {
-                Regular(MessageRegular { content_option: Some(Content { sealed_value_optional: Some(Photo(ref mut photo)) }), .. }) => {
+                message_regular_pat! { content_option: Some(Content { sealed_value_optional: Some(Photo(ref mut photo)) }), .. } => {
                     transform(photo)
                 }
-                Service(MessageService { sealed_value_optional: Some(GroupEditPhoto(ref mut edit_photo)) }) => {
+                message_service_pat!(GroupEditPhoto(ref mut edit_photo)) => {
                     transform(edit_photo.photo.as_mut().unwrap())
                 }
                 _ => unreachable!()

@@ -207,9 +207,8 @@ fn convert_microblog_record(
 ) -> (Vec<RichTextElement>, message::Typed) {
     let text = normalize_plaintext(raw_text);
     let text = format!("{}{}", target_name.map(|n| format!("(To {n})\n")).unwrap_or_default(), text);
-    (vec![RichText::make_plain(text)], message::Typed::Service(MessageService {
-        sealed_value_optional: Some(ServiceSvo::StatusTextChanged(MessageServiceStatusTextChanged {}))
-    }))
+    (vec![RichText::make_plain(text)],
+     message_service!(ServiceSvo::StatusTextChanged(MessageServiceStatusTextChanged {})))
 }
 
 /// Turns out this format is shared exactly between old and new formats
@@ -274,7 +273,7 @@ fn convert_cartoon(src: &str) -> Result<TextAndTyped> {
         None => bail!("Unexpected cartoon source: {src}")
     };
 
-    Ok((vec![], message::Typed::Regular(MessageRegular {
+    Ok((vec![], message_regular! {
         content_option: Some(Content {
             sealed_value_optional: Some(ContentSvo::Sticker(ContentSticker {
                 path_option: None,
@@ -285,7 +284,7 @@ fn convert_cartoon(src: &str) -> Result<TextAndTyped> {
             }))
         }),
         ..Default::default()
-    })))
+    }))
 }
 
 fn convert_file_transfer(text: &str) -> Result<TextAndTyped> {
@@ -321,7 +320,7 @@ fn convert_file_transfer(text: &str) -> Result<TextAndTyped> {
             .try_collect()?;
         Some(file_paths.iter().join(", "))
     };
-    Ok((vec![], message::Typed::Regular(MessageRegular {
+    Ok((vec![], message_regular! {
         content_option: Some(Content {
             sealed_value_optional: Some(ContentSvo::File(ContentFile {
                 path_option: None,
@@ -331,7 +330,7 @@ fn convert_file_transfer(text: &str) -> Result<TextAndTyped> {
             }))
         }),
         ..Default::default()
-    })))
+    }))
 }
 
 /// Turns out this format is shared exactly between old and new formats
@@ -377,7 +376,7 @@ fn convert_conference_user_changed_record(
         etc => bail!("Unexpected {:?} change type {etc}\nMessage: {mra_msg:?}", mra_msg.get_tpe()?)
     };
 
-    Ok((vec![], message::Typed::Service(MessageService { sealed_value_optional: Some(service) })))
+    Ok((vec![], message_service!(service)))
 }
 
 /// Returns `None` if this message should be discarded
@@ -435,7 +434,7 @@ fn process_call(
                     _ => unreachable!()
                 };
                 match msg.typed_mut() {
-                    message::Typed::Service(MessageService { sealed_value_optional: Some(ServiceSvo::PhoneCall(call)), .. }) => {
+                    message_service_pat!(ServiceSvo::PhoneCall(call)) => {
                         call.duration_sec_option = Some((timestamp - start_time) as i32);
                         call.discard_reason_option = discard_reason_option.map(|s| s.to_owned());
                     }
@@ -457,12 +456,11 @@ fn process_call(
         }
     }
 
-    Ok(Some((vec![], message::Typed::Service(MessageService {
-        sealed_value_optional: Some(ServiceSvo::PhoneCall(MessageServicePhoneCall {
+    Ok(Some((vec![], message_service!(ServiceSvo::PhoneCall(MessageServicePhoneCall {
             duration_sec_option: None,
             discard_reason_option: None,
         }))
-    }))))
+    )))
 }
 
 //

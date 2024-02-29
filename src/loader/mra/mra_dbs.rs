@@ -382,9 +382,7 @@ fn convert_message(
             require_format(payload.is_empty(), mra_msg, conv_username)?;
 
             let rtes = parse_rtf(&rtf)?;
-            (rtes, Typed::Service(MessageService {
-                sealed_value_optional: Some(ServiceSvo::Notice(MessageServiceNotice {}))
-            }))
+            (rtes, message_service!(ServiceSvo::Notice(MessageServiceNotice {})))
         }
         MraMessageType::FileTransfer => {
             convert_file_transfer(&text)?
@@ -407,9 +405,7 @@ fn convert_message(
             let payload = validate_skip_chunk(payload, mra_msg.text.as_bytes())?;
             require_format(payload.is_empty(), mra_msg, conv_username)?;
 
-            (vec![RichText::make_plain(text)], Typed::Service(MessageService {
-                sealed_value_optional: Some(ServiceSvo::Notice(MessageServiceNotice {}))
-            }))
+            (vec![RichText::make_plain(text)], message_service!(ServiceSvo::Notice(MessageServiceNotice {})))
         }
         MraMessageType::Cartoon | MraMessageType::CartoonType2 => {
             let payload = mra_msg.payload;
@@ -491,12 +487,12 @@ fn convert_message(
                 duration_sec_option: None,
             };
             (vec![RichText::make_plain("(Location changed)".to_owned())],
-             Typed::Regular(MessageRegular {
+             message_regular! {
                  content_option: Some(Content {
                      sealed_value_optional: Some(ContentSvo::Location(location))
                  }),
                  ..Default::default()
-             }))
+             })
         }
         MraMessageType::Empty | MraMessageType::Sticker => {
             bail!("mra.dbs contains message type assumed to be exclusive to newer app version: {tpe:?}")

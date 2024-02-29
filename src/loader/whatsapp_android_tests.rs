@@ -130,11 +130,9 @@ fn loading_2023_10() -> EmptyRes {
             from_id: member.id,
             text: vec![],
             searchable_string: myself.pretty_name(),
-            typed: Some(Typed::Service(MessageService {
-                sealed_value_optional: Some(GroupInviteMembers(MessageServiceGroupInviteMembers {
-                    members: vec![myself.pretty_name()],
-                }))
-            })),
+            typed: Some(message_service!(GroupInviteMembers(MessageServiceGroupInviteMembers {
+                members: vec![myself.pretty_name()],
+            }))),
         });
         assert_eq!(msgs[1], Message {
             internal_id: 1,
@@ -150,13 +148,13 @@ fn loading_2023_10() -> EmptyRes {
                 },
             ],
             searchable_string: "Last group message".to_owned(),
-            typed: Some(Typed::Regular(MessageRegular {
+            typed: Some(message_regular! {
                 edit_timestamp_option: Some(1661417955),
                 is_deleted: false,
                 forward_from_name_option: Some(SOMEONE.to_owned()),
                 reply_to_message_id_option: msgs[0].source_id_option,
                 content_option: None,
-            })),
+            }),
         });
     }
 
@@ -185,7 +183,7 @@ fn loading_2023_10() -> EmptyRes {
             from_id: member.id,
             text: vec![],
             searchable_string: "Jl. Gurita No.21x, Denpasar, Bali New Bahari -8.70385650 115.21673666".to_owned(),
-            typed: Some(Typed::Regular(MessageRegular {
+            typed: Some(message_regular! {
                 edit_timestamp_option: None,
                 is_deleted: false,
                 forward_from_name_option: None,
@@ -199,7 +197,7 @@ fn loading_2023_10() -> EmptyRes {
                         duration_sec_option: Some(123),
                     }))
                 }),
-            })),
+            }),
         });
 
         assert_eq!(msgs[1], Message {
@@ -209,13 +207,13 @@ fn loading_2023_10() -> EmptyRes {
             from_id: myself.id,
             text: vec![],
             searchable_string: "".to_owned(),
-            typed: Some(Typed::Regular(MessageRegular {
+            typed: Some(message_regular! {
                 edit_timestamp_option: Some(1693993963),
                 is_deleted: true,
                 forward_from_name_option: None,
                 reply_to_message_id_option: None,
                 content_option: None,
-            })),
+            }),
         });
     }
     Ok(())

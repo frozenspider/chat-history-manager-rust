@@ -81,13 +81,13 @@ fn loading_2023_12() -> EmptyRes {
             from_id: myself.id,
             text: vec![RichText::make_plain("Reply there!".to_owned())],
             searchable_string: "Reply there!".to_owned(),
-            typed: Some(Typed::Regular(MessageRegular {
+            typed: Some(message_regular! {
                 edit_timestamp_option: None,
                 is_deleted: false,
                 forward_from_name_option: None,
                 reply_to_message_id_option: Some(4313483375),
                 content_option: None,
-            })),
+            }),
         });
         assert_eq!(msgs[2], Message {
             internal_id: 2,
@@ -96,7 +96,7 @@ fn loading_2023_12() -> EmptyRes {
             from_id: member.id,
             text: vec![],
             searchable_string: "".to_owned(),
-            typed: Some(Typed::Regular(MessageRegular {
+            typed: Some(message_regular! {
                 edit_timestamp_option: None,
                 is_deleted: false,
                 forward_from_name_option: None,
@@ -108,7 +108,7 @@ fn loading_2023_12() -> EmptyRes {
                         duration_sec_option: Some(23),
                     }))
                 }),
-            })),
+            }),
         });
         assert_eq!(msgs[3], Message {
             internal_id: 3,

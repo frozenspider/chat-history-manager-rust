@@ -284,11 +284,11 @@ pub mod message {
                      mr.forward_from_name_option.clone(),
                      mr.reply_to_message_id_option)
                 }
-                Typed::Service(MessageService { sealed_value_optional: ms }) => {
-                    let (subtype, mc) = serialize_service_and_copy_files(ms.as_ref().unwrap(),
-                                                                         chat_id, src_ds_root, dst_ds_root)?;
+                message_service_pat!(ms) => {
+                    let (subtype, mc) = serialize_service_and_copy_files(ms, chat_id, src_ds_root, dst_ds_root)?;
                     ("service", Some(subtype), mc, None, serialize_bool(false), None, None)
                 }
+                message_service_pat_unreachable!() => { unreachable!() }
             };
         Ok(FullRawMessage {
             m: RawMessage {
@@ -579,7 +579,7 @@ pub mod message {
     pub fn deserialize(raw: FullRawMessage) -> Result<Message> {
         let text = raw.rtes.into_iter().map(deserialize_rte).try_collect()?;
         let typed = match raw.m.tpe.as_str() {
-            "regular" => Typed::Regular(MessageRegular {
+            "regular" => message_regular! {
                 edit_timestamp_option: raw.m.time_edited,
                 is_deleted: deserialize_bool(raw.m.is_deleted),
                 forward_from_name_option: raw.m.forward_from_name,
@@ -587,12 +587,10 @@ pub mod message {
                 content_option: raw.mc.map(|mc| ok(Content {
                     sealed_value_optional: Some(deserialize_content(mc)?)
                 })).transpose()?,
-            }),
-            "service" => Typed::Service(MessageService {
-                sealed_value_optional: Some(deserialize_service(
+            },
+            "service" => message_service!(deserialize_service(
                     raw.m.subtype.as_deref().expect("Service message subtype is empty!"),
-                    raw.mc)?)
-            }),
+                    raw.mc)?),
             tpe => bail!("Unknown message type {}!", tpe)
         };
         Ok(Message::new(

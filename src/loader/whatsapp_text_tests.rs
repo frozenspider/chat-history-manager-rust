@@ -142,7 +142,7 @@ fn loading_2023_10() -> EmptyRes {
                 }
             ],
             searchable_string: "image comment".to_owned(),
-            typed: Some(Typed::Regular(MessageRegular {
+            typed: Some(message_regular! {
                 edit_timestamp_option: None,
                 is_deleted: false,
                 forward_from_name_option: None,
@@ -155,7 +155,7 @@ fn loading_2023_10() -> EmptyRes {
                         is_one_time: false,
                     }))
                 }),
-            })),
+            }),
         });
         assert_eq!(msgs[5], Message {
             internal_id: 5,
@@ -164,7 +164,7 @@ fn loading_2023_10() -> EmptyRes {
             from_id: member.id,
             text: vec![],
             searchable_string: "".to_owned(),
-            typed: Some(Typed::Regular(MessageRegular {
+            typed: Some(message_regular! {
                 edit_timestamp_option: None,
                 is_deleted: false,
                 forward_from_name_option: None,
@@ -182,7 +182,7 @@ fn loading_2023_10() -> EmptyRes {
                         is_one_time: false,
                     }))
                 }),
-            })),
+            }),
         });
         assert_eq!(msgs[6], Message {
             internal_id: 6,
@@ -191,7 +191,7 @@ fn loading_2023_10() -> EmptyRes {
             from_id: member.id,
             text: vec![],
             searchable_string: "".to_owned(),
-            typed: Some(Typed::Regular(MessageRegular {
+            typed: Some(message_regular! {
                 edit_timestamp_option: None,
                 is_deleted: false,
                 forward_from_name_option: None,
@@ -203,7 +203,7 @@ fn loading_2023_10() -> EmptyRes {
                         duration_sec_option: None,
                     }))
                 }),
-            })),
+            }),
         });
         assert_eq!(msgs[7], Message {
             internal_id: 7,
@@ -212,7 +212,7 @@ fn loading_2023_10() -> EmptyRes {
             from_id: member.id,
             text: vec![],
             searchable_string: "".to_owned(),
-            typed: Some(Typed::Regular(MessageRegular {
+            typed: Some(message_regular! {
                 edit_timestamp_option: None,
                 is_deleted: false,
                 forward_from_name_option: None,
@@ -226,7 +226,7 @@ fn loading_2023_10() -> EmptyRes {
                         emoji_option: None,
                     }))
                 }),
-            })),
+            }),
         });
         assert_eq!(msgs[8], Message {
             internal_id: 8,
@@ -235,7 +235,7 @@ fn loading_2023_10() -> EmptyRes {
             from_id: member.id,
             text: vec![],
             searchable_string: "".to_owned(),
-            typed: Some(Typed::Regular(MessageRegular {
+            typed: Some(message_regular! {
                 edit_timestamp_option: None,
                 is_deleted: false,
                 forward_from_name_option: None,
@@ -243,7 +243,7 @@ fn loading_2023_10() -> EmptyRes {
                 content_option: Some(Content {
                     sealed_value_optional: Some(FILE_UNAVAILABLE.clone())
                 }),
-            })),
+            }),
         });
         assert_eq!(msgs[9], Message {
             internal_id: 9,
@@ -252,7 +252,7 @@ fn loading_2023_10() -> EmptyRes {
             from_id: member.id,
             text: vec![],
             searchable_string: "".to_owned(),
-            typed: Some(Typed::Regular(MessageRegular {
+            typed: Some(message_regular! {
                 edit_timestamp_option: None,
                 is_deleted: false,
                 forward_from_name_option: None,
@@ -260,7 +260,7 @@ fn loading_2023_10() -> EmptyRes {
                 content_option: Some(Content {
                     sealed_value_optional: Some(FILE_UNAVAILABLE.clone())
                 }),
-            })),
+            }),
         });
     }
     Ok(())

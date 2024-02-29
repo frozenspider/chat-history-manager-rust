@@ -443,12 +443,10 @@ fn update_user() -> EmptyRes {
         Message::new(
             1, Some(1), dt("2023-12-03 12:00:00", None).timestamp(), UserId(1),
             vec![],
-            Typed::Service(MessageService {
-                sealed_value_optional: Some(GroupCreate(MessageServiceGroupCreate {
-                    title: group_chat.name_option.clone().unwrap(),
-                    members: users.iter().map(|u| u.pretty_name()).collect_vec(),
-                }))
-            }),
+            message_service!(GroupCreate(MessageServiceGroupCreate {
+                title: group_chat.name_option.clone().unwrap(),
+                members: users.iter().map(|u| u.pretty_name()).collect_vec(),
+            })),
         ),
         make_hello_message(2, UserId(1)),
         make_hello_message(3, UserId(2)),
@@ -521,9 +519,9 @@ fn update_user() -> EmptyRes {
 
     // String members should also be renamed
 
-    if let Some(Typed::Service(MessageService {
-                                   sealed_value_optional: Some(GroupCreate(MessageServiceGroupCreate { members, .. }))
-                               })) = dao.first_messages(&group_chat, 1)?.remove(0).typed {
+    if let Some(message_service_pat!(GroupCreate(MessageServiceGroupCreate { members, .. }))) =
+        dao.first_messages(&group_chat, 1)?.remove(0).typed
+    {
         assert_eq!(members.as_ref(), vec!["MYSELF FN", "U1 FN U1 LN", UNNAMED]);
     }
 
@@ -801,9 +799,9 @@ fn shift_dataset_time() -> EmptyRes {
 
             let mut dst_msg = dst_msg.clone();
             dst_msg.timestamp -= TIMESTAMP_DIFF;
-            if let Some(Typed::Regular(MessageRegular {
-                                           edit_timestamp_option: Some(ref mut edit_timestamp), ..
-                                       })) = dst_msg.typed {
+            if let Some(message_regular_pat! {
+                            edit_timestamp_option: Some(ref mut edit_timestamp), ..
+                        }) = dst_msg.typed {
                 *edit_timestamp -= TIMESTAMP_DIFF;
             }
             let dst_pet = Tup::new(&dst_msg, &daos.dst_ds_root, &dst_cwd);

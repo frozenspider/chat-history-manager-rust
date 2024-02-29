@@ -506,12 +506,12 @@ fn equals_with_no_mismatching_content(mm_eq: PracticalEqTuple<MasterMessage>,
     }
     fn regular_msg_to_comparable(m: &Message, mr: &MessageRegular) -> Message {
         Message {
-            typed: Some(Regular(MessageRegular {
+            typed: Some(message_regular! {
                 content_option: None,
                 edit_timestamp_option: None,
                 reply_to_message_id_option: None,
                 ..mr.clone()
-            })),
+            }),
             text: m.text.iter().map(text_to_comparable).collect_vec(),
             ..m.clone()
         }
@@ -544,15 +544,15 @@ fn equals_with_no_mismatching_content(mm_eq: PracticalEqTuple<MasterMessage>,
 
             mm_eq.with(&mm_regular.content_option).practically_equals(&sm_eq.with(&sm_regular.content_option))
         }
-        (Service(MessageService { sealed_value_optional: Some(GroupEditPhoto(MessageServiceGroupEditPhoto { photo: mm_photo })) }),
-            Service(MessageService { sealed_value_optional: Some(GroupEditPhoto(MessageServiceGroupEditPhoto { photo: sm_photo })) })) => {
+        (message_service_pat!(GroupEditPhoto(MessageServiceGroupEditPhoto { photo: mm_photo })),
+            message_service_pat!(GroupEditPhoto(MessageServiceGroupEditPhoto { photo: sm_photo }))) => {
             if !photo_has_content(mm_photo, mm_eq.ds_root) || !photo_has_content(sm_photo, sm_eq.ds_root) {
                 return Ok(true);
             }
             mm_eq_sm()
         }
-        (Service(MessageService { sealed_value_optional: Some(SuggestProfilePhoto(MessageServiceSuggestProfilePhoto { photo: mm_photo })) }),
-            Service(MessageService { sealed_value_optional: Some(SuggestProfilePhoto(MessageServiceSuggestProfilePhoto { photo: sm_photo })) })) => {
+        (message_service_pat!(SuggestProfilePhoto(MessageServiceSuggestProfilePhoto { photo: mm_photo })),
+            message_service_pat!(SuggestProfilePhoto(MessageServiceSuggestProfilePhoto { photo: sm_photo }))) => {
             if !photo_has_content(mm_photo, mm_eq.ds_root) || !photo_has_content(sm_photo, sm_eq.ds_root) {
                 return Ok(true);
             }

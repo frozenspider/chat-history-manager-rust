@@ -182,8 +182,8 @@ fn loading_2021_05() -> EmptyRes {
         let typed = msgs.iter().map(|m| m.typed()).collect_vec();
 
         // I wish we could use assert_matches!() already...
-        assert_matches!(typed[0], Typed::Service(MessageService { sealed_value_optional: Some(GroupCreate(_)) }));
-        assert_matches!(typed[1], Typed::Service(MessageService { sealed_value_optional: Some(GroupMigrateFrom(_)) }));
+        assert_matches!(typed[0], message_service_pat!(GroupCreate(_)));
+        assert_matches!(typed[1], message_service_pat!(GroupMigrateFrom(_)));
         assert_matches!(typed[2], Typed::Regular(_));
     };
     Ok(())
@@ -248,11 +248,9 @@ fn loading_2021_06_supergroup() -> EmptyRes {
             from_id: u222222222.id,
             text: vec![],
             searchable_string: "Vvvvvvvv Bbbbbbb".to_owned(),
-            typed: Some(Typed::Service(MessageService {
-                sealed_value_optional: Some(GroupInviteMembers(MessageServiceGroupInviteMembers {
-                    members: vec![u444444444.first_name_option.unwrap()]
-                }))
-            })),
+            typed: Some(message_service!(GroupInviteMembers(MessageServiceGroupInviteMembers {
+                members: vec![u444444444.first_name_option.unwrap()]
+            }))),
         });
 
         assert_eq!(msgs[1], Message {
@@ -267,13 +265,13 @@ fn loading_2021_06_supergroup() -> EmptyRes {
                 })),
             }],
             searchable_string: "Message text with emoji 🙂".to_owned(),
-            typed: Some(Typed::Regular(MessageRegular {
+            typed: Some(message_regular! {
                 edit_timestamp_option: None,
                 is_deleted: false,
                 forward_from_name_option: None,
                 reply_to_message_id_option: None,
                 content_option: None,
-            })),
+            }),
         });
 
         assert_eq!(msgs[2], Message {
@@ -288,13 +286,13 @@ fn loading_2021_06_supergroup() -> EmptyRes {
                 })),
             }],
             searchable_string: "Message from an added user".to_owned(),
-            typed: Some(Typed::Regular(MessageRegular {
+            typed: Some(message_regular! {
                 edit_timestamp_option: None,
                 is_deleted: false,
                 forward_from_name_option: None,
                 reply_to_message_id_option: None,
                 content_option: None,
-            })),
+            }),
         });
         assert_eq!(msgs[3], Message {
             internal_id: 3,
@@ -303,7 +301,7 @@ fn loading_2021_06_supergroup() -> EmptyRes {
             from_id: myself.id,
             text: vec![],
             searchable_string: format!("{} {}", myself.first_name_option.unwrap_ref(), &myself.phone_number_option.as_ref().unwrap()),
-            typed: Some(Typed::Regular(MessageRegular {
+            typed: Some(message_regular! {
                 edit_timestamp_option: None,
                 is_deleted: false,
                 forward_from_name_option: None,
@@ -316,7 +314,7 @@ fn loading_2021_06_supergroup() -> EmptyRes {
                         vcard_path_option: None,
                     }))
                 }),
-            })),
+            }),
         });
     };
     Ok(())
@@ -376,11 +374,9 @@ fn loading_2021_07() -> EmptyRes {
             from_id: member.id,
             text: vec![],
             searchable_string: "Www Wwwwww".to_owned(),
-            typed: Some(Typed::Service(MessageService {
-                sealed_value_optional: Some(GroupCall(MessageServiceGroupCall {
-                    members: vec!["Www Wwwwww".to_owned()]
-                }))
-            })),
+            typed: Some(message_service!(GroupCall(MessageServiceGroupCall {
+                members: vec!["Www Wwwwww".to_owned()]
+            }))),
         });
         assert_eq!(msgs[1], Message {
             internal_id: 1,
@@ -389,11 +385,9 @@ fn loading_2021_07() -> EmptyRes {
             from_id: member.id,
             text: vec![],
             searchable_string: "Myself".to_owned(),
-            typed: Some(Typed::Service(MessageService {
-                sealed_value_optional: Some(GroupCall(MessageServiceGroupCall {
-                    members: vec!["Myself".to_owned()]
-                }))
-            })),
+            typed: Some(message_service!(GroupCall(MessageServiceGroupCall {
+                members: vec!["Myself".to_owned()]
+            }))),
         });
     };
     Ok(())
@@ -465,11 +459,9 @@ fn loading_2023_01() -> EmptyRes {
             from_id: channel_user.id,
             text: vec![],
             searchable_string: "My Group".to_owned(),
-            typed: Some(Typed::Service(MessageService {
-                sealed_value_optional: Some(GroupMigrateFrom(MessageServiceGroupMigrateFrom {
-                    title: "My Group".to_owned()
-                }))
-            })),
+            typed: Some(message_service!(GroupMigrateFrom(MessageServiceGroupMigrateFrom {
+                title: "My Group".to_owned()
+            }))),
         });
         assert_eq!(msgs[1], Message {
             internal_id: 1,
@@ -478,9 +470,7 @@ fn loading_2023_01() -> EmptyRes {
             from_id: member.id,
             text: vec![],
             searchable_string: "".to_owned(),
-            typed: Some(Typed::Service(MessageService {
-                sealed_value_optional: Some(GroupMigrateTo(MessageServiceGroupMigrateTo {}))
-            })),
+            typed: Some(message_service!(GroupMigrateTo(MessageServiceGroupMigrateTo {}))),
         });
         assert_eq!(msgs[2], Message {
             internal_id: 2,
@@ -511,13 +501,13 @@ fn loading_2023_01() -> EmptyRes {
                 },
             ],
             searchable_string: "this contains a lot of stuff: 😁 http://mylink.org/ HIDE ME".to_owned(),
-            typed: Some(Typed::Regular(MessageRegular {
+            typed: Some(message_regular! {
                 edit_timestamp_option: None,
                 is_deleted: false,
                 forward_from_name_option: None,
                 reply_to_message_id_option: None,
                 content_option: None,
-            })),
+            }),
         });
         assert_eq!(msgs[3], Message {
             internal_id: 3,
@@ -526,11 +516,9 @@ fn loading_2023_01() -> EmptyRes {
             from_id: myself.id,
             text: vec![],
             searchable_string: UNKNOWN.to_owned(),
-            typed: Some(Typed::Service(MessageService {
-                sealed_value_optional: Some(GroupInviteMembers(MessageServiceGroupInviteMembers {
-                    members: vec![UNKNOWN.to_owned()]
-                }))
-            })),
+            typed: Some(message_service!(GroupInviteMembers(MessageServiceGroupInviteMembers {
+                members: vec![UNKNOWN.to_owned()]
+            }))),
         });
         assert_eq!(msgs[4], Message {
             internal_id: 4,
@@ -539,9 +527,7 @@ fn loading_2023_01() -> EmptyRes {
             from_id: myself.id,
             text: vec![],
             searchable_string: "".to_owned(),
-            typed: Some(Typed::Service(MessageService {
-                sealed_value_optional: Some(GroupDeletePhoto(MessageServiceGroupDeletePhoto {}))
-            })),
+            typed: Some(message_service!(GroupDeletePhoto(MessageServiceGroupDeletePhoto {}))),
         });
         assert_eq!(msgs[5], Message {
             internal_id: 5,
@@ -550,16 +536,14 @@ fn loading_2023_01() -> EmptyRes {
             from_id: myself.id,
             text: vec![],
             searchable_string: "".to_owned(),
-            typed: Some(Typed::Service(MessageService {
-                sealed_value_optional: Some(SuggestProfilePhoto(MessageServiceSuggestProfilePhoto {
-                    photo: Some(ContentPhoto {
-                        path_option: None,
-                        width: 640,
-                        height: 640,
-                        is_one_time: false,
-                    })
-                }))
-            })),
+            typed: Some(message_service!(SuggestProfilePhoto(MessageServiceSuggestProfilePhoto {
+                photo: Some(ContentPhoto {
+                    path_option: None,
+                    width: 640,
+                    height: 640,
+                    is_one_time: false,
+                })
+            }))),
         });
     };
     Ok(())
@@ -620,11 +604,9 @@ fn loading_2023_08() -> EmptyRes {
             from_id: unnamed_user.id,
             text: vec![],
             searchable_string: UNNAMED.to_owned(),
-            typed: Some(Typed::Service(MessageService {
-                sealed_value_optional: Some(GroupInviteMembers(MessageServiceGroupInviteMembers {
-                    members: vec![UNNAMED.to_owned()]
-                }))
-            })),
+            typed: Some(message_service!(GroupInviteMembers(MessageServiceGroupInviteMembers {
+                members: vec![UNNAMED.to_owned()]
+            }))),
         });
         assert_eq!(msgs[1], Message {
             internal_id: 1,
@@ -640,13 +622,13 @@ fn loading_2023_08() -> EmptyRes {
                 },
             ],
             searchable_string: "My message!".to_owned(),
-            typed: Some(Typed::Regular(MessageRegular {
+            typed: Some(message_regular! {
                 edit_timestamp_option: None,
                 is_deleted: false,
                 forward_from_name_option: None,
                 reply_to_message_id_option: None,
                 content_option: None,
-            })),
+            }),
         });
     };
     Ok(())
@@ -706,7 +688,7 @@ fn loading_2023_10_audio_video() -> EmptyRes {
             from_id: unnamed_user.id,
             text: vec![RichText::make_plain("Audio file (incomplete) message".to_owned())],
             searchable_string: "Audio file (incomplete) message".to_owned(),
-            typed: Some(Typed::Regular(MessageRegular {
+            typed: Some(message_regular! {
                 edit_timestamp_option: None,
                 is_deleted: false,
                 forward_from_name_option: None,
@@ -721,7 +703,7 @@ fn loading_2023_10_audio_video() -> EmptyRes {
                         thumbnail_path_option: None,
                     }))
                 }),
-            })),
+            }),
         });
         assert_eq!(msgs[1], Message {
             internal_id: 1,
@@ -730,7 +712,7 @@ fn loading_2023_10_audio_video() -> EmptyRes {
             from_id: unnamed_user.id,
             text: vec![RichText::make_plain("Audio file (full) message".to_owned())],
             searchable_string: "Audio file (full) message Song Name Audio Performer".to_owned(),
-            typed: Some(Typed::Regular(MessageRegular {
+            typed: Some(message_regular! {
                 edit_timestamp_option: None,
                 is_deleted: false,
                 forward_from_name_option: None,
@@ -745,7 +727,7 @@ fn loading_2023_10_audio_video() -> EmptyRes {
                         thumbnail_path_option: Some("audio_file.mp3_thumb.jpg".to_owned()),
                     }))
                 }),
-            })),
+            }),
         });
         assert_eq!(msgs[2], Message {
             internal_id: 2,
@@ -754,7 +736,7 @@ fn loading_2023_10_audio_video() -> EmptyRes {
             from_id: unnamed_user.id,
             text: vec![RichText::make_plain("Video file (incomplete) message".to_owned())],
             searchable_string: "Video file (incomplete) message".to_owned(),
-            typed: Some(Typed::Regular(MessageRegular {
+            typed: Some(message_regular! {
                 edit_timestamp_option: None,
                 is_deleted: false,
                 forward_from_name_option: None,
@@ -772,7 +754,7 @@ fn loading_2023_10_audio_video() -> EmptyRes {
                         is_one_time: false,
                     }))
                 }),
-            })),
+            }),
         });
         assert_eq!(msgs[3], Message {
             internal_id: 3,
@@ -781,7 +763,7 @@ fn loading_2023_10_audio_video() -> EmptyRes {
             from_id: unnamed_user.id,
             text: vec![RichText::make_plain("Video file (full) message".to_owned())],
             searchable_string: "Video file (full) message Clip Name Video Performer".to_owned(),
-            typed: Some(Typed::Regular(MessageRegular {
+            typed: Some(message_regular! {
                 edit_timestamp_option: None,
                 is_deleted: false,
                 forward_from_name_option: None,
@@ -799,7 +781,7 @@ fn loading_2023_10_audio_video() -> EmptyRes {
                         is_one_time: false,
                     }))
                 }),
-            })),
+            }),
         });
     };
     Ok(())
@@ -845,7 +827,7 @@ fn loading_2024_01() -> EmptyRes {
     assert_eq!(msgs[1].text, vec![
         RichText::make_plain("Messages will be auto-deleted in 31 day(s)".to_owned()),
     ]);
-    assert_matches!(&msgs[1].typed, Some(Typed::Service(MessageService { sealed_value_optional: Some(Notice(_)) })));
+    assert_matches!(&msgs[1].typed, Some(message_service_pat!(Notice(_))));
 
     Ok(())
 }

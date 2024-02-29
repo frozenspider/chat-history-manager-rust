@@ -542,12 +542,10 @@ fn parse_chats(conn: &Connection, ds_uuid: &PbUuid, users: &mut Users) -> Result
                 row.get::<_, i64>(columns::call_logs::TIMESTAMP)? / 1000,
                 from_id,
                 vec![],
-                message::Typed::Service(MessageService {
-                    sealed_value_optional: Some(SealedValueOptional::PhoneCall(MessageServicePhoneCall {
-                        duration_sec_option: get_zero_as_null(row, columns::call_logs::DURATION)?,
-                        discard_reason_option: None,
-                    }))
-                }),
+                message_service!(SealedValueOptional::PhoneCall(MessageServicePhoneCall {
+                    duration_sec_option: get_zero_as_null(row, columns::call_logs::DURATION)?,
+                    discard_reason_option: None,
+                })),
             ));
         }
 
@@ -664,7 +662,7 @@ fn parse_system_message<'a>(
         _ => unreachable!()
     };
 
-    Ok(Some((message::Typed::Service(MessageService { sealed_value_optional: Some(val) }), text_column)))
+    Ok(Some((message_service!(val), text_column)))
 }
 
 /// Returns `None` for rows that should be skipped.
@@ -806,13 +804,13 @@ fn parse_regular_message(
     let is_deleted = msg_tpe == MessageType::Deleted;
     // For deleted messages, edit time is deletion time.
     let edit_timestamp_col = if is_deleted { columns::message_revoked::REVOKE_TIMESTAMP } else { "edited_timestamp" };
-    Ok(Some((message::Typed::Regular(MessageRegular {
+    Ok(Some((message_regular! {
         edit_timestamp_option: row.get::<_, Option<i64>>(edit_timestamp_col)?.map(|ts| ts / 1000),
         is_deleted,
         forward_from_name_option,
         reply_to_message_id_option,
         content_option,
-    }), text_column)))
+    }, text_column)))
 }
 
 fn get_zero_as_null(row: &Row, col_name: &str) -> Result<Option<i32>> {

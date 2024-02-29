@@ -9,6 +9,7 @@ use regex::Regex;
 use uuid::Uuid;
 
 use crate::prelude::*;
+
 pub mod entity_equality;
 
 pub const UNNAMED: &str = "[unnamed]";
@@ -244,6 +245,33 @@ impl<T> EnumResolve for T where T: TryFrom<i32>,
     }
 }
 
+#[macro_export]
+macro_rules! message_regular {
+    ($( $k:ident $(: $v:expr)? ),+, ..$etc:expr)  => { message::Typed::Regular(MessageRegular { $($k $(: $v)?,)* ..$etc }) };
+    ($( $k:ident $(: $v:expr)? ),+ $(,)?)  => { message::Typed::Regular(MessageRegular { $($k $(: $v)?,)* }) };
+}
+
+#[macro_export]
+macro_rules! message_regular_pat {
+    ($( $k:ident $(: $pat:pat)? ),+, ..)  => { message::Typed::Regular(MessageRegular { $($k $(: $pat)?,)* .. }) };
+    ($( $k:ident $(: $pat:pat)? ),+ $(,)?)  => { message::Typed::Regular(MessageRegular { $($k $(: $pat)?,)* }) };
+}
+
+#[macro_export]
+macro_rules! message_service {
+    ($val:expr)  => { message::Typed::Service(MessageService { sealed_value_optional: Some($val) }) };
+}
+
+#[macro_export]
+macro_rules! message_service_pat {
+    ($pat:pat) => { message::Typed::Service(MessageService { sealed_value_optional: Some($pat) }) };
+}
+
+#[macro_export]
+macro_rules! message_service_pat_unreachable {
+    () => { message::Typed::Service(MessageService { sealed_value_optional: None }) };
+}
+
 impl Message {
     pub fn new(internal_id: i64,
                source_id_option: Option<i64>,
@@ -295,28 +323,28 @@ impl Message {
                     None => vec![],
                 }
             }
-            message::Typed::Service(MessageService { sealed_value_optional: ref ms }) => {
+            message_service_pat!(ref ms) => {
                 use message_service::SealedValueOptional::*;
                 match ms {
-                    Some(PhoneCall(_)) => vec![],
-                    Some(SuggestProfilePhoto(v)) => vec![v.photo.as_ref().and_then(|p| p.path_option.as_deref())],
-                    Some(PinMessage(_)) => vec![],
-                    Some(ClearHistory(_)) => vec![],
-                    Some(BlockUser(_)) => vec![],
-                    Some(StatusTextChanged(_)) => vec![],
-                    Some(Notice(_)) => vec![],
-                    Some(GroupCreate(_)) => vec![],
-                    Some(GroupEditTitle(_)) => vec![],
-                    Some(GroupEditPhoto(v)) => vec![v.photo.as_ref().and_then(|p| p.path_option.as_deref())],
-                    Some(GroupDeletePhoto(_)) => vec![],
-                    Some(GroupInviteMembers(_)) => vec![],
-                    Some(GroupRemoveMembers(_)) => vec![],
-                    Some(GroupMigrateFrom(_)) => vec![],
-                    Some(GroupMigrateTo(_)) => vec![],
-                    Some(GroupCall(_)) => vec![],
-                    None => unreachable!("Unexpected MessageService type: {:?}", ms)
+                    PhoneCall(_) => vec![],
+                    SuggestProfilePhoto(v) => vec![v.photo.as_ref().and_then(|p| p.path_option.as_deref())],
+                    PinMessage(_) => vec![],
+                    ClearHistory(_) => vec![],
+                    BlockUser(_) => vec![],
+                    StatusTextChanged(_) => vec![],
+                    Notice(_) => vec![],
+                    GroupCreate(_) => vec![],
+                    GroupEditTitle(_) => vec![],
+                    GroupEditPhoto(v) => vec![v.photo.as_ref().and_then(|p| p.path_option.as_deref())],
+                    GroupDeletePhoto(_) => vec![],
+                    GroupInviteMembers(_) => vec![],
+                    GroupRemoveMembers(_) => vec![],
+                    GroupMigrateFrom(_) => vec![],
+                    GroupMigrateTo(_) => vec![],
+                    GroupCall(_) => vec![],
                 }
             }
+            message_service_pat_unreachable!() => { unreachable!() }
         };
         possibilities.into_iter().flatten().collect()
     }
@@ -568,7 +596,7 @@ pub fn make_searchable_string(components: &[RichTextElement], typed: &message::T
 
 
     let typed_component_text: Vec<String> = match typed {
-        message::Typed::Regular(MessageRegular { content_option, .. }) => {
+        message_regular_pat! { content_option, .. } => {
             match content_option {
                 Some(Content { sealed_value_optional: Some(content::SealedValueOptional::Sticker(sticker)) }) =>
                     vec![&sticker.emoji_option].into_iter().flatten().cloned().collect_vec(),
@@ -595,7 +623,7 @@ pub fn make_searchable_string(components: &[RichTextElement], typed: &message::T
                 }
             }
         }
-        message::Typed::Service(MessageService { sealed_value_optional: Some(m) }) => {
+        message_service_pat!(m) => {
             use message_service::SealedValueOptional::*;
             match m {
                 GroupCreate(m) => vec![vec![m.title.clone()], m.members.clone()].into_iter().flatten().collect_vec(),

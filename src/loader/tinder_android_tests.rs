@@ -87,7 +87,7 @@ fn loading_2023_11() -> EmptyRes {
             from_id: member.id,
             text: vec![],
             searchable_string: "".to_owned(),
-            typed: Some(Typed::Regular(MessageRegular {
+            typed: Some(message_regular! {
                 edit_timestamp_option: None,
                 is_deleted: false,
                 forward_from_name_option: None,
@@ -101,7 +101,7 @@ fn loading_2023_11() -> EmptyRes {
                         emoji_option: None,
                     }))
                 }),
-            })),
+            }),
         });
     }
 

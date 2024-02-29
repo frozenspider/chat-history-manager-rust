@@ -175,13 +175,13 @@ fn parse_messages(content: &str, myself: &User, other: &User) -> Result<Vec<Mess
                     timestamp,
                     from_id,
                     text,
-                    message::Typed::Regular(MessageRegular {
+                    message_regular! {
                         edit_timestamp_option: None,
                         is_deleted: false,
                         forward_from_name_option: None,
                         reply_to_message_id_option: None,
                         content_option,
-                    }),
+                    },
                 ));
                 user_id = None;
                 lines.clear();

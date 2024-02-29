@@ -679,9 +679,7 @@ fn convert_message(
         MraMessageType::BirthdayReminder => {
             let rtes = get_rtes()?;
             require_format_clue(rtes.is_some(), mra_msg, conv_username, "text is not set")?;
-            (rtes.unwrap(), Typed::Service(MessageService {
-                sealed_value_optional: Some(ServiceSvo::Notice(MessageServiceNotice {}))
-            }))
+            (rtes.unwrap(), message_service!(ServiceSvo::Notice(MessageServiceNotice {})))
         }
         MraMessageType::Cartoon |
         MraMessageType::CartoonType2 => {
@@ -701,7 +699,7 @@ fn convert_message(
                     unreachable!()
                 }
             };
-            (vec![], Typed::Regular(MessageRegular {
+            (vec![], message_regular! {
                 content_option: Some(Content {
                     sealed_value_optional: Some(ContentSvo::Sticker(ContentSticker {
                         path_option: None,
@@ -712,7 +710,7 @@ fn convert_message(
                     }))
                 }),
                 ..Default::default()
-            }))
+            })
         }
         MraMessageType::FileTransfer => {
             require_format_clue(plaintext.is_some(), mra_msg, conv_username, "file transfer text is not set")?;
@@ -743,12 +741,12 @@ fn convert_message(
             require_format_clue(location.is_some(), mra_msg, conv_username, "location is not set")?;
 
             (vec![RichText::make_plain("(Location changed)".to_owned())],
-             Typed::Regular(MessageRegular {
+             message_regular! {
                  content_option: Some(Content {
                      sealed_value_optional: Some(ContentSvo::Location(location.unwrap()))
                  }),
                  ..Default::default()
-             }))
+             })
         }
         MraMessageType::Empty => {
             unreachable!()

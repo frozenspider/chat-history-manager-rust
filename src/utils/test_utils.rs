@@ -26,13 +26,13 @@ lazy_static! {
     pub static ref RESOURCES_DIR: String =
         concat!(env!("CARGO_MANIFEST_DIR"), "/resources/test").replace("//", "/");
 
-    pub static ref MESSAGE_REGULAR_NO_CONTENT: message::Typed = message::Typed::Regular(MessageRegular {
+    pub static ref MESSAGE_REGULAR_NO_CONTENT: message::Typed = message_regular! {
         edit_timestamp_option: None,
         is_deleted: false,
         forward_from_name_option: None,
         reply_to_message_id_option: None,
         content_option: None,
-    });
+    };
 
     // TODO: Do we need cleanup?
     pub static ref HTTP_CLIENT: MockHttpClient = MockHttpClient::new();
@@ -319,7 +319,7 @@ pub fn create_regular_message(idx: usize, user_id: usize) -> Message {
     let reply_to_message_id_option =
         if idx > 0 { Some(rng.gen_range(0..idx) as i64) } else { None };
 
-    let typed = message::Typed::Regular(MessageRegular {
+    let typed = message_regular! {
         edit_timestamp_option: Some((BASE_DATE.clone() + Duration::minutes(idx as i64) + Duration::seconds(5)).timestamp()),
         is_deleted: false,
         reply_to_message_id_option: reply_to_message_id_option,
@@ -329,7 +329,7 @@ pub fn create_regular_message(idx: usize, user_id: usize) -> Message {
                 content::SealedValueOptional::Poll(ContentPoll { question: format!("Hey, {idx}!") })
             )
         }),
-    });
+    };
 
     let text = vec![RichText::make_plain(format!("Hello there, {idx}!"))];
     let searchable_string = make_searchable_string(&text, &typed);
