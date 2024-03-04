@@ -487,7 +487,9 @@ fn parse_message(json_path: &str,
     lazy_static! {
         static ref REGULAR_MSG_FIELDS: ExpectedMessageField<'static> = ExpectedMessageField {
             required_fields: hash_set(["id", "type", "date", "text", "from", "from_id"]),
-            optional_fields: hash_set(["date_unixtime", "text_entities", "forwarded_from", "via_bot",
+            // forwarded_from: the original source message
+            // saved_from:     where the message was last forwarded from, could match forwarded_from (ignored)
+            optional_fields: hash_set(["date_unixtime", "text_entities", "forwarded_from", "saved_from", "via_bot",
                                        "reply_to_peer_id", "reply_to_message_id", "inline_bot_buttons"]),
         };
 
@@ -864,6 +866,11 @@ fn parse_service_message(message_json: &mut MessageJson,
             (SealedValueOptional::GroupCreate(MessageServiceGroupCreate {
                 title: message_json.field_str("title")?,
                 members: parse_members(message_json)?,
+            }), None),
+        "create_channel" =>
+            (SealedValueOptional::GroupCreate(MessageServiceGroupCreate {
+                title: message_json.field_str("title")?,
+                members: vec![],
             }), None),
         "edit_group_photo" =>
             (SealedValueOptional::GroupEditPhoto(MessageServiceGroupEditPhoto {

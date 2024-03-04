@@ -1,0 +1,47 @@
+{
+ "about": "This is a minimalistic test.",
+ "personal_information": {
+  "user_id": 11111111
+ },
+ "chats": {
+  "about": "This page lists all chats from this export.",
+  "list": [
+   {
+    "name": "Dummy Supergroup",
+    "type": "private_supergroup",
+    "id": 123123123,
+    "messages": [
+     {
+      "id": 11111,
+      "type": "service",
+      "date": "2022-10-11T22:49:15",
+      "date_unixtime": "1665499755",
+      "actor": "Dummy Supergroup",
+      "actor_id": "channel1089314340",
+      "action": "create_channel",
+      "title": "Dummy Supergroup",
+      "text": "",
+      "text_entities": []
+     },
+     {
+      "id": 11112,
+      "type": "message",
+      "date": "2022-10-11T22:49:16",
+      "date_unixtime": "1665499756",
+      "from": "Aaaaa Aaaaaaaaaaa",
+      "from_id": "user11111111",
+      "forwarded_from": "Forwarded From Name",
+      "saved_from": "Saved From Name",
+      "text": "Forward of a forward of a message",
+      "text_entities": [
+       {
+        "type": "plain",
+        "text": "Forward of a forward of a message"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ }
+}

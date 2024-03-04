@@ -60,6 +60,10 @@ pub(super) fn parse(root_obj: &Object,
             Ok(())
         }
         "chats" => {
+            if myself.id == 0 {
+                bail!("personal_information section is missing!");
+            }
+
             let json_path = "chats";
 
             let chats_arr = as_object!(value, "chats")

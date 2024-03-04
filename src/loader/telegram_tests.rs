@@ -833,6 +833,43 @@ fn loading_2024_01() -> EmptyRes {
 }
 
 #[test]
+fn loading_2024_02() -> EmptyRes {
+    // Verify a parsed message with create_channel and saved_from to be treated correctly
+    let res = resource("telegram_2024-02_create-channel_saved-from");
+    LOADER.looks_about_right(&res)?;
+
+    let dao =
+        LOADER.load(&res, &NoChooser)?;
+
+    let cwm = &dao.cwms_single_ds()[0];
+    let msgs = &cwm.messages;
+    assert_eq!(msgs.len() as i32, 2);
+
+    if let Some(message_service_pat!(GroupCreate(MessageServiceGroupCreate { title, members }))) = &msgs[0].typed {
+        assert_eq!(title.as_str(), "Dummy Supergroup");
+        assert_eq!(members, &Vec::<String>::new());
+    } else { bail!("Message is not GroupCreate: {:?}", msgs[0].typed) }
+
+    assert_eq!(msgs[1], Message {
+        internal_id: 1,
+        source_id_option: Some(11112),
+        timestamp: 1665499756,
+        from_id: 11111111,
+        text: vec![RichText::make_plain("Forward of a forward of a message".to_owned())],
+        searchable_string: "Forward of a forward of a message".to_owned(),
+        typed: Some(message_regular! {
+            edit_timestamp_option: None,
+            is_deleted: false,
+            forward_from_name_option: Some("Forwarded From Name".to_owned()),
+            reply_to_message_id_option: None,
+            content_option: None,
+        }),
+    });
+
+    Ok(())
+}
+
+#[test]
 fn inline_bot_buttons() -> EmptyRes {
     let res = resource("telegram_2024-01_inline-bot-buttons");
     LOADER.looks_about_right(&res)?;
