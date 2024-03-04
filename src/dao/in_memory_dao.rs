@@ -1,4 +1,4 @@
-use std::cmp;
+use std::{cmp, thread};
 use std::path::{Path, PathBuf};
 
 use deepsize::DeepSizeOf;
@@ -247,11 +247,86 @@ impl ChatHistoryDao for InMemoryDao {
     }
 
     fn as_mutable(&mut self) -> Result<&mut dyn MutableChatHistoryDao> {
-        err!("InMemoryDao does not implement MutableChatHistoryDao")
+        Ok(self)
     }
 
     fn as_shiftable(&mut self) -> Result<&mut dyn ShiftableChatHistoryDao> {
         Ok(self)
+    }
+}
+
+impl MutableChatHistoryDao for InMemoryDao {
+    fn backup(&mut self) -> Result<JoinHandle<()>> {
+        Ok(thread::spawn(|| {})) // NOOP
+    }
+
+    fn insert_dataset(&mut self, _ds: Dataset) -> Result<Dataset> {
+        err!("InMemoryDao does not implement inserting dataset")
+    }
+
+    fn update_dataset(&mut self, old_uuid: PbUuid, ds: Dataset) -> Result<Dataset> {
+        require!(&old_uuid == ds.uuid(), "Changing dataset UUID is not supported");
+
+        let mut cache = self.cache.inner.borrow_mut();
+        if let Some(old_ds) = cache.datasets.iter_mut().find(|ds| ds.uuid() == &old_uuid) {
+            *old_ds = ds;
+            Ok(old_ds.clone())
+        } else {
+            err!("Dataset with UUID {} not found", old_uuid.value)
+        }
+    }
+
+    fn delete_dataset(&mut self, uuid: PbUuid) -> EmptyRes {
+        let mut cache = self.cache.inner.borrow_mut();
+        if let Some(ds_idx) = cache.datasets.iter().position(|ds| ds.uuid() == &uuid) {
+            cache.datasets.remove(ds_idx);
+            cache.users.remove(&uuid);
+            self.ds_roots.remove(&uuid);
+            self.cwms.remove(&uuid);
+            Ok(())
+        } else {
+            err!("Dataset with UUID {} not found", uuid.value)
+        }
+    }
+
+    fn insert_user(&mut self, _user: User, _is_myself: bool) -> Result<User> {
+        err!("InMemoryDao does not implement inserting users")
+    }
+
+    fn update_user(&mut self, _old_id: UserId, _user: User) -> Result<User> {
+        err!("InMemoryDao does not implement updating users")
+    }
+
+    fn insert_chat(&mut self, _chat: Chat, _src_ds_root: &DatasetRoot) -> Result<Chat> {
+        err!("InMemoryDao does not implement inserting chats")
+    }
+
+    fn update_chat(&mut self, _old_id: ChatId, _chat: Chat) -> Result<Chat> {
+        err!("InMemoryDao does not implement updating chats")
+    }
+
+    fn delete_chat(&mut self, chat: Chat) -> EmptyRes {
+        let ds_uuid = chat.ds_uuid();
+        let chat_id = chat.id;
+        if let Some(cwms) = self.cwms.get_mut(ds_uuid) {
+            if let Some(idx) = cwms.iter().position(|cwm| cwm.chat.as_ref().unwrap().id == chat_id) {
+                cwms.remove(idx);
+                self.remove_orphan_users();
+                Ok(())
+            } else {
+                err!("Chat with ID {} not found", chat_id)
+            }
+        } else {
+            err!("Dataset with UUID {} not found", ds_uuid.value)
+        }
+    }
+
+    fn combine_chats(&mut self, _master_chat: Chat, _slave_chat: Chat) -> EmptyRes {
+        err!("InMemoryDao does not implement combining chats")
+    }
+
+    fn insert_messages(&mut self, _msgs: Vec<Message>, _chat: &Chat, _src_ds_root: &DatasetRoot) -> EmptyRes {
+        err!("InMemoryDao does not implement inserting messages")
     }
 }
 

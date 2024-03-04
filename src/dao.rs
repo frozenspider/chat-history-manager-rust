@@ -179,7 +179,7 @@ pub trait ChatHistoryDao: WithCache + Send {
 pub trait MutableChatHistoryDao: ChatHistoryDao {
     fn backup(&mut self) -> Result<JoinHandle<()>>;
 
-    // Inserts dataset as-is, with the UUID already set.
+    /// Inserts dataset as-is, with the UUID already set.
     fn insert_dataset(&mut self, ds: Dataset) -> Result<Dataset>;
 
     fn update_dataset(&mut self, old_uuid: PbUuid, ds: Dataset) -> Result<Dataset>;
