@@ -92,6 +92,30 @@ impl InMemoryDao {
             members: self.chat_members(cwm.chat.as_ref().unwrap()).unwrap(),
         }
     }
+
+    pub fn remove_orphan_users(&mut self) {
+        let member_ids: HashSet<_> =
+            self.cwms.values().flatten().flat_map(|cwm| &cwm.chat.as_ref().unwrap().member_ids).collect();
+
+        let mut num_removed = 0;
+        let mut cache = self.cache.inner.borrow_mut();
+        for users_for_ds in cache.users.values_mut() {
+            let user_ids = users_for_ds.user_by_id.keys().cloned().collect_vec();
+            for user_id in user_ids {
+                if !member_ids.contains(&*user_id) {
+                    log::debug!("Removing orphan user {:?}", users_for_ds.user_by_id[&user_id]);
+                    users_for_ds.user_by_id.remove(&user_id);
+                    num_removed += 1;
+                }
+            }
+        }
+
+        if num_removed == 0 {
+            log::debug!("No orphan users found");
+        } else {
+            log::debug!("Removed {num_removed} orphan users");
+        }
+    }
 }
 
 impl WithCache for InMemoryDao {

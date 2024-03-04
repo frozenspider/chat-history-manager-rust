@@ -224,14 +224,17 @@ fn parse_telegram_file(path: &Path, ds: Dataset, myself_chooser: &dyn MyselfChoo
     users.sort_by_key(|u| if u.id == myself.id { *UserId::MIN } else { u.id });
 
     let parent_name = path_file_name(path.parent().unwrap())?;
-    Ok(Box::new(InMemoryDao::new_single(
+    let mut result = Box::new(InMemoryDao::new_single(
         format!("Telegram ({})", parent_name),
         ds,
         path.parent().unwrap().to_path_buf(),
         myself.id(),
         users,
         chats_with_messages,
-    )))
+    ));
+    // Some users might be added by chats that were skipped from the datasets
+    result.remove_orphan_users();
+    Ok(result)
 }
 
 /** Returns a partially filled user. */
@@ -336,6 +339,7 @@ fn parse_chat(json_path: &str,
                         { /* NOOP */ }
                     ParsedMessage::SkipChat => {
                         log::warn!("Skipping chat '{}' because it contains topics!", name_or_unnamed(&chat_name));
+                        // Note: the parsing itself might've modified users, so we want to remove orphan users later.
                         skip_processing = true;
                         break;
                     }
