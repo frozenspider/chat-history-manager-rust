@@ -120,6 +120,8 @@ fn parse_messages(content: &str, myself: &User, other: &User) -> Result<Vec<Mess
     const NOTICE_LINE: &str = "Messages and calls are end-to-end encrypted.";
     const TIMER_LINE: &str = "updated the message timer. New messages will disappear from this chat";
 
+    let is_a_contact_line: String = format!("- {} is a contact", other.pretty_name());
+
     let mut result = vec![];
 
     let mut user_id: Option<UserId> = None;
@@ -129,7 +131,7 @@ fn parse_messages(content: &str, myself: &User, other: &User) -> Result<Vec<Mess
 
     let mut iter = content.lines().peekable();
     while let Some(line) = iter.next() {
-        if line.contains(NOTICE_LINE) || line.contains(TIMER_LINE) {
+        if line.contains(NOTICE_LINE) || line.contains(TIMER_LINE) || line.ends_with(&is_a_contact_line) {
             continue;
         }
         match MESSAGE_PREFIX_REGEX.captures(line) {
@@ -163,8 +165,8 @@ fn parse_messages(content: &str, myself: &User, other: &User) -> Result<Vec<Mess
             }
             _ => {
                 // Time to process collected info
-                let timestamp = if timestamp != Timestamp::MIN { *timestamp } else { bail!("Message timestamp unknown!") };
-                let from_id = user_id.context("Message author unknown!")?;
+                let timestamp = if timestamp != Timestamp::MIN { *timestamp } else { bail!("Message timestamp unknown for line '{line}'") };
+                let from_id = user_id.context("Message author unknown for line '{line}'")?;
 
                 last_internal_id = MessageInternalId(*last_internal_id + 1);
 
