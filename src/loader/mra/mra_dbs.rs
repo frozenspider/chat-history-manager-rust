@@ -3,7 +3,7 @@
 /// when all conversations were deleted from it.
 ///
 /// Known issues/limitations:
-/// * Some smile types are not converted and left as-is since there's no reference too see how they looked like.
+/// * Some smile types are not converted and left as-is since there's no reference to see how they looked like.
 /// * In rare cases, Russian text is double-encoded as cp1251 within UTF-16 LE. Distorted text is passed as-is.
 /// * Timestamps are in some weird timezone (looks to be UTC+1?), and actual timezone is not known.
 ///

@@ -22,7 +22,7 @@ choose `Machine-readable JSON` format.
 
 Then load `result.json` in the app.
 
-One limitation is that chats containing topics are ignored.
+One limitation is that **chats containing topics are ignored**.
 
 Note that at least on one occasion, the exported file did not contain `personal_information` section.
 This needs to be fixed manually, e.g. by doing another export with no chats included, and copying over
@@ -30,14 +30,13 @@ This needs to be fixed manually, e.g. by doing another export with no chats incl
 
 WhatsApp
 --------
-Using a rooted Androind phone:
-
+Using a rooted Androind phone, download the database through `adb`:
 - `adb shell su -c 'cp -r /data/data/com.whatsapp /storage/self/primary/Download/com.whatsapp'`
 - `adb pull /storage/self/primary/Download/com.whatsapp`
 - Optional cleanup:
   `adb shell su -c 'rm -rf /storage/self/primary/Download/com.whatsapp'`
 - If you want media to be resolved, you need to pull it too:
-  `adb pull /storage/emulated/0/Android/media/com.whatsapp/WhatsApp/Media ./com.whatsapp/Media`
+  `adb pull /storage/self/primary/Android/media/com.whatsapp/WhatsApp/Media ./com.whatsapp/Media`
 - Load `./databases/msgstore.db` (requires `wa.db` needs to be present in the same directory)
 
 Can also import a WhatsApp exported chat, a text file named `WhatsApp Chat with <name>.txt`.
@@ -50,6 +49,16 @@ Loads histories from two formats:
 - `<account-name>.db` (used after 2014-08-28 and up to 2018, more recent versions were not tested)
 
 In either case, loading `mra.dbs` will load both.
+
+Known issues:
+- Only a subset of smile types is supported.
+- Some smile types are not converted and left as-is since I don't have a reference to see how they looked like.
+- In rare cases, Russian text is double-encoded as cp1251 within UTF-16 LE. Distorted text is passed as-is.
+- In legacy database, timestamps are in some weird timezone (looks to be UTC+1?), and actual timezone is not known.
+  Use `ShiftDatasetTime` to adjust the time to the correct timezone, if known. 
+- Newer database often contains duplicate messages. Best effort is made to get rid of them,
+  but the side effect is that it might also remove "legitimate" duplicates (i.e. if a user sent the same message
+  multiple times in quick succession on purpose).
 
 Tinder
 ------
