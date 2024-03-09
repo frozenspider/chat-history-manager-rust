@@ -8,11 +8,20 @@ Big part of app's functionality is merging chat history snapshots taken on diffe
 Doesn't (currently) has a UI of its own, exposing a gRPC API instead.
 UI written in Scala in available as a [spearate project](https://github.com/frozenspider/chat-history-manager) 
 
+To run the gRPC server (on a hardcoded port 50051), use
+```
+cargo run --release
+```
+
 Supports a bunch of different history formats, refer to sections below for their list and instuction on how to
 extract history.
 Architecture is extensible, allowing more formats to easily be supported in the future.
 
-Note that most of these formats are reverse engineered, so some message types may not be supported.
+Some general notes:
+- To parse a standalone 1-on-1 chat, Scala UI needs to be running as it will be asked to identify self user.
+- Most of these history formats are reverse engineered, so:
+  - Some message types may not be supported as I simply haven't encountered them yet.
+  - Compatibility might break unexpectedly as apps sometimes decide to change their storage format.
 
 
 Telegram

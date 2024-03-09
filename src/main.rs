@@ -1,6 +1,6 @@
-use std::env::args;
 use std::process;
 
+use clap::{Parser, Subcommand};
 use deepsize::DeepSizeOf;
 use log::LevelFilter;
 use mimalloc::MiMalloc;
@@ -10,14 +10,27 @@ use chat_history_manager_rust::prelude::*;
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;
 
+#[derive(Parser)]
+#[command(version, about, long_about = None)]
+struct Args {
+    #[command(subcommand)]
+    command: Option<Command>,
+}
+
+#[derive(Subcommand, Debug)]
+enum Command {
+    #[clap(about = "Parse and load a given file using whichever loader is appropriate")]
+    Parse { path: String },
+    #[clap(about = "(For debugging purposes only) Ask UI which user is \"myself\" and print it to the log")]
+    RequestMyself,
+}
+
 /** Starts a server by default. */
 fn main() {
     init_logger();
 
-    let mut args = args();
-    args.next(); // Consume first argument, which is a command itself.
-    let command = args.next();
-    if let Err(e) = execute_command(command, args.collect()) {
+    let args = Args::parse();
+    if let Err(e) = execute_command(args.command) {
         eprintln!("Error: {}", error_to_string(&e));
         let backtrace = e.backtrace();
         // Backtrace is defined as just "&impl Debug + Display", so to make sure we actually have a backtrace
@@ -33,24 +46,20 @@ fn main() {
     }
 }
 
-fn execute_command(command: Option<String>, args: Vec<String>) -> EmptyRes {
+fn execute_command(command: Option<Command>) -> EmptyRes {
     let server_port: u16 = 50051;
 
-    match command.map(|c| c.to_lowercase()).as_deref() {
+    match command {
         None => {
             start_server(server_port)?;
         }
-        Some("parse") => {
-            let path = args.get(0).context("Parse path wasn't given")?;
-            let parsed = parse_file(path).context("Parsing failed!")?;
+        Some(Command::Parse { path }) => {
+            let parsed = parse_file(&path).with_context(|| format!("Failed to parse {path}"))?;
             let size: usize = parsed.deep_size_of();
             log::info!("Size of parsed in-memory DB: {} MB ({} B)", size / 1024 / 1024, size);
         }
-        Some("request_myself") => {
+        Some(Command::RequestMyself) => {
             debug_request_myself(server_port + 1)?;
-        }
-        Some(etc) => {
-            panic!("Unrecognized command: {etc}")
         }
     }
     Ok(())
