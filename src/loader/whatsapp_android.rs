@@ -203,6 +203,7 @@ enum MessageType {
     DisappearTimerSet = 36,
     OneTimePhoto = 42,
     OneTimeVideo = 43,
+    VideoCall = 90,
 }
 
 #[repr(i32)]
@@ -476,6 +477,8 @@ fn parse_chats(conn: &Connection, ds_uuid: &PbUuid, users: &mut Users) -> Result
                 let result_option = match msg_tpe {
                     MessageType::System | MessageType::MissedCall =>
                         parse_system_message(row, msg_tpe, users, &mut member_ids)?,
+                    MessageType::VideoCall =>
+                        None, // Will be processed when parsing call_rows
                     _ =>
                         parse_regular_message(row, msg_tpe, &msg_key_to_source_id)?
                 };
@@ -786,6 +789,7 @@ fn parse_regular_message(
             return Ok(None),
         MessageType::System => unreachable!(),
         MessageType::MissedCall => unreachable!(),
+        MessageType::VideoCall => unreachable!(),
     }.map(|c| Content { sealed_value_optional: Some(c) });
 
     // WhatsApp does not preserve real source
