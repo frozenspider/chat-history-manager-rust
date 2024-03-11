@@ -1146,29 +1146,21 @@ fn copy_file(src_rel_path: &str,
         require!(src_meta.is_file(), "Not a file: {src_absolute_path}");
         let ext_suffix = src_file.extension().map(|ext| format!(".{}", ext.to_str().unwrap())).unwrap_or_default();
 
-        let name: String = match thumbnail_dst_main_path {
-            Some(main_path) => {
-                let main_file = src_ds_root.to_absolute(main_path);
-                let full_name = main_file.file_name().unwrap().to_str().unwrap();
-                let base_name = if let Some(ext) = main_file.extension() {
-                    // Removing extension and a dot
-                    full_name.smart_slice(..-(ext.to_str().unwrap().len() as i32 + 1))
+        let dst_rel_path: String =
+            if let Some(main_path) = thumbnail_dst_main_path {
+                let full_name = main_path.rsplitn(2, '/').next().unwrap();
+                format!("{}{full_name}_thumb{ext_suffix}", main_path.as_str().smart_slice(..-(full_name.len() as i32)))
+            } else {
+                let inner_path = if subpath.use_hashing {
+                    let hash = file_hash(&src_file)?;
+                    // Using first two characters of hash as a prefix for better file distribution, same what git does
+                    let (prefix, name) = hash.split_at(2);
+                    format!("{prefix}/{name}{ext_suffix}")
                 } else {
-                    full_name
+                    src_file.file_name().unwrap().to_str().unwrap().to_owned()
                 };
-                require!(!base_name.is_empty());
-                format!("{base_name}_thumb{ext_suffix}")
-            }
-            _ if subpath.use_hashing => {
-                let hash = file_hash(&src_file)?;
-                format!("{hash}{ext_suffix}")
-            }
-            None =>
-                src_file.file_name().unwrap().to_str().unwrap().to_owned()
-        };
-        require!(!name.is_empty(), "Filename empty: {src_absolute_path}");
-
-        let dst_rel_path = format!("{}/{}/{}", chat_root_rel_path(chat_id), subpath.path_fragment, name);
+                format!("{}/{}/{inner_path}", chat_root_rel_path(chat_id), subpath.path_fragment)
+            };
         let dst_file = dst_ds_root.to_absolute(&dst_rel_path);
         fs::create_dir_all(dst_file.parent().unwrap()).context("Can't create dataset root path")?;
 

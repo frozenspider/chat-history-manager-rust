@@ -621,7 +621,7 @@ fn update_chat_change_id() -> EmptyRes {
         .flat_map(|m| m.files(&daos.dst_ds_root)).collect_vec();
     assert_eq!(old_files.len(), new_files.len());
     for f in new_files.iter() {
-        assert!(f.exists());
+        assert!(f.exists(), "File {} does not exist!", f.display());
 
         let old_hash = &hashes[path_file_name(f).unwrap()];
         let new_hash = file_hash(f).unwrap();
