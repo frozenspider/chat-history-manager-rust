@@ -17,11 +17,13 @@ struct Args {
     command: Option<Command>,
 }
 
+/// Start a gRPC server on port 50051, unless a debug command is specified
 #[derive(Subcommand, Debug)]
 enum Command {
-    #[clap(about = "Parse and load a given file using whichever loader is appropriate")]
+    /// (For debugging purposes only) Parse and load a given file using whichever loader is appropriate,
+    /// and print the result in-memory DB size to the log
     Parse { path: String },
-    #[clap(about = "(For debugging purposes only) Ask UI which user is \"myself\" and print it to the log")]
+    /// (For debugging purposes only) Ask UI which user is "myself" and print it to the log
     RequestMyself,
 }
 

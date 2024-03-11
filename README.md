@@ -53,7 +53,7 @@ Note that this format is very limited.
  
 Mail.Ru Agent
 -------------
-Loads histories from two formats:
+Loads histories from two database formats:
 - `mra.dbs` used prior to 2014-08-28
 - `<account-name>.db` (used after 2014-08-28 and up to 2018, more recent versions were not tested)
 
@@ -63,8 +63,11 @@ Known issues:
 - Only a subset of smile types is supported.
 - Some smile types are not converted and left as-is since I don't have a reference to see how they looked like.
 - In rare cases, Russian text is double-encoded as cp1251 within UTF-16 LE. Distorted text is passed as-is.
-- In legacy database, timestamps are in some weird timezone (looks to be UTC+1?), and actual timezone is not known.
-  Use `ShiftDatasetTime` to adjust the time to the correct timezone, if known. 
+- In legacy database, timestamps are shifted by several hours (looks to be coerced to UTC+1?),
+  and the exact time shift from real time is not obvious.
+  - If both database formats are present and there's an overlap in stored messages, it will be used to adjust the time.
+  - Otherwise, after parsing legacy database, use `ShiftDatasetTime` to adjust the time to the correct timezone,
+    if known.
 - Newer database often contains duplicate messages. Best effort is made to get rid of them,
   but the side effect is that it might also remove "legitimate" duplicates (i.e. if a user sent the same message
   multiple times in quick succession on purpose).

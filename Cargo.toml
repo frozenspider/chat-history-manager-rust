@@ -1,5 +1,6 @@
 [package]
 name = "chat-history-manager-rust"
+authors = ["frozenspider"]
 version = "0.3.0"
 edition = "2021"
 
