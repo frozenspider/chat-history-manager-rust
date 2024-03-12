@@ -37,21 +37,21 @@ impl SqliteDao {
     const MIGRATIONS: EmbeddedMigrations = embed_migrations!("./resources/main/migrations");
 
     pub fn create(db_file: &Path) -> Result<Self> {
-        require!(!db_file.exists(), "File {} already exists!", path_to_str(db_file)?);
+        ensure!(!db_file.exists(), "File {} already exists!", path_to_str(db_file)?);
         Self::create_load_inner(db_file)
     }
 
     #[allow(unused)]
     pub fn load(db_file: &Path) -> Result<Self> {
-        require!(db_file.exists(), "File {} does not exist!", path_to_str(db_file)?);
+        ensure!(db_file.exists(), "File {} does not exist!", path_to_str(db_file)?);
         Self::create_load_inner(db_file)
     }
 
     fn check_db_file_path(db_file: &Path) -> EmptyRes {
-        require!(db_file.parent().is_some_and(|p| p.exists()),
-            "Parent directory for {} does not exist!", path_to_str(db_file)?);
-        require!(path_file_name(db_file)? == SqliteDao::FILENAME,
-            "Incorrect file name for {}, expected {}", path_to_str(db_file)?, SqliteDao::FILENAME);
+        ensure!(db_file.parent().is_some_and(|p| p.exists()),
+                "Parent directory for {} does not exist!", path_to_str(db_file)?);
+        ensure!(path_file_name(db_file)? == SqliteDao::FILENAME,
+                "Incorrect file name for {}, expected {}", path_to_str(db_file)?, SqliteDao::FILENAME);
         Ok(())
     }
 
@@ -62,8 +62,8 @@ impl SqliteDao {
         let conn = RefCell::new(SqliteConnection::establish(absolute_path)?);
 
         // Apply migrations
-        require!(!<EmbeddedMigrations as MigrationSource<Sqlite>>::migrations(&SqliteDao::MIGRATIONS)
-            .normalize_error()?.is_empty(),
+        ensure!(!<EmbeddedMigrations as MigrationSource<Sqlite>>::migrations(&SqliteDao::MIGRATIONS)
+                    .normalize_error()?.is_empty(),
                 "Migrations not found!");
         {
             let mut conn = conn.borrow_mut();
@@ -111,10 +111,10 @@ impl SqliteDao {
                 .filter(|ds| src_dataset_uuids.contains(&ds.uuid))
                 .collect_vec();
 
-            require!(src_datasets.len() == src_dataset_uuids.len(),
-                     "Not all datasets found in source!");
-            require!(!self.datasets()?.iter().any(|ds| src_dataset_uuids.contains(&ds.uuid)),
-                     "Some dataset UUIDs are already in use!");
+            ensure!(src_datasets.len() == src_dataset_uuids.len(),
+                    "Not all datasets found in source!");
+            ensure!(!self.datasets()?.iter().any(|ds| src_dataset_uuids.contains(&ds.uuid)),
+                    "Some dataset UUIDs are already in use!");
 
             for src_ds in src_datasets.iter() {
                 let ds_uuid = &src_ds.uuid;
@@ -129,7 +129,7 @@ impl SqliteDao {
                         insert_into(dataset::table).values(&raw_ds).execute(txn)?;
 
                         let raw_users: Vec<RawUser> = src.users(ds_uuid)?.iter().map(|u| {
-                            require!(u.id > 0, "IDs should be positive!");
+                            ensure!(u.id > 0, "IDs should be positive!");
                             Ok(utils::user::serialize(u, *u == src_myself, &raw_ds.uuid))
                         }).try_collect()?;
                         insert_into(user::table).values(&raw_users).execute(txn)?;
@@ -140,9 +140,9 @@ impl SqliteDao {
                     let dst_ds_root = self.dataset_root(ds_uuid)?;
 
                     for src_cwd in src.chats(ds_uuid)?.iter() {
-                        require!(src_cwd.chat.id > 0, "IDs should be positive!");
-                        require!(src_cwd.chat.member_ids.first() == Some(&src_myself.id),
-                                 "First member of chat {} was not myself!", src_cwd.chat.qualified_name());
+                        ensure!(src_cwd.chat.id > 0, "IDs should be positive!");
+                        ensure!(src_cwd.chat.member_ids.first() == Some(&src_myself.id),
+                                "First member of chat {} was not myself!", src_cwd.chat.qualified_name());
 
                         self.conn.borrow_mut().transaction(|txn| {
                             let mut raw_chat = utils::chat::serialize(&src_cwd.chat, &raw_ds.uuid)?;
@@ -193,7 +193,7 @@ impl SqliteDao {
             for src_ds in src_datasets.iter() {
                 let ds_uuid = &src_ds.uuid;
                 let diff = get_datasets_diff(src, ds_uuid, self, ds_uuid, 1)?;
-                require!(diff.is_empty(), "{}", diff.iter().join("\n\n"))
+                ensure!(diff.is_empty(), "{}", diff.iter().join("\n\n"))
             }
 
             Ok(())
@@ -279,8 +279,8 @@ impl WithCache for SqliteDao {
             let (mut myselves, mut users): (Vec<_>, Vec<_>) =
                 rows.into_iter().partition_map(|(users, is_myself)|
                     if is_myself { Either::Left(users) } else { Either::Right(users) });
-            require!(!myselves.is_empty(), "Myself not found!");
-            require!(myselves.len() < 2, "More than one myself found!");
+            ensure!(!myselves.is_empty(), "Myself not found!");
+            ensure!(myselves.len() < 2, "More than one myself found!");
             let myself = myselves.remove(0);
             users.insert(0, myself.clone());
             inner.users.insert(ds_uuid, UserCacheForDataset {
@@ -543,7 +543,7 @@ impl MutableChatHistoryDao for SqliteDao {
 
             let filename = path_file_name(&self.db_file)?;
             let backup_file = backup_path.join(filename);
-            require!(!backup_file.exists(), "File {filename} already exists in the backups dir, last backup was incomplete?");
+            ensure!(!backup_file.exists(), "File {filename} already exists in the backups dir, last backup was incomplete?");
 
             {
                 let src_conn = Connection::open(&self.db_file)?;
@@ -581,7 +581,7 @@ impl MutableChatHistoryDao for SqliteDao {
                         let mut buf = backup_bytes.as_slice();
                         while !buf.is_empty() {
                             let res = zip.write(buf)?;
-                            require!(res != 0, "Failed writing a backup, zip file no longer accepts source bytes!");
+                            ensure!(res != 0, "Failed writing a backup, zip file no longer accepts source bytes!");
                             buf = &buf[res..]
                         }
                         zip.finish()?;
@@ -619,7 +619,7 @@ impl MutableChatHistoryDao for SqliteDao {
     }
 
     fn update_dataset(&mut self, old_uuid: PbUuid, ds: Dataset) -> Result<Dataset> {
-        require!(old_uuid == ds.uuid, "Changing dataset UUID is not supported");
+        ensure!(old_uuid == ds.uuid, "Changing dataset UUID is not supported");
 
         self.invalidate_cache()?;
         let mut conn = self.conn.borrow_mut();
@@ -635,7 +635,7 @@ impl MutableChatHistoryDao for SqliteDao {
             .set(raw_ds)
             .execute(conn)?;
 
-        require!(updated_rows == 1, "{updated_rows} rows changed when updaing dataset {:?}", ds);
+        ensure!(updated_rows == 1, "{updated_rows} rows changed when updaing dataset {:?}", ds);
 
         Ok(ds)
     }
@@ -693,7 +693,7 @@ impl MutableChatHistoryDao for SqliteDao {
             let deleted_rows = delete(dataset::dsl::dataset)
                 .filter(dataset::columns::uuid.eq(uuid.as_ref()))
                 .execute(conn)?;
-            require!(deleted_rows == 1, "{deleted_rows} rows changed when deleting dataset with UUID {:?}", ds_uuid);
+            ensure!(deleted_rows == 1, "{deleted_rows} rows changed when deleting dataset with UUID {:?}", ds_uuid);
 
             // Moving all dataset files to backup directory
             if ds_root.0.exists() {
@@ -744,7 +744,7 @@ impl MutableChatHistoryDao for SqliteDao {
                 .filter(user::columns::id.eq(*old_id))
                 .set((user::columns::id.eq(user.id), &raw_user))
                 .execute(conn)?;
-            require!(updated_rows == 1, "{updated_rows} rows changed when updaing user {:?}", user);
+            ensure!(updated_rows == 1, "{updated_rows} rows changed when updaing user {:?}", user);
 
             // After changing user, rename private chat(s) with him accordingly. If user is self, do nothing.
             if !is_myself {
@@ -826,8 +826,8 @@ impl MutableChatHistoryDao for SqliteDao {
         let raw_chat = utils::chat::serialize(&chat, &uuid_bytes)?;
 
         let myself = self.myself(&chat.ds_uuid)?;
-        require!(chat.member_ids.first() == Some(&myself.id),
-                 "First member of chat {} was not myself!", chat.qualified_name());
+        ensure!(chat.member_ids.first() == Some(&myself.id),
+                "First member of chat {} was not myself!", chat.qualified_name());
 
         let mut conn = self.conn.borrow_mut();
         let conn = conn.deref_mut();
@@ -867,7 +867,7 @@ impl MutableChatHistoryDao for SqliteDao {
                 .filter(chat::columns::id.eq(*old_id))
                 .set((chat::columns::id.eq(raw_chat.id), &raw_chat))
                 .execute(conn)?;
-            require!(updated_rows == 1, "{updated_rows} rows changed when updaing chat {}", chat.qualified_name());
+            ensure!(updated_rows == 1, "{updated_rows} rows changed when updaing chat {}", chat.qualified_name());
 
             if id_changed {
                 update(chat::dsl::chat)
@@ -897,7 +897,7 @@ impl MutableChatHistoryDao for SqliteDao {
                 let new_path = ds_root.to_absolute(&new_rel_path);
 
                 if old_path.exists() {
-                    require!(!new_path.exists(), "{} already exists", new_path.to_string_lossy());
+                    ensure!(!new_path.exists(), "{} already exists", new_path.to_string_lossy());
                     fs::rename(old_path, new_path)?;
 
                     sql_query(r"
@@ -1003,7 +1003,7 @@ impl MutableChatHistoryDao for SqliteDao {
                 .filter(chat::columns::ds_uuid.eq(uuid.as_ref()))
                 .filter(chat::columns::id.eq(chat.id))
                 .execute(conn)?;
-            require!(deleted_rows == 1, "{deleted_rows} rows changed when deleting chat {}", chat.qualified_name());
+            ensure!(deleted_rows == 1, "{deleted_rows} rows changed when deleting chat {}", chat.qualified_name());
 
             // Orphan users
             sql_query(r"
@@ -1047,7 +1047,7 @@ impl MutableChatHistoryDao for SqliteDao {
     }
 
     fn combine_chats(&mut self, master_chat: Chat, slave_chat: Chat) -> EmptyRes {
-        require!(master_chat.main_chat_id.is_none(), "Master chat wasn't main!");
+        ensure!(master_chat.main_chat_id.is_none(), "Master chat wasn't main!");
 
         let mut conn = self.conn.borrow_mut();
         let conn = conn.deref_mut();
@@ -1061,7 +1061,7 @@ impl MutableChatHistoryDao for SqliteDao {
                 .or(chat::columns::main_chat_id.eq(slave_chat.id)))
             .set(chat::columns::main_chat_id.eq(master_chat.id))
             .execute(conn)?;
-        require!(updated_rows >= 1, "{updated_rows} rows changed when updaing chat {}", slave_chat.qualified_name());
+        ensure!(updated_rows >= 1, "{updated_rows} rows changed when updaing chat {}", slave_chat.qualified_name());
 
         Ok(())
     }
@@ -1143,7 +1143,7 @@ fn copy_file(src_rel_path: &str,
     let src_absolute_path = path_to_str(&src_file)?;
     let src_meta = fs::metadata(&src_file);
     if let Ok(src_meta) = src_meta {
-        require!(src_meta.is_file(), "Not a file: {src_absolute_path}");
+        ensure!(src_meta.is_file(), "Not a file: {src_absolute_path}");
         let ext_suffix = src_file.extension().map(|ext| format!(".{}", ext.to_str().unwrap())).unwrap_or_default();
 
         let dst_rel_path: String =
@@ -1166,9 +1166,9 @@ fn copy_file(src_rel_path: &str,
 
         if dst_file.exists() {
             // Assume hash collisions don't exist
-            require!(subpath.use_hashing || files_are_equal(&src_file, &dst_file)?,
-                     "File already exists: {}, and it doesn't match source {}",
-                     path_to_str(&dst_file)?, src_absolute_path)
+            ensure!(subpath.use_hashing || files_are_equal(&src_file, &dst_file)?,
+                    "File already exists: {}, and it doesn't match source {}",
+                    path_to_str(&dst_file)?, src_absolute_path)
         } else {
             fs::copy(src_file, dst_file)?;
         }

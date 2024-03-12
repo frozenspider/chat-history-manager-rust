@@ -8,7 +8,7 @@ use std::ops::RangeBounds;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
-pub use anyhow::{anyhow, bail, Context};
+pub use anyhow::{anyhow, bail, ensure, Context};
 use chrono::Local;
 use hashers::fx_hash::FxHasher;
 use itertools::Itertools;
@@ -180,18 +180,6 @@ macro_rules! err {
     ($($arg:tt)*) => {{
         Err(anyhow!("{}", format!($($arg)*)))
     }}
-}
-
-/// Evaluates boolean expression, and bails out if it doesn't hold.
-/// First argument is the expression, then comes formatting string and its arguments.
-#[macro_export]
-macro_rules! require {
-    ($expr:expr) => {{
-        if !$expr { bail!("{} was false!", stringify!($expr)); }
-    }};
-    ($expr:expr, $($bail_arg:tt)*) => {{
-        if !$expr { bail!($($bail_arg)*); }
-    }};
 }
 
 pub fn error_to_string(e: &anyhow::Error) -> String {

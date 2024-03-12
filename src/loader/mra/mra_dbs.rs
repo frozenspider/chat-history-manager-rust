@@ -31,15 +31,15 @@ fn load_offsets_table(dbs_bytes: &[u8]) -> Result<&[u32]> {
     let offsets_table_addr = read_u32(dbs_bytes, OFFSETS_TABLE_OFFSET) as usize;
     let offsets_table: &[u32] = {
         let u8_slice = &dbs_bytes[offsets_table_addr..];
-        require!(offsets_table_addr % 4 == 0 && u8_slice.len() % 4 == 0,
-                 "Misaligned offset table at address {:#010x}!", offsets_table_addr);
+        ensure!(offsets_table_addr % 4 == 0 && u8_slice.len() % 4 == 0,
+                "Misaligned offset table at address {:#010x}!", offsets_table_addr);
         // Re-interpreting offsets table as a u32 slice.
         // This is safe because we already checked slice alignment and length.
         unsafe { slice::from_raw_parts(u8_slice.as_ptr() as *const u32, u8_slice.len() / 4) }
     };
     log::debug!("Offsets table is at {:#010x}", offsets_table_addr);
-    require!(offsets_table[0] == OFFSETS_MAGIC_NUMBER,
-             "Sanity check failed: unexpected offset table magic number");
+    ensure!(offsets_table[0] == OFFSETS_MAGIC_NUMBER,
+            "Sanity check failed: unexpected offset table magic number");
     Ok(offsets_table)
 }
 
@@ -70,7 +70,7 @@ fn load_conversations<'a>(dbs_bytes: &'a [u8], offsets_table: &[u32]) -> Result<
         let prev_conv_id = read_u32(dbs_bytes, current_offset + CONVERSATION_IDS_OFFSET);
         let next_conv_id = read_u32(dbs_bytes, current_offset + CONVERSATION_IDS_OFFSET + 4);
 
-        require!(prev_conv_id == last_processed_conv_id, "Conversations linked list is broken!");
+        ensure!(prev_conv_id == last_processed_conv_id, "Conversations linked list is broken!");
 
         let mrahistory_loc = current_offset + MRAHISTORY_FOOTPRINT_OFFSET;
         if &dbs_bytes[mrahistory_loc..][0..mrahistory_footprint.len()] == mrahistory_footprint {
@@ -110,8 +110,8 @@ fn load_conversations<'a>(dbs_bytes: &'a [u8], offsets_table: &[u32]) -> Result<
         conv_id = next_conv_id;
     }
 
-    require!(actual_convs_count == expected_convs_count,
-             "Expected to find {expected_convs_count} conversations, but {actual_convs_count} were found!");
+    ensure!(actual_convs_count == expected_convs_count,
+            "Expected to find {expected_convs_count} conversations, but {actual_convs_count} were found!");
 
     Ok(result)
 }
@@ -133,8 +133,8 @@ fn load_messages<'a>(
                 let header_ptr = header_slice.as_ptr() as *const MraLegacyMessageHeader;
                 // This is inherently unsafe. The only thing we can do is to check a magic number right after.
                 let header = unsafe { header_ptr.as_ref::<'a>().unwrap() };
-                require!(header.magic_number == MSG_HEADER_MAGIC_NUMBER,
-                         "Incorrect header at offset {header_offset} (msg_id == {msg_id})!");
+                ensure!(header.magic_number == MSG_HEADER_MAGIC_NUMBER,
+                        "Incorrect header at offset {header_offset} (msg_id == {msg_id})!");
                 header
             };
             let author_offset = header_offset + mem::size_of::<MraLegacyMessageHeader>();

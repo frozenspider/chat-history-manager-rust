@@ -37,28 +37,28 @@ pub fn merge_datasets(
         // Input validity check: users
         let master_user_id_merges = user_merges.iter().filter_map(|m| m.master_user_id_option()).collect_vec();
         for uid in master_users.keys() {
-            require!(master_user_id_merges.contains(uid), "Master user {} wasn't mentioned in merges", uid.0);
+            ensure!(master_user_id_merges.contains(uid), "Master user {} wasn't mentioned in merges", uid.0);
         }
-        require!(master_users.len() == master_user_id_merges.len(), "User merges contained more master users than actually exist?");
+        ensure!(master_users.len() == master_user_id_merges.len(), "User merges contained more master users than actually exist?");
 
         let slave_user_id_merges = user_merges.iter().filter_map(|m| m.slave_user_id_option()).collect_vec();
         for uid in slave_users.keys() {
-            require!(slave_user_id_merges.contains(uid), "Slave user {} wasn't mentioned in merges", uid.0);
+            ensure!(slave_user_id_merges.contains(uid), "Slave user {} wasn't mentioned in merges", uid.0);
         }
-        require!(slave_users.len() == slave_user_id_merges.len(), "User merges contained more slave users than actually exist?");
+        ensure!(slave_users.len() == slave_user_id_merges.len(), "User merges contained more slave users than actually exist?");
 
         // Input validity check: chats
         let master_chat_id_merges = chat_merges.iter().filter_map(|m| m.master_chat_id_option()).collect_vec();
         for cid in master_cwds.keys() {
-            require!(master_chat_id_merges.contains(cid), "Master chat {} wasn't mentioned in merges", cid.0);
+            ensure!(master_chat_id_merges.contains(cid), "Master chat {} wasn't mentioned in merges", cid.0);
         }
-        require!(master_cwds.len() == master_chat_id_merges.len(), "Chat merges contained more master chats than actually exist?");
+        ensure!(master_cwds.len() == master_chat_id_merges.len(), "Chat merges contained more master chats than actually exist?");
 
         let slave_chat_id_merges = chat_merges.iter().filter_map(|m| m.slave_chat_id_option()).collect_vec();
         for cid in slave_cwds.keys() {
-            require!(slave_chat_id_merges.contains(cid), "Slave chat {} wasn't mentioned in merges", cid.0);
+            ensure!(slave_chat_id_merges.contains(cid), "Slave chat {} wasn't mentioned in merges", cid.0);
         }
-        require!(slave_cwds.len() == slave_chat_id_merges.len(), "Chat merges contained more slave chats than actually exist?");
+        ensure!(slave_cwds.len() == slave_chat_id_merges.len(), "Chat merges contained more slave chats than actually exist?");
 
         // Actual logic
         let sqlite_dao_file = sqlite_dao_dir.join(SqliteDao::FILENAME);
@@ -131,7 +131,7 @@ fn merge_inner(
         chat_inserts.iter().flat_map(|(cwd, _, _)| cwd.chat.member_ids.clone()).collect();
     let master_self = master.dao.myself(&master.ds.uuid)?;
     let slave_self = slave.dao.myself(&slave.ds.uuid)?;
-    require!(master_self.id == slave_self.id, "Myself of merged datasets doesn't match!");
+    ensure!(master_self.id == slave_self.id, "Myself of merged datasets doesn't match!");
     for um in user_merges {
         let user_to_insert_option = match um {
             UserMergeDecision::Retain(user_id) => Some(master.users[&user_id].clone()),

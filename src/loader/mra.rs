@@ -309,7 +309,7 @@ fn convert_file_transfer(text: &str) -> Result<TextAndTyped> {
         None
     } else {
         let text_parts = text.split('\n').collect_vec();
-        require!(text_parts.len() >= 3, "Unknown file transfer message format: {}", text);
+        ensure!(text_parts.len() >= 3, "Unknown file transfer message format: {}", text);
         let file_paths: Vec<&str> = text_parts.smart_slice(1..-1).iter().map(|&s|
             s.trim()
                 .rsplitn(3, ' ')
@@ -527,17 +527,17 @@ fn context(mra_msg: &impl MraMessage, conv_username: &str) -> String {
 }
 
 fn require_format(cond: bool, mra_msg: &impl MraMessage, conv_username: &str) -> EmptyRes {
-    require!(cond, "Unexpected {:?} message format\nConversation: {conv_username}, message: {mra_msg:?}", mra_msg.get_tpe()?);
+    ensure!(cond, "Unexpected {:?} message format\nConversation: {conv_username}, message: {mra_msg:?}", mra_msg.get_tpe()?);
     Ok(())
 }
 
 fn require_format_clue(cond: bool, mra_msg: &impl MraMessage, conv_username: &str, clue: &str) -> EmptyRes {
-    require!(cond, "Unexpected {:?} message format: {clue}\nConversation: {conv_username}, message: {mra_msg:?}", mra_msg.get_tpe()?);
+    ensure!(cond, "Unexpected {:?} message format: {clue}\nConversation: {conv_username}, message: {mra_msg:?}", mra_msg.get_tpe()?);
     Ok(())
 }
 
 fn require_format_with_clue(cond: bool, mra_msg: &impl MraMessage, conv_username: &str, clue: impl Fn() -> String) -> EmptyRes {
-    require!(cond, "Unexpected {:?} message format: {}\nConversation: {conv_username}, message: {mra_msg:?}", mra_msg.get_tpe()?, clue());
+    ensure!(cond, "Unexpected {:?} message format: {}\nConversation: {conv_username}, message: {mra_msg:?}", mra_msg.get_tpe()?, clue());
     Ok(())
 }
 
@@ -595,11 +595,11 @@ fn next_sized_chunk(payload: &[u8]) -> Result<(&[u8], &[u8])> {
 /// In the next <N_u32><...N bytes...> validate that N bytes correspond to the expected bytes provided
 fn validate_skip_chunk<'a>(payload: &'a [u8], expected_bytes: &[u8]) -> Result<&'a [u8]> {
     let (len, payload) = next_u32_size(payload);
-    require!(len == expected_bytes.len(),
-             "Unexpected message payload format!");
+    ensure!(len == expected_bytes.len(),
+            "Unexpected message payload format!");
     let (actual, rest) = payload.split_at(len);
-    require!(actual == expected_bytes,
-             "Unexpected message payload format!");
+    ensure!(actual == expected_bytes,
+            "Unexpected message payload format!");
     Ok(rest)
 }
 
@@ -683,7 +683,7 @@ fn bytes_to_pretty_string(bytes: &[u8], columns: usize) -> String {
 
 fn utf16le_to_string(unicode_bytes: &[u8]) -> Result<String> {
     let len = unicode_bytes.len();
-    require!(len % 2 == 0, "Odd number of UTF-16 bytes");
+    ensure!(len % 2 == 0, "Odd number of UTF-16 bytes");
     let mut unicode_bytes = Cow::Borrowed(unicode_bytes);
 
     // Handling special case: singular unpaired surrogate code units.
@@ -724,10 +724,10 @@ fn parse_rtf(rtf: &str) -> Result<Vec<RichTextElement>> {
     if tokens.is_empty() { return Ok(vec![]); }
 
     // \fcharset0 is cp1252
-    require!(tokens.iter().any(|t|
+    ensure!(tokens.iter().any(|t|
                 matches!(t, Token::ControlWord { name, arg: Some(arg) }
                             if name == "ansicpg" || (name == "fcharset" && *arg == 0) )
-             ), "RTF is not ANSI-encoded!\nRTF: {rtf}");
+            ), "RTF is not ANSI-encoded!\nRTF: {rtf}");
 
     const DEFAULT_ENC_ID: i32 = 1;
 
@@ -763,7 +763,7 @@ fn parse_rtf(rtf: &str) -> Result<Vec<RichTextElement>> {
         for token in tokens.iter().skip_while(|&t| t != &start).skip(1) {
             match token {
                 Token::ControlWord { ref name, arg: Some(arg) } if name == "f" => {
-                    require!(*arg == fonttbl_charsets.len() as i32, "Malformed RTF fonts table!\nRTF: {rtf}");
+                    ensure!(*arg == fonttbl_charsets.len() as i32, "Malformed RTF fonts table!\nRTF: {rtf}");
                 }
                 Token::ControlWord { ref name, arg: Some(charset_num) } if name == "fcharset" => {
                     fonttbl_charsets.push(get_rtf_charset(*charset_num));
@@ -885,7 +885,7 @@ fn parse_rtf(rtf: &str) -> Result<Vec<RichTextElement>> {
                 }
                 // As per spec, "Unicode values greater than 32767 must be expressed as negative numbers",
                 // but Mail.Ru doesn't seem to care.
-                require!(arg >= 0, "Unexpected Unicode value!\nRTF: {rtf}");
+                ensure!(arg >= 0, "Unexpected Unicode value!\nRTF: {rtf}");
                 let arg = arg as u16;
                 unicode_bytes.extend_from_slice(&arg.to_le_bytes());
                 skip_next_char = true;

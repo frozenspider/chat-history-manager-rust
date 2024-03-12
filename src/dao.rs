@@ -144,9 +144,9 @@ pub trait ChatHistoryDao: WithCache + Send {
                                   msg2_id: MessageInternalId,
                                   combined_limit: usize,
                                   abbreviated_limit: usize) -> Result<(Vec<Message>, usize, Vec<Message>)> {
-        require!(combined_limit >= 2);
-        require!(abbreviated_limit >= 1);
-        require!(combined_limit >= 2 * abbreviated_limit);
+        ensure!(combined_limit >= 2);
+        ensure!(abbreviated_limit >= 1);
+        ensure!(combined_limit >= 2 * abbreviated_limit);
         self.messages_abbreviated_slice_inner(chat, msg1_id, msg2_id, combined_limit, abbreviated_limit)
     }
 

@@ -62,8 +62,8 @@ impl BadooAndroidDataLoader {
             let id = UserId(id);
 
             let enc_id = row.get::<_, String>("encrypted_user_id")?;
-            require!(users.user_id_to_encrypted.insert(id, enc_id).is_none(),
-                     "Duplicate encrypted user ID for user {}!", *id);
+            ensure!(users.user_id_to_encrypted.insert(id, enc_id).is_none(),
+                    "Duplicate encrypted user ID for user {}!", *id);
 
             let name = row.get::<_, String>("user_name")?;
 
@@ -129,16 +129,16 @@ impl BadooAndroidDataLoader {
                     let keys: HashSet<&str> = root_obj.keys().map(|s| s.as_ref()).collect();
                     match row.get::<_, String>("payload_type")?.as_str() {
                         "REACTION" => {
-                            require!(keys == HashSet::from(["photo_id", "photo_url", "photo_width", "photo_height",
+                            ensure!(keys == HashSet::from(["photo_id", "photo_url", "photo_width", "photo_height",
                                                             "photo_expiration_timestamp", "emoji_reaction", "message"]),
-                                     "Unexpected payload format for reaction to photo: {}", payload_json);
+                                    "Unexpected payload format for reaction to photo: {}", payload_json);
                             let message = get_field_str!(root_obj, "message", "message");
                             let emoji = get_field_str!(root_obj, "emoji_reaction", "emoji_reaction");
                             (vec![RichText::make_plain(format!("{message}: {emoji}"))], None)
                         }
                         "AUDIO" => {
-                            require!(keys == HashSet::from(["id", "waveform", "url", "duration", "expiration_timestamp"]),
-                                     "Unexpected payload format for audio message: {}", payload_json);
+                            ensure!(keys == HashSet::from(["id", "waveform", "url", "duration", "expiration_timestamp"]),
+                                    "Unexpected payload format for audio message: {}", payload_json);
                             let duration_ms = get_field!(root_obj, "duration", "duration")?;
                             let duration_sec_option = Some(duration_ms.try_as_i32()? / 1000);
                             (vec![], Some(content::SealedValueOptional::VoiceMsg(ContentVoiceMsg {
@@ -148,8 +148,8 @@ impl BadooAndroidDataLoader {
                             })))
                         }
                         "TEXT" => {
-                            require!(keys == HashSet::from(["text", "type", "substitute_id"]),
-                                     "Unexpected payload format: {}", payload_json);
+                            ensure!(keys == HashSet::from(["text", "type", "substitute_id"]),
+                                    "Unexpected payload format: {}", payload_json);
                             match get_field_str!(root_obj, "type", "type") {
                                 "TEXT" => {
                                     let text = get_field_string!(root_obj, "text", "text");

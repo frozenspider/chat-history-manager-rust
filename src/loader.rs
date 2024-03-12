@@ -94,7 +94,7 @@ impl Loader {
 
     /// Parses a history in a foreign format
     pub fn parse(&self, path: &Path) -> Result<Box<InMemoryDao>> {
-        require!(path.exists(), "File not found");
+        ensure!(path.exists(), "File not found");
         let (named_errors, loads): (Vec<_>, Vec<_>) =
             self.loaders.iter()
                 .partition_map(|loader| match loader.looks_about_right(path) {

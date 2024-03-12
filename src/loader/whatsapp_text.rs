@@ -216,7 +216,7 @@ fn parse_message_text(lines: &[&str]) -> Result<(Vec<RichTextElement>, Option<Co
                 emoji_option: None,
             }),
             "VID" => {
-                require!(filename.ends_with(".mp4"), "Unexpected video file extension: {}", filename);
+                ensure!(filename.ends_with(".mp4"), "Unexpected video file extension: {}", filename);
                 Video(ContentVideo {
                     path_option: Some(filename.to_owned()),
                     title_option: None,
@@ -230,7 +230,7 @@ fn parse_message_text(lines: &[&str]) -> Result<(Vec<RichTextElement>, Option<Co
                 })
             }
             "AUD" => {
-                require!(filename.ends_with(".opus"), "Unexpected audio file extension: {}", filename);
+                ensure!(filename.ends_with(".opus"), "Unexpected audio file extension: {}", filename);
                 VoiceMsg(ContentVoiceMsg {
                     path_option: Some(filename.to_owned()),
                     mime_type: "audio/ogg".to_owned(),

@@ -265,7 +265,7 @@ impl MutableChatHistoryDao for InMemoryDao {
     }
 
     fn update_dataset(&mut self, old_uuid: PbUuid, ds: Dataset) -> Result<Dataset> {
-        require!(old_uuid == ds.uuid, "Changing dataset UUID is not supported");
+        ensure!(old_uuid == ds.uuid, "Changing dataset UUID is not supported");
 
         let mut cache = self.cache.inner.borrow_mut();
         if let Some(old_ds) = cache.datasets.iter_mut().find(|ds| ds.uuid == old_uuid) {

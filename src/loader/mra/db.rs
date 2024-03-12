@@ -114,24 +114,24 @@ fn load_conversation_messages(conv_username: &str, db_bytes: &[u8]) -> Result<Ve
         let (bytes, rest_bytes) = next_sized_chunk(db_bytes)?;
         let offset_shift = bytes.len();
         let (message_len_again, rest_bytes) = next_u32_size(rest_bytes);
-        require!(message_len_again == bytes.len(),
-                 "Message was not followed by duplicated length!\nMessage bytes: {}",
-                 bytes_to_pretty_string(bytes, usize::MAX));
+        ensure!(message_len_again == bytes.len(),
+                "Message was not followed by duplicated length!\nMessage bytes: {}",
+                bytes_to_pretty_string(bytes, usize::MAX));
 
         let bytes = {
             let (wrapped_bytes, remaining_bytes) = next_sized_chunk(bytes)?;
-            require!(remaining_bytes.len() == 4);
-            require!(read_u32(remaining_bytes, 0) as usize == wrapped_bytes.len());
+            ensure!(remaining_bytes.len() == 4);
+            ensure!(read_u32(remaining_bytes, 0) as usize == wrapped_bytes.len());
             wrapped_bytes
         };
 
         let (magic_number, bytes) = next_u32(bytes);
-        require!(magic_number == MSG_HEADER_MAGIC_NUMBER,
-                 "Incorrect magic number for message at offset {offset:#010x}");
+        ensure!(magic_number == MSG_HEADER_MAGIC_NUMBER,
+                "Incorrect magic number for message at offset {offset:#010x}");
 
         let (header, bytes) = DbMessageHeader::next_header(bytes, offset)?;
-        require!(header.full_length as usize == message_len_again + 8,
-                 "Incorrect header for message at offset {offset:#010x}: {header:?}");
+        ensure!(header.full_length as usize == message_len_again + 8,
+                "Incorrect header for message at offset {offset:#010x}: {header:?}");
 
         let (payload, bytes) = next_sized_chunk(bytes)?;
 
@@ -320,8 +320,8 @@ fn sort_messages(msgs: &mut [DbMessage]) -> EmptyRes {
     }
 
     problematic_filetimes.dedup();
-    require!(problematic_filetimes.is_empty(),
-             "Incorrect same-filetime messages linked list! (FT = {:?})", problematic_filetimes);
+    ensure!(problematic_filetimes.is_empty(),
+            "Incorrect same-filetime messages linked list! (FT = {:?})", problematic_filetimes);
     Ok(())
 }
 
@@ -936,15 +936,15 @@ struct DbMessageHeader {
 impl DbMessageHeader {
     fn next_header(bs: &[u8], offset: usize) -> Result<(DbMessageHeader, &[u8])> {
         const HEADER_SIZE: usize = mem::size_of::<DbMessageHeader>();
-        require!(bs.len() >= HEADER_SIZE, "Byte slice at offset {offset:#010x} is too short to fit a header!");
+        ensure!(bs.len() >= HEADER_SIZE, "Byte slice at offset {offset:#010x} is too short to fit a header!");
 
         // This is safe as all header fields can fit any byte sequence - which we ensured is long enough.
         let header = unsafe {
             let header_ptr = bs.as_ptr() as *const DbMessageHeader;
             header_ptr.as_ref().unwrap().clone()
         };
-        require!(header.magic_value_one == 1 && header.padding1 == 0 && header.padding2 == 0,
-                 "Incorrect header for message at offset {offset:#010x}: {header:?}");
+        ensure!(header.magic_value_one == 1 && header.padding1 == 0 && header.padding2 == 0,
+                "Incorrect header for message at offset {offset:#010x}: {header:?}");
 
         Ok((header, &bs[HEADER_SIZE..]))
     }
