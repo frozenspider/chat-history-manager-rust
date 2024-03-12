@@ -281,7 +281,7 @@ fn remove_duplicates(pretty_conv_name: &str, mra_msgs: Vec<DbMessage>) -> Vec<Db
     without_indices(mra_msgs, bad_indices)
 }
 
-fn sort_messages(msgs: &mut Vec<DbMessage>) -> EmptyRes {
+fn sort_messages(msgs: &mut [DbMessage]) -> EmptyRes {
     if msgs.is_empty() { return Ok(()); }
 
     msgs.sort_by_key(|m| m.header.filetime);

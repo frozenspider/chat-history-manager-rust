@@ -649,7 +649,7 @@ fn parse_regular_message(message_json: &mut MessageJson,
         Some(forwarded_from) if forwarded_from.is_null() => Some(UNKNOWN.to_owned()),
         Some(forwarded_from) => Some(as_string!(forwarded_from, json_path, "forwarded_from")),
     };
-    if let None = message_json.field_opt("reply_to_peer_id")? {
+    if message_json.field_opt("reply_to_peer_id")?.is_none() {
         // Otherwise reply_to_message_id is pointless
         regular_msg.reply_to_message_id_option = message_json.field_opt_i64("reply_to_message_id")?;
     }
@@ -923,7 +923,7 @@ fn parse_service_message(message_json: &mut MessageJson,
             ];
             for (divisor, new_period_str) in div_list {
                 if period % divisor != 0 { break; }
-                period = period / divisor;
+                period /= divisor;
                 period_str = new_period_str;
             }
 

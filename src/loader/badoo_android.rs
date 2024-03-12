@@ -91,7 +91,7 @@ impl BadooAndroidDataLoader {
         let mut cwms = vec![];
 
         let downloaded_media_path = path.join(RELATIVE_MEDIA_DIR);
-        fs::create_dir_all(&downloaded_media_path)?;
+        fs::create_dir_all(downloaded_media_path)?;
 
         let mut stmt = conn.prepare(r"
             SELECT *

@@ -357,7 +357,7 @@ impl RichTextElement {
             Val::PrefmtBlock(RtePrefmtBlock { text, .. }) |
             Val::Blockquote(RteBlockquote { text }) |
             Val::Spoiler(RteSpoiler { text }) => {
-                Some(&text)
+                Some(text)
             }
             Val::Link(RteLink { text_option, .. }) => {
                 text_option.as_deref()

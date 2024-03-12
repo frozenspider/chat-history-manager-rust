@@ -90,7 +90,7 @@ impl SqliteDao {
         let backup_path = self.backup_path();
         let now_str = Local::now().format("%Y-%m-%d_%H-%M-%S");
         let name = format!("{BACKUP_NAME_PREFIX}{now_str}{ext_suffix}");
-        let result = backup_path.join(&name);
+        let result = backup_path.join(name);
         if !result.exists() {
             Ok(result)
         } else {
@@ -1148,7 +1148,7 @@ fn copy_file(src_rel_path: &str,
 
         let dst_rel_path: String =
             if let Some(main_path) = thumbnail_dst_main_path {
-                let full_name = main_path.rsplitn(2, '/').next().unwrap();
+                let full_name = main_path.rsplit('/').next().unwrap();
                 format!("{}{full_name}_thumb{ext_suffix}", main_path.as_str().smart_slice(..-(full_name.len() as i32)))
             } else {
                 let inner_path = if subpath.use_hashing {
