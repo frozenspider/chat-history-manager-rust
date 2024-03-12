@@ -228,20 +228,23 @@ pub fn measure<T, AC, R>(block: T, after_call: AC) -> R
 // Hashing
 //
 
-// Non-cryptographic non-DDOS-safe fast hasher.
-pub type Hasher = BuildHasherDefault<FxHasher>;
+type HasherInner = FxHasher;
+
+/// Non-cryptographic non-DDOS-safe fast hasher.
+pub type Hasher = BuildHasherDefault<HasherInner>;
 
 pub fn hasher() -> Hasher {
-    BuildHasherDefault::<FxHasher>::default()
+    BuildHasherDefault::<HasherInner>::default()
 }
 
+/// Get a hash string (32 uppercase hex chars) of a file's content.
 pub fn file_hash(path: &Path) -> Result<String> {
-    // We use two hashers to produce a longer hash, thus reducing collision chance.
-    let mut hashers = [hasher().build_hasher(), hasher().build_hasher()];
-
     let file = File::open(path)?;
     let mut reader = BufReader::with_capacity(FILE_BUF_CAPACITY, file);
     let mut buffer = [0; 512];
+
+    // We use two hashers to produce a longer hash, thus reducing collision chance.
+    let mut hashers = [hasher().build_hasher(), hasher().build_hasher()];
 
     for i in [0, 1].iter().cycle() /* Can't cycle over a mutable iterator */ {
         let count = reader.read(&mut buffer)?;
