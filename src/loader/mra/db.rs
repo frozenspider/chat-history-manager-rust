@@ -32,13 +32,12 @@ pub(super) fn load_accounts_dir(
         let name = path_file_name(&path)?;
         if meta.is_dir() {
             let entry = dataset_map.entry(name.to_owned()).or_insert_with(|| MraDatasetEntry {
-                ds: Dataset { uuid: Some(PbUuid::random()), alias: name.to_owned() },
+                ds: Dataset { uuid: PbUuid::random(), alias: name.to_owned() },
                 ds_root: storage_path.to_path_buf(),
                 users: Default::default(),
                 cwms: Default::default(),
             });
-            let ds_uuid = entry.ds.uuid();
-            let conv_map = load_account(name, ds_uuid, &path, &mut entry.users)?;
+            let conv_map = load_account(name, &entry.ds.uuid, &path, &mut entry.users)?;
             result.insert(name.to_owned(), conv_map);
         } else {
             log::warn!("{} is not a directory, ignored", name);
@@ -54,7 +53,7 @@ fn load_account(
     users: &mut HashMap<String, User>,
 ) -> Result<ConversationsMap> {
     let myself = User {
-        ds_uuid: Some(ds_uuid.clone()),
+        ds_uuid: ds_uuid.clone(),
         id: *MYSELF_ID,
         first_name_option: None,
         last_name_option: None,
@@ -772,13 +771,12 @@ pub(super) fn merge_conversations(
     for (myself_username, conv_map) in convs_map {
         // Guaranteed to be present
         let entry = dataset_map.get_mut(&myself_username).unwrap();
-        let ds_uuid = entry.ds.uuid().clone();
 
         for (conv_username, (new_msgs, mut interlocutor_ids)) in conv_map {
             let cwm = entry.cwms.entry(conv_username.clone()).or_insert_with(|| {
                 ChatWithMessages {
-                    chat: Some(Chat {
-                        ds_uuid: Some(ds_uuid.clone()),
+                    chat: Chat {
+                        ds_uuid: entry.ds.uuid.clone(),
                         id: loader::hash_to_id(&conv_username),
                         name_option: Some(conv_username.clone()),
                         source_type: SourceType::Mra as i32,
@@ -787,7 +785,7 @@ pub(super) fn merge_conversations(
                         member_ids: vec![], // Will be changed later
                         msg_count: -1, // Will be changed later
                         main_chat_id: None,
-                    }),
+                    },
                     messages: vec![],
                 }
             });
@@ -796,21 +794,19 @@ pub(super) fn merge_conversations(
                            new_msgs,
                            &mut cwm.messages)?;
 
-            if let Some(chat) = cwm.chat.as_mut() {
-                interlocutor_ids.extend(chat.member_ids.iter().map(|id| UserId(*id)));
-                chat.member_ids = interlocutor_ids
-                    .into_iter()
-                    .map(|id| id.0)
-                    .sorted_by_key(|&id| if id == *MYSELF_ID { i64::MIN } else { id })
-                    .collect_vec();
+            interlocutor_ids.extend(cwm.chat.member_ids.iter().map(|id| UserId(*id)));
+            cwm.chat.member_ids = interlocutor_ids
+                .into_iter()
+                .map(|id| id.0)
+                .sorted_by_key(|&id| if id == *MYSELF_ID { i64::MIN } else { id })
+                .collect_vec();
 
-                chat.tpe = if conv_username.ends_with("@chat.agent") || chat.member_ids.len() > 2 {
-                    ChatType::PrivateGroup as i32
-                } else {
-                    ChatType::Personal as i32
-                };
-                chat.msg_count = cwm.messages.len() as i32;
-            }
+            cwm.chat.tpe = if conv_username.ends_with("@chat.agent") || cwm.chat.member_ids.len() > 2 {
+                ChatType::PrivateGroup as i32
+            } else {
+                ChatType::Personal as i32
+            };
+            cwm.chat.msg_count = cwm.messages.len() as i32;
         }
     }
 

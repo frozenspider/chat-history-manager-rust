@@ -24,8 +24,8 @@ impl<'a> DatasetDiffAnalyzer<'a> {
         s_dao: &'a dyn ChatHistoryDao,
         s_ds: &'a Dataset,
     ) -> Result<Self> {
-        let m_root = m_dao.dataset_root(m_ds.uuid())?;
-        let s_root = s_dao.dataset_root(s_ds.uuid())?;
+        let m_root = m_dao.dataset_root(&m_ds.uuid)?;
+        let s_root = s_dao.dataset_root(&s_ds.uuid)?;
         Ok(DatasetDiffAnalyzer { m_dao, m_root, s_dao, s_root })
     }
 
@@ -521,8 +521,8 @@ fn equals_with_no_mismatching_content(mm_eq: PracticalEqTuple<MasterMessage>,
             .map(|p| p.exists())
             .unwrap_or(false)
     }
-    fn photo_has_content(c: &Option<ContentPhoto>, root: &DatasetRoot) -> bool {
-        c.as_ref().and_then(|photo| photo.path_option.as_ref())
+    fn photo_has_content(photo: &ContentPhoto, root: &DatasetRoot) -> bool {
+        photo.path_option.as_ref()
             .map(|path| root.to_absolute(path).exists())
             .unwrap_or(false)
     }

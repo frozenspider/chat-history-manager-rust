@@ -93,7 +93,7 @@ fn loading_2023_10() -> EmptyRes {
     assert_eq!(myself, expected_myself(ds_uuid));
 
     let member = User {
-        ds_uuid: Some(ds_uuid.clone()),
+        ds_uuid: ds_uuid.clone(),
         id: 9017079856339592512_i64,
         first_name_option: None,
         last_name_option: None,
@@ -106,10 +106,10 @@ fn loading_2023_10() -> EmptyRes {
     assert_eq!(dao.cwms_single_ds().len(), 2);
 
     {
-        let cwm = dao.cwms_single_ds().into_iter().find(|cwm| cwm.chat.unwrap_ref().tpe == ChatType::PrivateGroup as i32).unwrap();
-        let chat = cwm.chat.unwrap_ref();
-        assert_eq!(*chat, Chat {
-            ds_uuid: Some(ds_uuid.clone()),
+        let cwm = dao.cwms_single_ds().into_iter().find(|cwm| cwm.chat.tpe == ChatType::PrivateGroup as i32).unwrap();
+        let chat = cwm.chat;
+        assert_eq!(chat, Chat {
+            ds_uuid: ds_uuid.clone(),
             id: 15668065017168951_i64,
             name_option: Some("My Group".to_owned()),
             source_type: SourceType::WhatsappDb as i32,
@@ -159,10 +159,10 @@ fn loading_2023_10() -> EmptyRes {
     }
 
     {
-        let cwm = dao.cwms_single_ds().into_iter().find(|cwm| cwm.chat.unwrap_ref().tpe == ChatType::Personal as i32).unwrap();
-        let chat = cwm.chat.unwrap_ref();
-        assert_eq!(*chat, Chat {
-            ds_uuid: Some(ds_uuid.clone()),
+        let cwm = dao.cwms_single_ds().into_iter().find(|cwm| cwm.chat.tpe == ChatType::Personal as i32).unwrap();
+        let chat = cwm.chat;
+        assert_eq!(chat, Chat {
+            ds_uuid: ds_uuid.clone(),
             id: member.id,
             name_option: Some("+11111".to_owned()),
             source_type: SourceType::WhatsappDb as i32,
@@ -225,7 +225,7 @@ fn loading_2023_10() -> EmptyRes {
 
 fn expected_myself(ds_uuid: &PbUuid) -> User {
     User {
-        ds_uuid: Some(ds_uuid.clone()),
+        ds_uuid: ds_uuid.clone(),
         id: 1_i64,
         first_name_option: Some("Aaaaa Aaaaaaaaaaa".to_owned()),
         last_name_option: None,

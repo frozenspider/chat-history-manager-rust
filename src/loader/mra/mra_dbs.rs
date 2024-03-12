@@ -187,7 +187,7 @@ pub(super) fn collect_datasets(
         result.entry(myself_username.clone()).or_insert_with(|| {
             let ds_uuid = PbUuid::random();
             let myself = User {
-                ds_uuid: Some(ds_uuid.clone()),
+                ds_uuid: ds_uuid.clone(),
                 id: *MYSELF_ID,
                 first_name_option: None,
                 last_name_option: None,
@@ -195,7 +195,7 @@ pub(super) fn collect_datasets(
                 phone_number_option: None,
             };
             MraDatasetEntry {
-                ds: Dataset { uuid: Some(ds_uuid), alias: myself_username.clone() },
+                ds: Dataset { uuid: ds_uuid, alias: myself_username.clone() },
                 ds_root: storage_path.to_path_buf(),
                 users: HashMap::from([(myself_username.clone(), myself)]),
                 cwms: HashMap::new(),
@@ -244,13 +244,13 @@ pub(super) fn collect_datasets(
     for (mra_msg, dataset_key, from_username) in msgs_with_context.into_iter().rev() {
         let entry = result.get_mut(&dataset_key).unwrap();
 
-        upsert_user(&mut entry.users, entry.ds.uuid(), &from_username, Some(mra_msg.author.to_utf8()));
+        upsert_user(&mut entry.users, &entry.ds.uuid, &from_username, Some(mra_msg.author.to_utf8()));
 
         let tpe = mra_msg.get_tpe()?;
         match tpe {
             MraMessageType::ConferenceUsersChange =>
                 collect_users_from_conference_user_changed_record(
-                    &mut entry.users, entry.ds.uuid(), &from_username, mra_msg, mra_msg.payload)?,
+                    &mut entry.users, &entry.ds.uuid, &from_username, mra_msg, mra_msg.payload)?,
             _ => { /* NOOP */ }
         }
     }
@@ -307,7 +307,7 @@ pub(super) fn convert_messages(
         };
 
         entry.cwms.insert(conv_username.clone(), ChatWithMessages {
-            chat: Some(Chat {
+            chat: Chat {
                 ds_uuid: entry.ds.uuid.clone(),
                 id: loader::hash_to_id(&conv_username),
                 name_option: Some(conv_username), // Will be changed later
@@ -317,7 +317,7 @@ pub(super) fn convert_messages(
                 member_ids,
                 msg_count: msgs.len() as i32,
                 main_chat_id: None,
-            }),
+            },
             messages: msgs,
         });
     }

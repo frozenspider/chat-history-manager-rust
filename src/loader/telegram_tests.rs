@@ -35,7 +35,7 @@ fn loading_2020_01() -> EmptyRes {
     let expected_users = vec![
         myself.clone(),
         User {
-            ds_uuid: Some(ds_uuid.clone()),
+            ds_uuid: ds_uuid.clone(),
             id: 22222222,
             first_name_option: Some("Wwwwww".to_owned()),
             last_name_option: Some("Www".to_owned()),
@@ -44,7 +44,7 @@ fn loading_2020_01() -> EmptyRes {
         },
         member.to_user(ds_uuid),
         User {
-            ds_uuid: Some(ds_uuid.clone()),
+            ds_uuid: ds_uuid.clone(),
             id: 44444444,
             first_name_option: Some("Eeeee".to_owned()),
             last_name_option: Some("Eeeeeeeeee".to_owned()),
@@ -54,7 +54,7 @@ fn loading_2020_01() -> EmptyRes {
         ShortUser::new_name_str(UserId(310242343), "Vlllllll").to_user(ds_uuid),
         ShortUser::new_name_str(UserId(333333333), "Ddddddd Uuuuuuuu").to_user(ds_uuid),
         User {
-            ds_uuid: Some(ds_uuid.clone()),
+            ds_uuid: ds_uuid.clone(),
             id: 555555555,
             first_name_option: Some("Nnnnnnn".to_owned()),
             last_name_option: None,
@@ -63,7 +63,7 @@ fn loading_2020_01() -> EmptyRes {
         },
         ShortUser::new_name_str(UserId(666666666), "Iiiii Kkkkkkkkkk").to_user(ds_uuid),
         User {
-            ds_uuid: Some(ds_uuid.clone()),
+            ds_uuid: ds_uuid.clone(),
             id: 777777777,
             first_name_option: Some("Vvvvv".to_owned()),
             last_name_option: Some("Vvvvvvvvv".to_owned()),
@@ -80,11 +80,11 @@ fn loading_2020_01() -> EmptyRes {
     // "Ordered" chat
     {
         let cwm = dao.cwms_single_ds().into_iter()
-            .find(|c| c.chat.unwrap_ref().id == 4321012345)
+            .find(|c| c.chat.id == 4321012345)
             .unwrap();
-        let chat = cwm.chat.unwrap_ref();
-        assert_eq!(*chat, Chat {
-            ds_uuid: Some(ds_uuid.clone()),
+        let chat = cwm.chat;
+        assert_eq!(chat, Chat {
+            ds_uuid: ds_uuid.clone(),
             id: 4321012345,
             name_option: None,
             source_type: SourceType::Telegram as i32,
@@ -137,7 +137,7 @@ fn loading_2021_05() -> EmptyRes {
     let service_member =
         ShortUser::new_name_str(UserId(8112233), "My Old Group").to_user(ds_uuid);
     let member1 = User {
-        ds_uuid: Some(ds_uuid.clone()),
+        ds_uuid: ds_uuid.clone(),
         id: 22222222,
         first_name_option: Some("Wwwwww".to_owned()),
         last_name_option: Some("Www".to_owned()),
@@ -145,7 +145,7 @@ fn loading_2021_05() -> EmptyRes {
         phone_number_option: Some("+998 90 9998877".to_owned()), // Taken from contacts list
     };
     let member2 = User {
-        ds_uuid: Some(ds_uuid.clone()),
+        ds_uuid: ds_uuid.clone(),
         id: 44444444,
         first_name_option: Some("Eeeee".to_owned()),
         last_name_option: Some("Eeeeeeeeee".to_owned()),
@@ -161,11 +161,11 @@ fn loading_2021_05() -> EmptyRes {
     {
         // Chat ID is shifted by 2^33
         let cwm = dao.cwms_single_ds().into_iter()
-            .find(|c| c.chat.unwrap_ref().id == 123123123 + GROUP_CHAT_ID_SHIFT)
+            .find(|c| c.chat.id == 123123123 + GROUP_CHAT_ID_SHIFT)
             .unwrap();
-        let chat = cwm.chat.unwrap_ref();
-        assert_eq!(*chat, Chat {
-            ds_uuid: Some(ds_uuid.clone()),
+        let chat = cwm.chat;
+        assert_eq!(chat, Chat {
+            ds_uuid: ds_uuid.clone(),
             id: 123123123 + GROUP_CHAT_ID_SHIFT,
             name_option: Some("My Group".to_owned()),
             source_type: SourceType::Telegram as i32,
@@ -222,12 +222,12 @@ fn loading_2021_06_supergroup() -> EmptyRes {
     {
         // Chat ID is shifted by 2^33
         let cwm = dao.cwms_single_ds().into_iter()
-            .find(|c| c.chat.unwrap_ref().id == 1234567890 + GROUP_CHAT_ID_SHIFT)
+            .find(|c| c.chat.id == 1234567890 + GROUP_CHAT_ID_SHIFT)
             .unwrap();
-        let chat = cwm.chat.unwrap_ref();
+        let chat = cwm.chat;
         // All users are taken from chat itself
-        assert_eq!(*chat, Chat {
-            ds_uuid: Some(ds_uuid.clone()),
+        assert_eq!(chat, Chat {
+            ds_uuid: ds_uuid.clone(),
             id: 1234567890 + GROUP_CHAT_ID_SHIFT,
             name_option: Some("My Supergroup".to_owned()),
             source_type: SourceType::Telegram as i32,
@@ -333,7 +333,7 @@ fn loading_2021_07() -> EmptyRes {
     assert_eq!(myself, expected_myself(ds_uuid));
 
     let member = User {
-        ds_uuid: Some(ds_uuid.clone()),
+        ds_uuid: ds_uuid.clone(),
         id: 44444444,
         first_name_option: Some("Eeeee".to_owned()),
         last_name_option: Some("Eeeeeeeeee".to_owned()),
@@ -349,11 +349,11 @@ fn loading_2021_07() -> EmptyRes {
     {
         // Chat ID is shifted by 2^33
         let cwm = dao.cwms_single_ds().into_iter()
-            .find(|c| c.chat.unwrap_ref().id == 123123123 + GROUP_CHAT_ID_SHIFT)
+            .find(|c| c.chat.id == 123123123 + GROUP_CHAT_ID_SHIFT)
             .unwrap();
-        let chat = cwm.chat.unwrap_ref();
-        assert_eq!(*chat, Chat {
-            ds_uuid: Some(ds_uuid.clone()),
+        let chat = cwm.chat;
+        assert_eq!(chat, Chat {
+            ds_uuid: ds_uuid.clone(),
             id: 123123123 + GROUP_CHAT_ID_SHIFT,
             name_option: Some("My Group".to_owned()),
             source_type: SourceType::Telegram as i32,
@@ -409,7 +409,7 @@ fn loading_2023_01() -> EmptyRes {
     assert_eq!(myself, expected_myself(ds_uuid));
 
     let member = User {
-        ds_uuid: Some(ds_uuid.clone()),
+        ds_uuid: ds_uuid.clone(),
         id: 44444444,
         first_name_option: Some("Eeeee".to_owned()),
         last_name_option: Some("Eeeeeeeeee".to_owned()),
@@ -417,7 +417,7 @@ fn loading_2023_01() -> EmptyRes {
         phone_number_option: Some("+7 999 333 44 55".to_owned()), // Taken from contacts list
     };
     let channel_user = User {
-        ds_uuid: Some(ds_uuid.clone()),
+        ds_uuid: ds_uuid.clone(),
         id: 123123123,
         first_name_option: Some("My Group".to_owned()),
         last_name_option: None,
@@ -433,11 +433,11 @@ fn loading_2023_01() -> EmptyRes {
     {
         // Chat ID is shifted by 2^33
         let cwm = dao.cwms_single_ds().into_iter()
-            .find(|c| c.chat.unwrap_ref().id == 123123123 + GROUP_CHAT_ID_SHIFT)
+            .find(|c| c.chat.id == 123123123 + GROUP_CHAT_ID_SHIFT)
             .unwrap();
-        let chat = cwm.chat.unwrap_ref();
-        assert_eq!(*chat, Chat {
-            ds_uuid: Some(ds_uuid.clone()),
+        let chat = cwm.chat;
+        assert_eq!(chat, Chat {
+            ds_uuid: ds_uuid.clone(),
             id: 123123123 + GROUP_CHAT_ID_SHIFT,
             name_option: Some("My Group".to_owned()),
             source_type: SourceType::Telegram as i32,
@@ -537,12 +537,12 @@ fn loading_2023_01() -> EmptyRes {
             text: vec![],
             searchable_string: "".to_owned(),
             typed: Some(message_service!(SuggestProfilePhoto(MessageServiceSuggestProfilePhoto {
-                photo: Some(ContentPhoto {
+                photo: ContentPhoto {
                     path_option: None,
                     width: 640,
                     height: 640,
                     is_one_time: false,
-                })
+                }
             }))),
         });
     };
@@ -562,7 +562,7 @@ fn loading_2023_08() -> EmptyRes {
     assert_eq!(myself, expected_myself(ds_uuid));
 
     let unnamed_user = User {
-        ds_uuid: Some(ds_uuid.clone()),
+        ds_uuid: ds_uuid.clone(),
         id: 5555555555 - USER_ID_SHIFT,
         first_name_option: None,
         last_name_option: None,
@@ -578,11 +578,11 @@ fn loading_2023_08() -> EmptyRes {
     {
         // Chat ID is shifted by 2^33
         let cwm = dao.cwms_single_ds().into_iter()
-            .find(|c| c.chat.unwrap_ref().id == 123123123 + GROUP_CHAT_ID_SHIFT)
+            .find(|c| c.chat.id == 123123123 + GROUP_CHAT_ID_SHIFT)
             .unwrap();
-        let chat = cwm.chat.unwrap_ref();
-        assert_eq!(*chat, Chat {
-            ds_uuid: Some(ds_uuid.clone()),
+        let chat = cwm.chat;
+        assert_eq!(chat, Chat {
+            ds_uuid: ds_uuid.clone(),
             id: 123123123 + GROUP_CHAT_ID_SHIFT,
             name_option: Some("My Group".to_owned()),
             source_type: SourceType::Telegram as i32,
@@ -647,7 +647,7 @@ fn loading_2023_10_audio_video() -> EmptyRes {
     assert_eq!(myself, expected_myself(ds_uuid));
 
     let unnamed_user = User {
-        ds_uuid: Some(ds_uuid.clone()),
+        ds_uuid: ds_uuid.clone(),
         id: 5555555555 - USER_ID_SHIFT,
         first_name_option: None,
         last_name_option: None,
@@ -663,11 +663,11 @@ fn loading_2023_10_audio_video() -> EmptyRes {
     {
         // Chat ID is shifted by 2^33
         let cwm = dao.cwms_single_ds().into_iter()
-            .find(|c| c.chat.unwrap_ref().id == 123123123 + GROUP_CHAT_ID_SHIFT)
+            .find(|c| c.chat.id == 123123123 + GROUP_CHAT_ID_SHIFT)
             .unwrap();
-        let chat = cwm.chat.unwrap_ref();
-        assert_eq!(*chat, Chat {
-            ds_uuid: Some(ds_uuid.clone()),
+        let chat = cwm.chat;
+        assert_eq!(chat, Chat {
+            ds_uuid: ds_uuid.clone(),
             id: 123123123 + GROUP_CHAT_ID_SHIFT,
             name_option: Some("My Group".to_owned()),
             source_type: SourceType::Telegram as i32,
@@ -918,7 +918,7 @@ fn inline_bot_buttons() -> EmptyRes {
 
 fn expected_myself(ds_uuid: &PbUuid) -> User {
     User {
-        ds_uuid: Some(ds_uuid.clone()),
+        ds_uuid: ds_uuid.clone(),
         id: 11111111,
         first_name_option: Some("Aaaaa".to_owned()),
         last_name_option: Some("Aaaaaaaaaaa".to_owned()),

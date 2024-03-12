@@ -15,9 +15,6 @@ macro_rules! with_dao_by_key {
     };
 }
 
-macro_rules! uuid_from_req { ($req:ident) => { from_req!($req.ds_uuid) }; }
-macro_rules! chat_from_req { ($req:ident) => { from_req!($req.chat) }; }
-
 #[tonic::async_trait]
 impl HistoryDaoService for Arc<Mutex<ChatHistoryManagerServer>> {
     async fn save_as(&self, req: Request<SaveAsRequest>) -> TonicResult<LoadedFile> {
@@ -38,7 +35,7 @@ impl HistoryDaoService for Arc<Mutex<ChatHistoryManagerServer>> {
             }
             let new_db_file = new_storage_path.join(SqliteDao::FILENAME);
             let sqlite_dao = SqliteDao::create(&new_db_file)?;
-            sqlite_dao.copy_datasets_from(dao, &dao.datasets()?.into_iter().map(|ds| ds.uuid.unwrap()).collect_vec())?;
+            sqlite_dao.copy_datasets_from(dao, &dao.datasets()?.into_iter().map(|ds| ds.uuid).collect_vec())?;
             new_key =  path_to_str(&new_db_file)?.to_owned();
             let name = sqlite_dao.name().to_owned();
             new_dao = Some(DaoRefCell::new(Box::new(sqlite_dao)));
@@ -78,27 +75,27 @@ impl HistoryDaoService for Arc<Mutex<ChatHistoryManagerServer>> {
     async fn dataset_root(&self, req: Request<DatasetRootRequest>) -> TonicResult<DatasetRootResponse> {
         with_dao_by_key!(self, req, dao, {
             Ok(DatasetRootResponse {
-                path: dao.dataset_root(uuid_from_req!(req))?.0.to_str().unwrap().to_owned()
+                path: dao.dataset_root(&req.ds_uuid)?.0.to_str().unwrap().to_owned()
             })
         })
     }
 
     async fn myself(&self, req: Request<MyselfRequest>) -> TonicResult<MyselfResponse> {
         with_dao_by_key!(self, req, dao, {
-            Ok(MyselfResponse { myself: Some(dao.myself(uuid_from_req!(req))?) })
+            Ok(MyselfResponse { myself: dao.myself(&req.ds_uuid)? })
         })
     }
 
     async fn users(&self, req: Request<UsersRequest>) -> TonicResult<UsersResponse> {
         with_dao_by_key!(self, req, dao, {
-            Ok(UsersResponse { users: dao.users(uuid_from_req!(req))? })
+            Ok(UsersResponse { users: dao.users(&req.ds_uuid)? })
         })
     }
 
     async fn chats(&self, req: Request<ChatsRequest>) -> TonicResult<ChatsResponse> {
         with_dao_by_key!(self, req, dao, {
             Ok(ChatsResponse {
-                cwds: dao.chats(uuid_from_req!(req))?
+                cwds: dao.chats(&req.ds_uuid)?
                     .into_iter()
                     .map(|cwd| cwd.into())
                     .collect_vec()
@@ -109,7 +106,7 @@ impl HistoryDaoService for Arc<Mutex<ChatHistoryManagerServer>> {
     async fn scroll_messages(&self, req: Request<ScrollMessagesRequest>) -> TonicResult<MessagesResponse> {
         with_dao_by_key!(self, req, dao, {
             Ok(MessagesResponse {
-                messages: dao.scroll_messages(chat_from_req!(req), req.offset as usize, req.limit as usize)?
+                messages: dao.scroll_messages(&req.chat, req.offset as usize, req.limit as usize)?
             })
         })
     }
@@ -117,7 +114,7 @@ impl HistoryDaoService for Arc<Mutex<ChatHistoryManagerServer>> {
     async fn last_messages(&self, req: Request<LastMessagesRequest>) -> TonicResult<MessagesResponse> {
         with_dao_by_key!(self, req, dao, {
             Ok(MessagesResponse {
-                messages: dao.last_messages(chat_from_req!(req), req.limit as usize)?
+                messages: dao.last_messages(&req.chat, req.limit as usize)?
             })
         })
     }
@@ -125,7 +122,7 @@ impl HistoryDaoService for Arc<Mutex<ChatHistoryManagerServer>> {
     async fn messages_before(&self, req: Request<MessagesBeforeRequest>) -> TonicResult<MessagesResponse> {
         with_dao_by_key!(self, req, dao, {
             Ok(MessagesResponse {
-                messages: dao.messages_before(chat_from_req!(req),
+                messages: dao.messages_before(&req.chat,
                                               MessageInternalId(req.message_internal_id),
                                               req.limit as usize)?
             })
@@ -135,7 +132,7 @@ impl HistoryDaoService for Arc<Mutex<ChatHistoryManagerServer>> {
     async fn messages_after(&self, req: Request<MessagesAfterRequest>) -> TonicResult<MessagesResponse> {
         with_dao_by_key!(self, req, dao, {
             Ok(MessagesResponse {
-                messages: dao.messages_after(chat_from_req!(req),
+                messages: dao.messages_after(&req.chat,
                                              MessageInternalId(req.message_internal_id),
                                              req.limit as usize)?
             })
@@ -145,7 +142,7 @@ impl HistoryDaoService for Arc<Mutex<ChatHistoryManagerServer>> {
     async fn messages_slice(&self, req: Request<MessagesSliceRequest>) -> TonicResult<MessagesResponse> {
         with_dao_by_key!(self, req, dao, {
             Ok(MessagesResponse {
-                messages: dao.messages_slice(chat_from_req!(req),
+                messages: dao.messages_slice(&req.chat,
                                              MessageInternalId(req.message_internal_id_1),
                                              MessageInternalId(req.message_internal_id_2))?
             })
@@ -155,7 +152,7 @@ impl HistoryDaoService for Arc<Mutex<ChatHistoryManagerServer>> {
     async fn messages_abbreviated_slice(&self, req: Request<MessagesAbbreviatedSliceRequest>) -> TonicResult<MessagesAbbreviatedSliceResponse> {
         with_dao_by_key!(self, req, dao, {
             let (left_messages, in_between, right_messages) =
-                dao.messages_abbreviated_slice(chat_from_req!(req),
+                dao.messages_abbreviated_slice(&req.chat,
                                                MessageInternalId(req.message_internal_id_1),
                                                MessageInternalId(req.message_internal_id_2),
                                                req.combined_limit as usize,
@@ -167,7 +164,7 @@ impl HistoryDaoService for Arc<Mutex<ChatHistoryManagerServer>> {
     async fn messages_slice_len(&self, req: Request<MessagesSliceRequest>) -> TonicResult<CountMessagesResponse> {
         with_dao_by_key!(self, req, dao, {
             Ok(CountMessagesResponse {
-                messages_count: dao.messages_slice_len(chat_from_req!(req),
+                messages_count: dao.messages_slice_len(&req.chat,
                                                        MessageInternalId(req.message_internal_id_1),
                                                        MessageInternalId(req.message_internal_id_2))? as i32
             })
@@ -177,7 +174,7 @@ impl HistoryDaoService for Arc<Mutex<ChatHistoryManagerServer>> {
     async fn message_option(&self, req: Request<MessageOptionRequest>) -> TonicResult<MessageOptionResponse> {
         with_dao_by_key!(self, req, dao, {
             Ok(MessageOptionResponse {
-                message: dao.message_option(chat_from_req!(req), MessageSourceId(req.source_id))?
+                message: dao.message_option(&req.chat, MessageSourceId(req.source_id))?
             })
         })
     }
@@ -206,15 +203,15 @@ impl HistoryDaoService for Arc<Mutex<ChatHistoryManagerServer>> {
 
     async fn update_dataset(&self, req: Request<UpdateDatasetRequest>) -> TonicResult<UpdateDatasetResponse> {
         with_dao_by_key!(self, req, dao, {
-            let ds = req.dataset.as_ref().context("Dataset was empty!")?.clone();
-            let ds = dao.as_mutable()?.update_dataset(ds.uuid().clone(), ds)?;
-            Ok(UpdateDatasetResponse { dataset: Some(ds) })
+            let dataset = req.dataset.clone();
+            let dataset = dao.as_mutable()?.update_dataset(dataset.uuid.clone(), dataset)?;
+            Ok(UpdateDatasetResponse { dataset })
         })
     }
 
     async fn delete_dataset(&self, req: Request<DeleteDatasetRequest>) -> TonicResult<Empty> {
         with_dao_by_key!(self, req, dao, {
-            let uuid = req.uuid.as_ref().context("Dataset was empty!")?.clone();
+            let uuid = req.uuid.clone();
             dao.as_mutable()?.delete_dataset(uuid)?;
             Ok(Empty {})
         })
@@ -222,7 +219,7 @@ impl HistoryDaoService for Arc<Mutex<ChatHistoryManagerServer>> {
 
     async fn shift_dataset_time(&self, req: Request<ShiftDatasetTimeRequest>) -> TonicResult<Empty> {
         with_dao_by_key!(self, req, dao, {
-            let uuid = req.uuid.as_ref().context("Dataset was empty!")?.clone();
+            let uuid = req.uuid.clone();
             dao.as_shiftable()?.shift_dataset_time(&uuid, req.hours_shift)?;
             Ok(Empty {})
         })
@@ -230,25 +227,25 @@ impl HistoryDaoService for Arc<Mutex<ChatHistoryManagerServer>> {
 
     async fn update_user(&self, req: Request<UpdateUserRequest>) -> TonicResult<UpdateUserResponse> {
         with_dao_by_key!(self, req, dao, {
-            let user = req.user.as_ref().context("User was empty!")?.clone();
+            let user = req.user.clone();
             let user = dao.as_mutable()?.update_user(user.id(), user)?;
-            Ok(UpdateUserResponse { user: Some(user) })
+            Ok(UpdateUserResponse { user })
         })
     }
 
     async fn update_chat(&self, req: Request<UpdateChatRequest>) -> TonicResult<UpdateChatResponse> {
         with_dao_by_key!(self, req, dao, {
-            let uuid = req.uuid.as_ref().context("Dataset was empty!")?.clone();
+            let uuid = req.uuid.clone();
             let old_cwd = dao.chat_option(&uuid, req.old_id)?.context("Chat not found")?;
             let chat = Chat { id: req.new_id, ..old_cwd.chat };
             let chat = dao.as_mutable()?.update_chat(ChatId(req.old_id), chat)?;
-            Ok(UpdateChatResponse { chat: Some(chat) })
+            Ok(UpdateChatResponse { chat })
         })
     }
 
     async fn delete_chat(&self, req: Request<DeleteChatRequest>) -> TonicResult<Empty> {
         with_dao_by_key!(self, req, dao, {
-            let chat = req.chat.as_ref().context("Chat was empty!")?.clone();
+            let chat = req.chat.clone();
             dao.as_mutable()?.delete_chat(chat)?;
             Ok(Empty {})
         })
@@ -256,8 +253,8 @@ impl HistoryDaoService for Arc<Mutex<ChatHistoryManagerServer>> {
 
     async fn combine_chats(&self, req: Request<CombineChatsRequest>) -> TonicResult<Empty> {
         with_dao_by_key!(self, req, dao, {
-            let master_chat = req.master_chat.as_ref().context("Master chat was empty!")?.clone();
-            let slave_chat = req.slave_chat.as_ref().context("Master chat was empty!")?.clone();
+            let master_chat = req.master_chat.clone();
+            let slave_chat = req.slave_chat.clone();
             dao.as_mutable()?.combine_chats(master_chat, slave_chat)?;
             Ok(Empty {})
         })

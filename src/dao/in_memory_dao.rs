@@ -46,8 +46,8 @@ impl InMemoryDao {
         for DatasetEntry { ds, ds_root, myself_id, users, cwms } in data {
             assert!(users.iter().any(|u| u.id() == myself_id));
             assert!(users.iter().all(|u| u.ds_uuid == ds.uuid));
-            assert!(cwms.iter().all(|cwm| cwm.chat.as_ref().unwrap().ds_uuid == ds.uuid));
-            let ds_uuid = ds.uuid().clone();
+            assert!(cwms.iter().all(|cwm| cwm.chat.ds_uuid == ds.uuid));
+            let ds_uuid = ds.uuid.clone();
             cache_inner.datasets.push(ds);
             cache_inner.users.insert(ds_uuid.clone(), UserCacheForDataset {
                 myself_id,
@@ -64,10 +64,10 @@ impl InMemoryDao {
     }
 
     fn chat_members(&self, chat: &Chat) -> Result<Vec<User>> {
-        let me = self.myself(chat.ds_uuid())?;
+        let me = self.myself(&chat.ds_uuid)?;
         let mut members = chat.member_ids.iter()
             .filter(|&id| *id != me.id)
-            .map(|id| self.user_option(chat.ds_uuid(), *id)
+            .map(|id| self.user_option(&chat.ds_uuid, *id)
                 .unwrap()
                 .unwrap_or_else(|| panic!("No member with id {id} found for chat {}", chat.qualified_name())))
             .sorted_by_key(|u| u.id)
@@ -78,7 +78,7 @@ impl InMemoryDao {
 
     fn cwm_option(&self, ds_uuid: &PbUuid, id: i64) -> Option<&ChatWithMessages> {
         self.cwms[ds_uuid].iter()
-            .find(|cwm| cwm.chat.iter().any(|c| c.id == id))
+            .find(|cwm| cwm.chat.id == id)
     }
 
     fn messages_option(&self, ds_uuid: &PbUuid, chat_id: i64) -> Option<&Vec<Message>> {
@@ -87,15 +87,15 @@ impl InMemoryDao {
 
     fn cwm_to_cwd(&self, cwm: &ChatWithMessages) -> ChatWithDetails {
         ChatWithDetails {
-            chat: cwm.chat.clone().unwrap(),
+            chat: cwm.chat.clone(),
             last_msg_option: cwm.messages.last().cloned(),
-            members: self.chat_members(cwm.chat.as_ref().unwrap()).unwrap(),
+            members: self.chat_members(&cwm.chat).unwrap(),
         }
     }
 
     pub fn remove_orphan_users(&mut self) {
         let member_ids: HashSet<_> =
-            self.cwms.values().flatten().flat_map(|cwm| &cwm.chat.as_ref().unwrap().member_ids).collect();
+            self.cwms.values().flatten().flat_map(|cwm| &cwm.chat.member_ids).collect();
 
         let mut num_removed = 0;
         let mut cache = self.cache.inner.borrow_mut();
@@ -146,13 +146,13 @@ impl ChatHistoryDao for InMemoryDao {
     }
 
     fn scroll_messages(&self, chat: &Chat, offset: usize, limit: usize) -> Result<Vec<Message>> {
-        Ok(self.messages_option(chat.ds_uuid(), chat.id)
+        Ok(self.messages_option(&chat.ds_uuid, chat.id)
             .map(|msgs| cutout(msgs, offset, offset + limit))
             .unwrap_or_default())
     }
 
     fn last_messages(&self, chat: &Chat, limit: usize) -> Result<Vec<Message>> {
-        Ok(self.messages_option(chat.ds_uuid(), chat.id)
+        Ok(self.messages_option(&chat.ds_uuid, chat.id)
             .map(|msgs| {
                 cutout(msgs, subtract_or_zero!(msgs.len(), limit), msgs.len()).to_vec()
             })
@@ -160,7 +160,7 @@ impl ChatHistoryDao for InMemoryDao {
     }
 
     fn messages_before_impl(&self, chat: &Chat, msg_id: MessageInternalId, limit: usize) -> Result<Vec<Message>> {
-        let msgs = self.messages_option(chat.ds_uuid(), chat.id).unwrap();
+        let msgs = self.messages_option(&chat.ds_uuid, chat.id).unwrap();
         let idx = msgs.iter().rposition(|m| m.internal_id == *msg_id);
         match idx {
             None => err!("Message not found!"),
@@ -171,7 +171,7 @@ impl ChatHistoryDao for InMemoryDao {
     }
 
     fn messages_after_impl(&self, chat: &Chat, msg_id: MessageInternalId, limit: usize) -> Result<Vec<Message>> {
-        let msgs = self.messages_option(chat.ds_uuid(), chat.id).unwrap();
+        let msgs = self.messages_option(&chat.ds_uuid, chat.id).unwrap();
         let idx = msgs.iter().position(|m| m.internal_id == *msg_id);
         match idx {
             None => err!("Message not found!"),
@@ -183,7 +183,7 @@ impl ChatHistoryDao for InMemoryDao {
     }
 
     fn messages_slice(&self, chat: &Chat, msg1_id: MessageInternalId, msg2_id: MessageInternalId) -> Result<Vec<Message>> {
-        let msgs = self.messages_option(chat.ds_uuid(), chat.id).unwrap();
+        let msgs = self.messages_option(&chat.ds_uuid, chat.id).unwrap();
         let idx1 = msgs.iter().position(|m| m.internal_id == *msg1_id);
         let idx2 = msgs.iter().rposition(|m| m.internal_id == *msg2_id);
         match (idx1, idx2) {
@@ -200,7 +200,7 @@ impl ChatHistoryDao for InMemoryDao {
                                         msg2_id: MessageInternalId,
                                         combined_limit: usize,
                                         abbreviated_limit: usize) -> Result<(Vec<Message>, usize, Vec<Message>)> {
-        let msgs = self.messages_option(chat.ds_uuid(), chat.id).unwrap();
+        let msgs = self.messages_option(&chat.ds_uuid, chat.id).unwrap();
         let idx1 = msgs.iter().position(|m| m.internal_id == *msg1_id);
         let idx2 = msgs.iter().rposition(|m| m.internal_id == *msg2_id);
         match (idx1, idx2) {
@@ -226,7 +226,7 @@ impl ChatHistoryDao for InMemoryDao {
 
     fn messages_around_date(&self, chat: &Chat, date_ts: Timestamp, limit: usize)
                             -> Result<(Vec<Message>, Vec<Message>)> {
-        let messages = self.messages_option(chat.ds_uuid(), chat.id).unwrap();
+        let messages = self.messages_option(&chat.ds_uuid, chat.id).unwrap();
         let idx = messages.iter().position(|m| m.timestamp >= *date_ts);
         Ok(match idx {
             None => {
@@ -242,7 +242,7 @@ impl ChatHistoryDao for InMemoryDao {
     }
 
     fn message_option(&self, chat: &Chat, source_id: MessageSourceId) -> Result<Option<Message>> {
-        Ok(self.messages_option(chat.ds_uuid(), chat.id).unwrap()
+        Ok(self.messages_option(&chat.ds_uuid, chat.id).unwrap()
             .iter().find(|m| m.source_id_option.iter().contains(&*source_id)).cloned())
     }
 
@@ -265,10 +265,10 @@ impl MutableChatHistoryDao for InMemoryDao {
     }
 
     fn update_dataset(&mut self, old_uuid: PbUuid, ds: Dataset) -> Result<Dataset> {
-        require!(&old_uuid == ds.uuid(), "Changing dataset UUID is not supported");
+        require!(old_uuid == ds.uuid, "Changing dataset UUID is not supported");
 
         let mut cache = self.cache.inner.borrow_mut();
-        if let Some(old_ds) = cache.datasets.iter_mut().find(|ds| ds.uuid() == &old_uuid) {
+        if let Some(old_ds) = cache.datasets.iter_mut().find(|ds| ds.uuid == old_uuid) {
             *old_ds = ds;
             Ok(old_ds.clone())
         } else {
@@ -278,7 +278,7 @@ impl MutableChatHistoryDao for InMemoryDao {
 
     fn delete_dataset(&mut self, uuid: PbUuid) -> EmptyRes {
         let mut cache = self.cache.inner.borrow_mut();
-        if let Some(ds_idx) = cache.datasets.iter().position(|ds| ds.uuid() == &uuid) {
+        if let Some(ds_idx) = cache.datasets.iter().position(|ds| ds.uuid == uuid) {
             cache.datasets.remove(ds_idx);
             cache.users.remove(&uuid);
             self.ds_roots.remove(&uuid);
@@ -306,10 +306,9 @@ impl MutableChatHistoryDao for InMemoryDao {
     }
 
     fn delete_chat(&mut self, chat: Chat) -> EmptyRes {
-        let ds_uuid = chat.ds_uuid();
         let chat_id = chat.id;
-        if let Some(cwms) = self.cwms.get_mut(ds_uuid) {
-            if let Some(idx) = cwms.iter().position(|cwm| cwm.chat.as_ref().unwrap().id == chat_id) {
+        if let Some(cwms) = self.cwms.get_mut(&chat.ds_uuid) {
+            if let Some(idx) = cwms.iter().position(|cwm| cwm.chat.id == chat_id) {
                 cwms.remove(idx);
                 self.remove_orphan_users();
                 Ok(())
@@ -317,7 +316,7 @@ impl MutableChatHistoryDao for InMemoryDao {
                 err!("Chat with ID {} not found", chat_id)
             }
         } else {
-            err!("Dataset with UUID {} not found", ds_uuid.value)
+            err!("Dataset with UUID {} not found", chat.ds_uuid.value)
         }
     }
 

@@ -35,7 +35,7 @@ fn loading_2023_12() -> EmptyRes {
     assert_eq!(myself, expected_myself(ds_uuid));
 
     let member = User {
-        ds_uuid: Some(ds_uuid.clone()),
+        ds_uuid: ds_uuid.clone(),
         id: 1234567890_i64,
         first_name_option: Some("Abcde".to_owned()),
         last_name_option: None,
@@ -49,9 +49,9 @@ fn loading_2023_12() -> EmptyRes {
 
     {
         let cwm = dao.cwms_single_ds().remove(0);
-        let chat = cwm.chat.unwrap_ref();
-        assert_eq!(*chat, Chat {
-            ds_uuid: Some(ds_uuid.clone()),
+        let chat = cwm.chat;
+        assert_eq!(chat, Chat {
+            ds_uuid: ds_uuid.clone(),
             id: member.id,
             name_option: Some("Abcde".to_owned()),
             source_type: SourceType::BadooDb as i32,
@@ -130,7 +130,7 @@ fn loading_2023_12() -> EmptyRes {
 
 fn expected_myself(ds_uuid: &PbUuid) -> User {
     User {
-        ds_uuid: Some(ds_uuid.clone()),
+        ds_uuid: ds_uuid.clone(),
         id: 1_i64,
         first_name_option: Some("Me".to_owned()),
         last_name_option: None,

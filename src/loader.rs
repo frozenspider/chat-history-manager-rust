@@ -48,7 +48,7 @@ trait DataLoader {
         measure(|| {
             let now_str = Local::now().format("%Y-%m-%d");
             let ds = Dataset {
-                uuid: Some(PbUuid::random()),
+                uuid: PbUuid::random(),
                 alias: format!("{}, loaded @ {now_str}", self.src_alias()),
             };
             self.load_inner(path, ds, myself_chooser)
@@ -198,7 +198,6 @@ pub mod android {
                 ),*>
             )? (this: &$loader_name$(<$($generic_type_name),*>)?, path: &Path, ds: Dataset) -> Result<Box<InMemoryDao>> {
                 let path = path.parent().unwrap();
-                let ds_uuid = ds.uuid.as_ref().unwrap();
 
                 let conn = Connection::open(path.join($db_filename))?;
                 this.tweak_conn(path, &conn)?;
@@ -209,8 +208,8 @@ pub mod android {
                     path
                 };
 
-                let mut users = this.parse_users(&conn, ds_uuid)?;
-                let cwms = this.parse_chats(&conn, ds_uuid, &mut users, &path)?;
+                let mut users = this.parse_users(&conn, &ds.uuid)?;
+                let cwms = this.parse_chats(&conn, &ds.uuid, &mut users, &path)?;
 
                 let users = this.normalize_users(users, &cwms)?;
                 Ok(Box::new(InMemoryDao::new_single(

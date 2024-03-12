@@ -46,7 +46,7 @@ impl BadooAndroidDataLoader {
         // We can get own encrypted ID from messages table where is_incoming = 0, but no reason to do so.
         // Also, not sure how to decrypt it.
         users.user_id_to_user.insert(MYSELF_ID, User {
-            ds_uuid: Some(ds_uuid.clone()),
+            ds_uuid: ds_uuid.clone(),
             id: *MYSELF_ID,
             first_name_option: Some("Me".to_owned()), // No way to know your own name, sadly
             last_name_option: None,
@@ -68,7 +68,7 @@ impl BadooAndroidDataLoader {
             let name = row.get::<_, String>("user_name")?;
 
             users.user_id_to_user.insert(id, User {
-                ds_uuid: Some(ds_uuid.clone()),
+                ds_uuid: ds_uuid.clone(),
                 id: *id,
                 first_name_option: Some(name),
                 last_name_option: None,
@@ -188,8 +188,8 @@ impl BadooAndroidDataLoader {
 
             if !messages.is_empty() {
                 cwms.push(ChatWithMessages {
-                    chat: Some(Chat {
-                        ds_uuid: Some(ds_uuid.clone()),
+                    chat: Chat {
+                        ds_uuid: ds_uuid.clone(),
                         id: user.id,
                         name_option: user.first_name_option.clone(),
                         source_type: SourceType::BadooDb as i32,
@@ -198,7 +198,7 @@ impl BadooAndroidDataLoader {
                         member_ids: vec![*MYSELF_ID, user.id],
                         msg_count: messages.len() as i32,
                         main_chat_id: None,
-                    }),
+                    },
                     messages,
                 });
             }

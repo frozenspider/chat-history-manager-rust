@@ -31,8 +31,8 @@ pub fn merge_datasets(
                 dao.chats(ds_uuid)?.into_iter().map(|cwd| (cwd.id(), cwd)).collect()))
         }
 
-        let (master_users, master_cwds) = get_users_and_cwds(master_dao, master_ds.uuid())?;
-        let (slave_users, slave_cwds) = get_users_and_cwds(slave_dao, slave_ds.uuid())?;
+        let (master_users, master_cwds) = get_users_and_cwds(master_dao, &master_ds.uuid)?;
+        let (slave_users, slave_cwds) = get_users_and_cwds(slave_dao, &slave_ds.uuid)?;
 
         // Input validity check: users
         let master_user_id_merges = user_merges.iter().filter_map(|m| m.master_user_id_option()).collect_vec();
@@ -68,8 +68,8 @@ pub fn merge_datasets(
         let new_dataset = merge_inner(&mut new_dao, master, slave, user_merges, chat_merges)?;
         let other_master_dataset_uuids = master_dao.datasets()?
             .into_iter()
-            .map(|ds| ds.uuid.unwrap())
-            .filter(|ds_uuid| ds_uuid != master_ds.uuid())
+            .map(|ds| ds.uuid)
+            .filter(|ds_uuid| ds_uuid != &master_ds.uuid)
             .collect_vec();
         new_dao.copy_datasets_from(master_dao, &other_master_dataset_uuids)?;
         Ok((new_dao, new_dataset))
@@ -91,13 +91,13 @@ fn merge_inner(
     chat_merges: Vec<ChatMergeDecision>,
 ) -> Result<Dataset> {
     let new_ds = Dataset {
-        uuid: Some(PbUuid::random()),
+        uuid: PbUuid::random(),
         alias: format!("{} (merged)", master.ds.alias),
     };
     let new_ds = new_dao.insert_dataset(new_ds)?;
 
-    let master_ds_root = master.dao.dataset_root(master.ds.uuid())?;
-    let slave_ds_root = slave.dao.dataset_root(slave.ds.uuid())?;
+    let master_ds_root = master.dao.dataset_root(&master.ds.uuid)?;
+    let slave_ds_root = slave.dao.dataset_root(&slave.ds.uuid)?;
 
     let chat_inserts = chat_merges.iter().filter_map(|cm| {
         match cm {
@@ -129,8 +129,8 @@ fn merge_inner(
     // Users
     let selected_chat_members: HashSet<i64> =
         chat_inserts.iter().flat_map(|(cwd, _, _)| cwd.chat.member_ids.clone()).collect();
-    let master_self = master.dao.myself(master.ds.uuid())?;
-    let slave_self = slave.dao.myself(slave.ds.uuid())?;
+    let master_self = master.dao.myself(&master.ds.uuid)?;
+    let slave_self = slave.dao.myself(&slave.ds.uuid)?;
     require!(master_self.id == slave_self.id, "Myself of merged datasets doesn't match!");
     for um in user_merges {
         let user_to_insert_option = match um {
@@ -143,16 +143,16 @@ fn merge_inner(
             UserMergeDecision::Replace(user_id) => Some(slave.users[&user_id].clone()),
         };
         if let Some(mut user) = user_to_insert_option {
-            user.ds_uuid = Some(new_ds.uuid().clone());
+            user.ds_uuid = new_ds.uuid.clone();
             let is_myself = user.id == master_self.id;
             new_dao.insert_user(user, is_myself)?;
         }
     }
-    let final_users = new_dao.users(new_ds.uuid())?;
+    let final_users = new_dao.users(&new_ds.uuid)?;
 
     // Chats
     for (mut cwd, chat_ds_root, cm) in chat_inserts {
-        cwd.chat.ds_uuid = Some(new_ds.uuid().clone());
+        cwd.chat.ds_uuid = new_ds.uuid.clone();
 
         // For merged personal chats, name should match whatever user name was chosen
         if cwd.chat.tpe == ChatType::Personal as i32 {

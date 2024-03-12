@@ -83,13 +83,13 @@ pub mod dataset {
 
     pub fn deserialize(raw: RawDataset) -> Result<Dataset> {
         Ok(Dataset {
-            uuid: Some(PbUuid { value: Uuid::from_slice(&raw.uuid)?.to_string() }),
+            uuid: PbUuid { value: Uuid::from_slice(&raw.uuid)?.to_string() },
             alias: raw.alias,
         })
     }
 
     pub fn serialize(ds: &Dataset) -> RawDataset {
-        let uuid = Uuid::parse_str(&ds.uuid.as_ref().unwrap().value).expect("Invalid UUID!");
+        let uuid = Uuid::parse_str(&ds.uuid.value).expect("Invalid UUID!");
         RawDataset {
             uuid: Vec::from(uuid.as_ref()),
             alias: ds.alias.clone(),
@@ -102,7 +102,7 @@ pub mod user {
 
     pub fn deserialize(raw: RawUser) -> Result<(User, bool)> {
         Ok((User {
-            ds_uuid: Some(PbUuid { value: Uuid::from_slice(&raw.ds_uuid)?.to_string() }),
+            ds_uuid: PbUuid { value: Uuid::from_slice(&raw.ds_uuid)?.to_string() },
             id: raw.id,
             first_name_option: raw.first_name,
             last_name_option: raw.last_name,
@@ -195,7 +195,7 @@ pub mod chat {
             }))?;
         let mut cwd = ChatWithDetails {
             chat: Chat {
-                ds_uuid: Some(ds_uuid.clone()),
+                ds_uuid: ds_uuid.clone(),
                 id: raw.chat.id,
                 name_option: raw.chat.name,
                 source_type: SourceType::deserialize(raw.chat.source_type.as_str())?,
@@ -466,9 +466,7 @@ pub mod message {
                 })),
             SuggestProfilePhoto(v) =>
                 ("suggest_profile_photo",
-                 v.photo.as_ref()
-                     .map(|p| serialize_photo_and_copy_files(p, chat_id, src_ds_root, dst_ds_root))
-                     .transpose()?),
+                 Some(serialize_photo_and_copy_files(&v.photo, chat_id, src_ds_root, dst_ds_root)?)),
             PinMessage(v) =>
                 ("pin_message", Some(RawMessageContent {
                     pinned_message_id: Some(v.message_id),
@@ -498,8 +496,7 @@ pub mod message {
                 })),
             GroupEditPhoto(v) =>
                 ("group_edit_photo",
-                 v.photo.as_ref().map(|p| serialize_photo_and_copy_files(p, chat_id, src_ds_root, dst_ds_root))
-                     .transpose()?),
+                 Some(serialize_photo_and_copy_files(&v.photo, chat_id, src_ds_root, dst_ds_root)?)),
             GroupDeletePhoto(_) =>
                 ("group_delete_photo", None),
             GroupInviteMembers(v) =>
@@ -711,10 +708,12 @@ pub mod message {
                     discard_reason_option: raw.discard_reason,
                 })
             }
-            "suggest_profile_photo" =>
+            "suggest_profile_photo" => {
+                let raw = raw_or_bail!();
                 SuggestProfilePhoto(MessageServiceSuggestProfilePhoto {
-                    photo: raw.map(deserialize_photo).transpose()?,
-                }),
+                    photo: deserialize_photo(raw)?,
+                })
+            }
             "pin_message" => {
                 let raw = raw_or_bail!();
                 PinMessage(MessageServicePinMessage {
@@ -746,10 +745,12 @@ pub mod message {
                     title: get_or_bail!(raw.title),
                 })
             }
-            "group_edit_photo" =>
+            "group_edit_photo" => {
+                let raw = raw_or_bail!();
                 GroupEditPhoto(MessageServiceGroupEditPhoto {
-                    photo: raw.map(deserialize_photo).transpose()?,
-                }),
+                    photo: deserialize_photo(raw)?,
+                })
+            }
             "group_delete_photo" =>
                 GroupDeletePhoto(MessageServiceGroupDeletePhoto {}),
             "group_invite_members" => {

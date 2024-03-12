@@ -274,11 +274,11 @@ pub fn get_datasets_diff(master_dao: &dyn ChatHistoryDao,
     }
 
     measure(|| {
-        let master_ds = master_dao.datasets()?.into_iter().find(|ds| ds.uuid() == master_ds_uuid)
+        let master_ds = master_dao.datasets()?.into_iter().find(|ds| &ds.uuid == master_ds_uuid)
             .with_context(|| format!("Dataset {} not found in master DAO!", master_ds_uuid.value))?;
-        let mut slave_ds = slave_dao.datasets()?.into_iter().find(|ds| ds.uuid() == slave_ds_uuid)
+        let mut slave_ds = slave_dao.datasets()?.into_iter().find(|ds| &ds.uuid == slave_ds_uuid)
             .with_context(|| format!("Dataset {} not found in slave DAO!", slave_ds_uuid.value))?;
-        slave_ds.uuid = Some(master_ds_uuid.clone());
+        slave_ds.uuid = master_ds_uuid.clone();
         check_diff!(master_ds == slave_ds, false,
                     "Dataset differs", Some((format!("{master_ds:?}"), format!("{slave_ds:?}"))));
         let master_ds_root = master_dao.dataset_root(master_ds_uuid)?;
@@ -295,7 +295,7 @@ pub fn get_datasets_diff(master_dao: &dyn ChatHistoryDao,
                             format!("{} ({:?})", slave_users.len(), slave_users)
                         )));
             for (i, (master_user, mut slave_user)) in master_users.iter().zip(slave_users.into_iter()).enumerate() {
-                slave_user.ds_uuid = Some(master_ds_uuid.clone());
+                slave_user.ds_uuid = master_ds_uuid.clone();
                 check_diff!(*master_user == slave_user, false,
                             format!("User #{i} differs"), Some((format!("{master_user:?}"), format!("{slave_user:?}"))));
             }
@@ -312,7 +312,7 @@ pub fn get_datasets_diff(master_dao: &dyn ChatHistoryDao,
             let maybe_result = measure(|| {
                 {
                     let mut slave_cwd = slave_cwd.clone();
-                    slave_cwd.chat.ds_uuid = Some(master_ds_uuid.clone());
+                    slave_cwd.chat.ds_uuid = master_ds_uuid.clone();
 
                     check_diff!(PracticalEqTuple::new(&master_cwd.chat, &master_ds_root, master_cwd).practically_equals(
                                     &PracticalEqTuple::new(&slave_cwd.chat, &slave_ds_root, &slave_cwd))?, false,

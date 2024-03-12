@@ -52,11 +52,9 @@ impl HistoryLoaderService for Arc<Mutex<ChatHistoryManagerServer>> {
         self.process_request(&req, |req, self_lock| {
             let master_dao = &self_lock.loaded_daos[&req.master_dao_key];
             let slave_dao = &self_lock.loaded_daos[&req.slave_dao_key];
-            let master_ds_uuid = req.master_ds_uuid.as_ref().context("master_ds_uuid not set!")?;
-            let slave_ds_uuid = req.slave_ds_uuid.as_ref().context("slave_ds_uuid not set!")?;
             let diffs = dao::get_datasets_diff(
-                (*master_dao).borrow().as_ref(), master_ds_uuid,
-                (*slave_dao).borrow().as_ref(), slave_ds_uuid,
+                (*master_dao).borrow().as_ref(), &req.master_ds_uuid,
+                (*slave_dao).borrow().as_ref(), &req.slave_ds_uuid,
                 MAX_DIFFS)?;
             Ok(EnsureSameResponse { diffs })
         })

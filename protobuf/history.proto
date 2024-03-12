@@ -1,4 +1,4 @@
-syntax = "proto3";
+syntax = "proto2";
 
 package history;
 
@@ -36,18 +36,18 @@ message ChooseMyselfRequest {
 }
 
 message ChooseMyselfResponse {
-  int32 picked_option = 1;
+  required int32 picked_option = 1;
 }
 
 message Dataset {
-  PbUuid uuid = 1 [(scalapb.field).no_box = true];
-  string alias = 2;
+  required PbUuid uuid = 1;
+  required string alias = 2;
 }
 
 message User {
-  PbUuid ds_uuid = 1 [(scalapb.field).no_box = true];
+  required PbUuid ds_uuid = 1;
   // Unique within a dataset.
-  int64 id = 2;
+  required int64 id = 2;
   // If there's no first/last name separation, everything will be in first name.
   optional string first_name_option = 3;
   optional string last_name_option = 4;
@@ -56,25 +56,25 @@ message User {
 }
 
 message ChatWithMessages {
-  Chat chat = 1 [(scalapb.field).no_box = true];
+  required Chat chat = 1;
   repeated Message messages = 2;
 }
 
 message PbUuid {
   // Should be lowercase!
-  string value = 1;
+  required string value = 1;
 }
 
 // The request with a id of the book
 message Chat {
-  PbUuid ds_uuid = 1 [(scalapb.field).no_box = true];
+  required PbUuid ds_uuid = 1;
   // Unique within a dataset
-  int64 id = 2;
+  required int64 id = 2;
 
   // Can actually be none sometimes
   optional string name_option = 3;
-  SourceType source_type = 8;
-  ChatType tpe = 4;
+  required SourceType source_type = 8;
+  required ChatType tpe = 4;
 
   // Path relative to data root!
   optional string img_path_option = 5;
@@ -82,7 +82,7 @@ message Chat {
   // Always contains myself as the first element. The rest might be empty, e.g. if nobody ever wrote anything.
   // Members must be in some fixed order.
   repeated int64 member_ids = 6;
-  int32 msg_count = 7;
+  required int32 msg_count = 7;
 
   optional int64 main_chat_id = 9;
 }
@@ -117,7 +117,7 @@ message Message {
    * Might change on dataset/chat mutation operations.
    * Should NEVER be compared across different DAOs!
    */
-  int64 internal_id = 1;
+  required int64 internal_id = 1;
 
   /**
    * Unique within a chat, serves as a persistent ID when merging with older/newer DB version.
@@ -126,13 +126,13 @@ message Message {
    */
   optional int64 source_id_option = 2;
   // Number of epoch SECONDS (not millis!)
-  int64 timestamp = 3;
-  int64 fromId = 4;
+  required int64 timestamp = 3;
+  required int64 fromId = 4;
 
   repeated RichTextElement text = 5;
 
   // String that can be used to search this content.
-  string searchable_string = 6;
+  required string searchable_string = 6;
 
   oneof typed {
     MessageRegular regular = 7;
@@ -144,7 +144,7 @@ message MessageRegular {
   // Number of epoch SECONDS (not millis!)
   optional int64 edit_timestamp_option = 1;
   // If true, edit timestamp refers to deletion time (if known)
-  bool is_deleted = 5;
+  required bool is_deleted = 5;
   optional string forward_from_name_option = 2;
   // References source ID
   optional int64 reply_to_message_id_option = 3;
@@ -189,43 +189,43 @@ message RichTextElement {
   }
 
   // String that can be used to search this content.
-  string searchable_string = 9;
+  required string searchable_string = 9;
 }
 
 message RtePlain {
-  string text = 1;
+  required string text = 1;
 }
 message RteBold {
-  string text = 1;
+  required string text = 1;
 }
 message RteItalic {
-  string text = 1;
+  required string text = 1;
 }
 message RteUnderline {
-  string text = 1;
+  required string text = 1;
 }
 message RteStrikethrough {
-  string text = 1;
+  required string text = 1;
 }
 message RteLink {
   // Empty text would mean that this link is hidden - but it can still be hidden even if it's not.
   optional string text_option = 1;
-  string href = 2;
+  required string href = 2;
   // Some TG chats use text_links with empty/invisible text to be shown as preview but not appear in text.
-  bool hidden = 3;
+  required bool hidden = 3;
 }
 message RtePrefmtInline {
-  string text = 1;
+  required string text = 1;
 }
 message RtePrefmtBlock {
-  string text = 1;
+  required string text = 1;
   optional string language_option = 2;
 }
 message RteSpoiler {
-  string text = 1;
+  required string text = 1;
 }
 message RteBlockquote {
-  string text = 1;
+  required string text = 1;
 }
 
 //
@@ -251,9 +251,9 @@ message ContentSticker {
   // Path relative to data root!
   optional string path_option = 1;
   // 0 if unknown
-  int32 width = 2;
+  required int32 width = 2;
   // 0 if unknown
-  int32 height = 3;
+  required int32 height = 3;
 
   // Path relative to data root!
   optional string thumbnail_path_option = 4;
@@ -264,16 +264,16 @@ message ContentPhoto {
   // Path relative to data root!
   optional string path_option = 1;
   // 0 if unknown
-  int32 width = 2;
+  required int32 width = 2;
   // 0 if unknown
-  int32 height = 3;
-  bool is_one_time = 4;
+  required int32 height = 3;
+  required bool is_one_time = 4;
 }
 
 message ContentVoiceMsg {
   // Path relative to data root!
   optional string path_option = 1;
-  string mime_type = 2;
+  required string mime_type = 2;
   optional int32 duration_sec_option = 3;
 }
 
@@ -284,7 +284,7 @@ message ContentAudio {
   optional string title_option = 2;
   optional string performer_option = 3;
 
-  string mime_type = 4;
+  required string mime_type = 4;
   optional int32 duration_sec_option = 5;
 
   // Some audio files might have thumbnails - e.g. album cover
@@ -296,17 +296,17 @@ message ContentVideoMsg {
   // Path relative to data root!
   optional string path_option = 1;
   // 0 if unknown
-  int32 width = 2;
+  required int32 width = 2;
   // 0 if unknown
-  int32 height = 3;
+  required int32 height = 3;
 
-  string mime_type = 4;
+  required string mime_type = 4;
   optional int32 duration_sec_option = 5;
 
   // Path relative to data root!
   optional string thumbnail_path_option = 6;
 
-  bool is_one_time = 7;
+  required bool is_one_time = 7;
 }
 
 message ContentVideo {
@@ -317,17 +317,17 @@ message ContentVideo {
   optional string performer_option = 9;
 
   // 0 if unknown
-  int32 width = 2;
+  required int32 width = 2;
   // 0 if unknown
-  int32 height = 3;
+  required int32 height = 3;
 
-  string mime_type = 4;
+  required string mime_type = 4;
   optional int32 duration_sec_option = 5;
 
   // Path relative to data root!
   optional string thumbnail_path_option = 6;
 
-  bool is_one_time = 7;
+  required bool is_one_time = 7;
 }
 
 message ContentFile {
@@ -345,14 +345,14 @@ message ContentFile {
 message ContentLocation {
   optional string title_option = 1;
   optional string address_option = 2;
-  string lat_str = 3;
-  string lon_str = 4;
+  required string lat_str = 3;
+  required string lon_str = 4;
 
   optional int32 duration_sec_option = 5;
 }
 
 message ContentPoll {
-  string question = 1;
+  required string question = 1;
 }
 
 // At least ONE of the fields must be present.
@@ -375,18 +375,18 @@ message MessageServicePhoneCall {
 }
 
 message MessageServiceSuggestProfilePhoto {
-  ContentPhoto photo = 1 [(scalapb.field).no_box = true];
+  required ContentPhoto photo = 1;
 }
 
 message MessageServicePinMessage {
-  int64 message_id = 1;
+  required int64 message_id = 1;
 }
 
 // Note: for Telegram, `from...` is not always meaningful
 message MessageServiceClearHistory {}
 
 message MessageServiceBlockUser {
-  bool is_blocked = 1;
+  required bool is_blocked = 1;
 }
 
 message MessageServiceStatusTextChanged {
@@ -399,16 +399,17 @@ message MessageServiceNotice {
 }
 
 message MessageServiceGroupCreate {
-  string title = 1;
+  required string title = 1;
+
   repeated string members = 2;
 }
 
 message MessageServiceGroupEditTitle {
-  string title = 1;
+  required string title = 1;
 }
 
 message MessageServiceGroupEditPhoto {
-  ContentPhoto photo = 1 [(scalapb.field).no_box = true];
+  required ContentPhoto photo = 1;
 }
 
 message MessageServiceGroupDeletePhoto {}
@@ -422,7 +423,7 @@ message MessageServiceGroupRemoveMembers {
 }
 
 message MessageServiceGroupMigrateFrom {
-  string title = 1;
+  required string title = 1;
 }
 
 // Migrate to supergroup of the same name
@@ -477,11 +478,11 @@ service HistoryDaoService {
 }
 
 message LoadRequest {
-  string key = 1;
-  string path = 2;
+  required string key = 1;
+  required string path = 2;
 }
 message LoadResponse {
-  string name = 1;
+  required string name = 1;
 }
 
 message GetLoadedFilesResponse {
@@ -489,69 +490,69 @@ message GetLoadedFilesResponse {
 }
 
 message LoadedFile {
-  string key = 1;
-  string name = 2;
+  required string key = 1;
+  required string name = 2;
 }
 
 message SaveAsRequest {
-  string key = 1;
-  string new_folder_name = 2;
+  required string key = 1;
+  required string new_folder_name = 2;
 }
 
 message NameRequest {
-  string key = 1;
+  required string key = 1;
 }
 message NameResponse {
-  string name = 1;
+  required string name = 1;
 }
 
 message StoragePathRequest {
-  string key = 1;
+  required string key = 1;
 }
 message StoragePathResponse {
-  string path = 1;
+  required string path = 1;
 }
 
 message DatasetsRequest {
-  string key = 1;
+  required string key = 1;
 }
 message DatasetsResponse {
   repeated Dataset datasets = 1;
 }
 
 message DatasetRootRequest {
-  string key = 1;
-  PbUuid ds_uuid = 2 [(scalapb.field).no_box = true];
+  required string key = 1;
+  required PbUuid ds_uuid = 2;
 }
 message DatasetRootResponse {
-  string path = 1;
+  required string path = 1;
 }
 
 message MyselfRequest {
-  string key = 1;
-  PbUuid ds_uuid = 2 [(scalapb.field).no_box = true];
+  required string key = 1;
+  required PbUuid ds_uuid = 2;
 }
 message MyselfResponse {
-  User myself = 1 [(scalapb.field).no_box = true];
+  required User myself = 1;
 }
 
 message UsersRequest {
-  string key = 1;
-  PbUuid ds_uuid = 2 [(scalapb.field).no_box = true];
+  required string key = 1;
+  required PbUuid ds_uuid = 2;
 }
 message UsersResponse {
   repeated User users = 1;
 }
 
 message ChatsRequest {
-  string key = 1;
-  PbUuid ds_uuid = 2 [(scalapb.field).no_box = true];
+  required string key = 1;
+  required PbUuid ds_uuid = 2;
 }
 message ChatsResponse {
   repeated ChatWithDetailsPB cwds = 1;
 }
 message ChatWithDetailsPB {
-  Chat chat = 1 [(scalapb.field).no_box = true];
+  required Chat chat = 1;
 
   optional Message last_msg_option = 2 [(scalapb.field).no_box = false];
 
@@ -560,87 +561,87 @@ message ChatWithDetailsPB {
 }
 
 message ScrollMessagesRequest {
-  string key = 1;
-  Chat chat = 2 [(scalapb.field).no_box = true];
-  int64 offset = 3;
-  int64 limit = 4;
+  required string key = 1;
+  required Chat chat = 2;
+  required int64 offset = 3;
+  required int64 limit = 4;
 }
 message LastMessagesRequest {
-  string key = 1;
-  Chat chat = 2 [(scalapb.field).no_box = true];
-  int64 limit = 3;
+  required string key = 1;
+  required Chat chat = 2;
+  required int64 limit = 3;
 }
 message MessagesBeforeRequest {
-  string key = 1;
-  Chat chat = 2 [(scalapb.field).no_box = true];
-  int64 message_internal_id = 3;
-  int64 limit = 4;
+  required string key = 1;
+  required Chat chat = 2;
+  required int64 message_internal_id = 3;
+  required int64 limit = 4;
 }
 message MessagesAfterRequest {
-  string key = 1;
-  Chat chat = 2 [(scalapb.field).no_box = true];
-  int64 message_internal_id = 3;
-  int64 limit = 4;
+  required string key = 1;
+  required Chat chat = 2;
+  required int64 message_internal_id = 3;
+  required int64 limit = 4;
 }
 message MessagesSliceRequest {
-  string key = 1;
-  Chat chat = 2 [(scalapb.field).no_box = true];
-  int64 message_internal_id_1 = 3;
-  int64 message_internal_id_2 = 4;
+  required string key = 1;
+  required Chat chat = 2;
+  required int64 message_internal_id_1 = 3;
+  required int64 message_internal_id_2 = 4;
 }
 message MessagesAbbreviatedSliceRequest {
-  string key = 1;
-  Chat chat = 2 [(scalapb.field).no_box = true];
-  int64 message_internal_id_1 = 3;
-  int64 message_internal_id_2 = 4;
+  required string key = 1;
+  required Chat chat = 2;
+  required int64 message_internal_id_1 = 3;
+  required int64 message_internal_id_2 = 4;
 
   // Maximum number of messages to be returned as a single slice
-  int32 combined_limit = 5;
+  required int32 combined_limit = 5;
   // Maximum number of messages to be returned from each side when abbreviated
-  int32 abbreviated_limit = 6;
+  required int32 abbreviated_limit = 6;
 }
 
 message MessagesResponse {
   repeated Message messages = 1;
 }
 message CountMessagesResponse {
-  int32 messages_count = 1;
+  required int32 messages_count = 1;
 }
 message MessagesAbbreviatedSliceResponse {
   repeated Message left_messages = 1;
   // If messages count was within the combined_limit, this will be zero
-  int32 in_between = 2;
+  required int32 in_between = 2;
   // If messages count was within the combined_limit, this will be empty
   repeated Message right_messages = 3;
 }
 
 message MessageOptionRequest {
-  string key = 1;
-  Chat chat = 2 [(scalapb.field).no_box = true];
-  int64 source_id = 3;
+  required string key = 1;
+  required Chat chat = 2;
+  required int64 source_id = 3;
 }
 message MessageOptionResponse {
   optional Message message = 1 [(scalapb.field).no_box = false];
 }
 
 message IsLoadedRequest {
-  string key = 1;
-  string storage_path = 2;
+  required string key = 1;
+  required string storage_path = 2;
 }
 message IsLoadedResponse {
-  bool is_loaded = 1;
+  required bool is_loaded = 1;
 }
 
 message CloseRequest {
-  string key = 1;
+  required string key = 1;
 }
 
 message EnsureSameRequest {
-  string master_dao_key = 1;
-  PbUuid master_ds_uuid = 2 [(scalapb.field).no_box = true];
+  required string master_dao_key = 1;
+  required PbUuid master_ds_uuid = 2;
 
-  string slave_dao_key = 3;
-  PbUuid slave_ds_uuid = 4 [(scalapb.field).no_box = true];
+  required string slave_dao_key = 3;
+  required PbUuid slave_ds_uuid = 4;
 }
 
 message EnsureSameResponse {
@@ -648,66 +649,66 @@ message EnsureSameResponse {
 }
 
 message Difference {
-  string message = 1;
+  required string message = 1;
   optional DifferenceValues values = 2;
 }
 
 message DifferenceValues {
-  string old = 1;
-  string new = 2;
+  required string old = 1;
+  required string new = 2;
 }
 
 message BackupRequest {
-  string key = 1;
+  required string key = 1;
 }
 
 message UpdateDatasetRequest {
-  string key = 1;
-  Dataset dataset = 2 [(scalapb.field).no_box = true];
+  required string key = 1;
+  required Dataset dataset = 2;
 }
 message UpdateDatasetResponse {
-  Dataset dataset = 1 [(scalapb.field).no_box = true];
+  required Dataset dataset = 1;
 }
 
 message DeleteDatasetRequest {
-  string key = 1;
-  PbUuid uuid = 2 [(scalapb.field).no_box = true];
+  required string key = 1;
+  required PbUuid uuid = 2;
 }
 
 message ShiftDatasetTimeRequest {
-  string key = 1;
-  PbUuid uuid = 2 [(scalapb.field).no_box = true];
-  int32 hours_shift = 3;
+  required string key = 1;
+  required PbUuid uuid = 2;
+  required int32 hours_shift = 3;
 }
 
 message UpdateUserRequest {
-  string key = 1;
-  User user = 2 [(scalapb.field).no_box = true];
+  required string key = 1;
+  required User user = 2;
 }
 message UpdateUserResponse {
-  User user = 1 [(scalapb.field).no_box = true];
+  required User user = 1;
 }
 
 // Only allows modifying chat ID
 message UpdateChatRequest {
-  string key = 1;
-  PbUuid uuid = 2 [(scalapb.field).no_box = true];
-  int64 old_id = 3;
-  int64 new_id = 4;
+  required string key = 1;
+  required PbUuid uuid = 2;
+  required int64 old_id = 3;
+  required int64 new_id = 4;
 }
 message UpdateChatResponse {
-  Chat chat = 1 [(scalapb.field).no_box = true];
+  required Chat chat = 1;
 }
 
 message DeleteChatRequest {
-  string key = 1;
-  Chat chat = 2 [(scalapb.field).no_box = true];
+  required string key = 1;
+  required Chat chat = 2;
 }
 
 message CombineChatsRequest {
-  string key = 1;
-  Chat master_chat = 2 [(scalapb.field).no_box = true];
-  Chat slave_chat = 3 [(scalapb.field).no_box = true];
+  required string key = 1;
+  required Chat master_chat = 2;
+  required Chat slave_chat = 3;
 }
 
 //
@@ -720,30 +721,31 @@ service MergeService {
 }
 
 message AnalyzeRequest {
-  string master_dao_key = 1;
-  PbUuid master_ds_uuid = 2 [(scalapb.field).no_box = true];
+  required string master_dao_key = 1;
+  required PbUuid master_ds_uuid = 2;
 
-  string slave_dao_key = 3;
-  PbUuid slave_ds_uuid = 4 [(scalapb.field).no_box = true];
+  required string slave_dao_key = 3;
+  required PbUuid slave_ds_uuid = 4;
 
-  bool force_conflicts = 6;
+  required bool force_conflicts = 6;
   repeated ChatIdPair chat_id_pairs = 5;
 }
 message ChatIdPair {
-  int64 master_chat_id = 1;
-  int64 slave_chat_id = 2;
+  required int64 master_chat_id = 1;
+  required int64 slave_chat_id = 2;
 }
 message AnalyzeResponse {
   repeated ChatAnalysis analysis = 1;
 }
 message ChatAnalysis {
-  ChatIdPair chat_ids = 1 [(scalapb.field).no_box = true];
+  required ChatIdPair chat_ids = 1;
+
   repeated AnalysisSection sections = 2;
 }
 // This has internal IDs, those not corresponding to the type are unused
 message AnalysisSection {
-  AnalysisSectionType tpe = 1;
-  MessageMergeSectionRange range = 2 [(scalapb.field).no_box = true];
+  required AnalysisSectionType tpe = 1;
+  required MessageMergeSectionRange range = 2;
 }
 enum AnalysisSectionType {
   ANALYSIS_SECTION_TYPE_MATCH = 0;
@@ -752,27 +754,27 @@ enum AnalysisSectionType {
   ANALYSIS_SECTION_TYPE_CONFLICT = 3;
 }
 message MessageMergeSectionRange {
-  int64 first_master_msg_id = 1;
-  int64 last_master_msg_id = 2;
-  int64 first_slave_msg_id = 3;
-  int64 last_slave_msg_id = 4;
+  required int64 first_master_msg_id = 1;
+  required int64 last_master_msg_id = 2;
+  required int64 first_slave_msg_id = 3;
+  required int64 last_slave_msg_id = 4;
 }
 
 message MergeRequest {
-  string master_dao_key = 1;
-  PbUuid master_ds_uuid = 2 [(scalapb.field).no_box = true];
+  required string master_dao_key = 1;
+  required PbUuid master_ds_uuid = 2;
 
-  string slave_dao_key = 3;
-  PbUuid slave_ds_uuid = 4 [(scalapb.field).no_box = true];
+  required string slave_dao_key = 3;
+  required PbUuid slave_ds_uuid = 4;
 
-  string new_database_dir = 5;
+  required string new_database_dir = 5;
 
   repeated UserMerge user_merges = 6;
   repeated ChatMerge chat_merges = 7;
 }
 message UserMerge {
-  UserMergeType tpe = 1;
-  int64 user_id = 2;
+  required UserMergeType tpe = 1;
+  required int64 user_id = 2;
 }
 enum UserMergeType {
   // Only in master
@@ -789,8 +791,8 @@ enum UserMergeType {
   USER_MERGE_TYPE_MATCH_OR_DONT_REPLACE = 4;
 }
 message ChatMerge {
-  ChatMergeType tpe = 1;
-  int64 chat_id = 2;
+  required ChatMergeType tpe = 1;
+  required int64 chat_id = 2;
   repeated MessageMerge message_merges = 3;
 }
 enum ChatMergeType{
@@ -806,8 +808,8 @@ enum ChatMergeType{
   CHAT_MERGE_TYPE_DONT_MERGE = 4;
 }
 message MessageMerge {
-  MessageMergeType tpe = 1;
-  MessageMergeSectionRange range = 2;
+  required MessageMergeType tpe = 1;
+  required MessageMergeSectionRange range = 2;
 }
 enum MessageMergeType {
   // Same in master and slave
@@ -827,6 +829,6 @@ enum MessageMergeType {
   MESSAGE_MERGE_TYPE_DONT_REPLACE = 5;
 }
 message MergeResponse {
-  LoadedFile new_file = 1 [(scalapb.field).no_box = true];
-  PbUuid new_ds_uuid = 2 [(scalapb.field).no_box = true];
+  required LoadedFile new_file = 1;
+  required PbUuid new_ds_uuid = 2;
 }

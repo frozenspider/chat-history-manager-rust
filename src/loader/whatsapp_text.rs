@@ -46,16 +46,14 @@ impl DataLoader for WhatsAppTextDataLoader {
 }
 
 fn parse_whatsapp_text_file(path: &Path, ds: Dataset) -> Result<Box<InMemoryDao>> {
-    let ds_uuid = ds.uuid.as_ref().unwrap();
-
     let file_content = fs::read_to_string(path)?;
-    let (myself, other) = parse_users(ds_uuid, path_file_name(path)?, &file_content)?;
+    let (myself, other) = parse_users(&ds.uuid, path_file_name(path)?, &file_content)?;
 
     let messages = parse_messages(&file_content, &myself, &other)?;
 
     let cwms = vec![ChatWithMessages {
-        chat: Some(Chat {
-            ds_uuid: Some(ds_uuid.clone()),
+        chat: Chat {
+            ds_uuid: ds.uuid.clone(),
             id: other.id, // Using user ID as a chat ID
             name_option: Some(other.pretty_name()),
             source_type: SourceType::TextImport as i32,
@@ -64,7 +62,7 @@ fn parse_whatsapp_text_file(path: &Path, ds: Dataset) -> Result<Box<InMemoryDao>
             member_ids: vec![myself.id, other.id],
             msg_count: messages.len() as i32,
             main_chat_id: None,
-        }),
+        },
         messages
     }];
 
@@ -100,14 +98,14 @@ fn parse_users(ds_uuid: &PbUuid, filename: &str, content: &str) -> Result<(User,
 
     // Self ID is set to minimum valid one.
     Ok((User {
-        ds_uuid: Some(ds_uuid.clone()),
+        ds_uuid: ds_uuid.clone(),
         id: UserId::INVALID.0 + 1,
         first_name_option: Some(self_name.to_owned()),
         last_name_option: None,
         username_option: None,
         phone_number_option: None,
     }, User {
-        ds_uuid: Some(ds_uuid.clone()),
+        ds_uuid: ds_uuid.clone(),
         id: super::hash_to_id(other_name),
         first_name_option: if other_name.starts_with('+') { None } else { Some(other_name.to_owned()) },
         last_name_option: None,

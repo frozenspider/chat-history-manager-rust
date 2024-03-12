@@ -31,7 +31,7 @@ fn loading_2023_10() -> EmptyRes {
     assert_eq!(myself, expected_myself(ds_uuid));
 
     let member = User {
-        ds_uuid: Some(ds_uuid.clone()),
+        ds_uuid: ds_uuid.clone(),
         id: 2708866474201423075_i64,
         first_name_option: None,
         last_name_option: None,
@@ -45,9 +45,9 @@ fn loading_2023_10() -> EmptyRes {
 
     {
         let cwm = dao.cwms_single_ds().remove(0);
-        let chat = cwm.chat.unwrap_ref();
-        assert_eq!(*chat, Chat {
-            ds_uuid: Some(ds_uuid.clone()),
+        let chat = cwm.chat;
+        assert_eq!(chat, Chat {
+            ds_uuid: ds_uuid.clone(),
             id: member.id,
             name_option: Some("+123 45 6789".to_owned()),
             source_type: SourceType::TextImport as i32,
@@ -272,7 +272,7 @@ fn loading_2023_10() -> EmptyRes {
 
 fn expected_myself(ds_uuid: &PbUuid) -> User {
     User {
-        ds_uuid: Some(ds_uuid.clone()),
+        ds_uuid: ds_uuid.clone(),
         id: 1_i64,
         first_name_option: Some("Aaaaa Aaaaaaaaaaa".to_owned()),
         last_name_option: None,

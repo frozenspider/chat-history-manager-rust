@@ -15,14 +15,14 @@ fn merge_users() -> EmptyRes {
     let users_a = users.iter().filter(|u| [1_i64, 2, 3, 6].contains(&u.id)).cloned().collect_vec();
     let users_b = change_users(&users[..5], |id| [2_i64, 3, 4].contains(&id));
     let cwm_a = ChatWithMessages {
-        chat: Some(create_group_chat(&ZERO_PB_UUID, 1, "A",
-                                     users_a.iter().map(|u| u.id).collect_vec(), 0)),
+        chat: create_group_chat(&ZERO_PB_UUID, 1, "A",
+                                users_a.iter().map(|u| u.id).collect_vec(), 0),
         messages: vec![],
     };
     let cwm_b = ChatWithMessages {
-        chat: Some(create_group_chat(&ZERO_PB_UUID, 1, "B",
-                                     users_b.iter().map(|u| u.id)
-                                         .filter(|id| *id != 5 /* User 5 won't be added */).collect_vec(), 0)),
+        chat: create_group_chat(&ZERO_PB_UUID, 1, "B",
+                                users_b.iter().map(|u| u.id)
+                                    .filter(|id| *id != 5 /* User 5 won't be added */).collect_vec(), 0),
         messages: vec![],
     };
 
@@ -53,7 +53,7 @@ fn merge_users() -> EmptyRes {
             ..u.iter().find(|u| u.id == id).unwrap().clone()
         }
     };
-    let new_users = new_dao.users(new_ds.uuid())?;
+    let new_users = new_dao.users(&new_ds.uuid)?;
     assert_eq!(new_users, [
         by_id(&users_a, 1),
         by_id(&users_a, 2),
@@ -73,19 +73,19 @@ fn merge_users_updating_chat_name() -> EmptyRes {
     let users_b = change_users(&users_a, |_id| true);
     let cwms = vec![
         ChatWithMessages {
-            chat: Some(create_group_chat(&ZERO_PB_UUID, 1, "Group", vec![1, 2, 3], 0)),
+            chat: create_group_chat(&ZERO_PB_UUID, 1, "Group", vec![1, 2, 3], 0),
             messages: vec![],
         },
         ChatWithMessages {
-            chat: Some(create_personal_chat(&ZERO_PB_UUID, 2, &users_a[1], vec![1, 2], 0)),
+            chat: create_personal_chat(&ZERO_PB_UUID, 2, &users_a[1], vec![1, 2], 0),
             messages: vec![],
         },
         ChatWithMessages {
-            chat: Some({
+            chat: {
                 let mut chat = create_personal_chat(&ZERO_PB_UUID, 3, &users_a[2], vec![1, 3], 0);
                 chat.name_option = None;
                 chat
-            }),
+            },
             messages: vec![],
         },
     ];
@@ -98,18 +98,18 @@ fn merge_users_updating_chat_name() -> EmptyRes {
         &helper,
         users.iter().map(|u| UserMergeDecision::Replace(u.id())).collect_vec(),
         cwms.iter().map(|cwm| ChatMergeDecision::Merge {
-            chat_id: ChatId(cwm.chat.as_ref().unwrap().id),
+            chat_id: cwm.chat.id(),
             message_merges: vec![],
         }).collect_vec(),
     );
 
-    let new_users = new_dao.users(new_ds.uuid())?;
+    let new_users = new_dao.users(&new_ds.uuid)?;
     assert_eq!(new_users, users_b.clone().into_iter().map(|mut u| {
         u.ds_uuid = new_ds.uuid.clone();
         u
     }).collect_vec());
 
-    let new_chats = new_dao.chats(new_ds.uuid())?.into_iter().sorted_by_key(|cwd| cwd.chat.id).collect_vec();
+    let new_chats = new_dao.chats(&new_ds.uuid)?.into_iter().sorted_by_key(|cwd| cwd.chat.id).collect_vec();
     assert_eq!(new_chats.len(), 3);
 
     assert_eq!(new_chats[0].chat.tpe, ChatType::PrivateGroup as i32);
@@ -128,10 +128,10 @@ fn merge_multiple_datasets() -> EmptyRes {
     let mut helper = MergerHelper::new_as_is(2, msgs.clone(), msgs);
 
     let other_ds = Dataset {
-        uuid: Some(PbUuid { value: Uuid::parse_str("12345678-1234-1234-1234-123456789ABC").unwrap().to_string() }),
+        uuid: PbUuid { value: Uuid::parse_str("12345678-1234-1234-1234-123456789ABC").unwrap().to_string() },
         alias: "Another dataset".to_owned(),
     };
-    let other_ds_users = vec![create_user(other_ds.uuid(), 123), create_user(other_ds.uuid(), 456)];
+    let other_ds_users = vec![create_user(&other_ds.uuid, 123), create_user(&other_ds.uuid, 456)];
     let other_tmp_dir = TmpDir::new();
     let other_ds_root = DatasetRoot(other_tmp_dir.path.clone());
 
@@ -140,21 +140,21 @@ fn merge_multiple_datasets() -> EmptyRes {
         let mut cache = cache.inner.borrow_mut();
 
         cache.datasets.push(other_ds.clone());
-        cache.users.insert(other_ds.uuid().clone(), UserCacheForDataset {
+        cache.users.insert(other_ds.uuid.clone(), UserCacheForDataset {
             myself_id: other_ds_users[0].id(),
             user_by_id: other_ds_users.iter().cloned().map(|u| (u.id(), u)).collect(),
         });
     }
 
-    let other_chat = create_personal_chat(other_ds.uuid(), 1, &other_ds_users[0],
+    let other_chat = create_personal_chat(&other_ds.uuid, 1, &other_ds_users[0],
                                           other_ds_users.iter().map(|u| u.id).collect_vec(), 3);
     let other_chat_msgs = (1..=other_chat.msg_count)
         .map(|i| create_regular_message(i as usize, other_ds_users[0].id as usize))
         .collect_vec();
 
-    helper.m.dao_holder.dao.ds_roots.insert(other_ds.uuid().clone(), other_ds_root.clone());
-    helper.m.dao_holder.dao.cwms.insert(other_ds.uuid().clone(), vec![ChatWithMessages {
-        chat: Some(other_chat.clone()),
+    helper.m.dao_holder.dao.ds_roots.insert(other_ds.uuid.clone(), other_ds_root.clone());
+    helper.m.dao_holder.dao.cwms.insert(other_ds.uuid.clone(), vec![ChatWithMessages {
+        chat: other_chat.clone(),
         messages: other_chat_msgs.clone(),
     }]);
 
@@ -173,16 +173,16 @@ fn merge_multiple_datasets() -> EmptyRes {
             ],
         }],
     );
-    assert_eq!(new_dao.datasets()?.iter().sorted_by_key(|ds| &ds.uuid().value).collect_vec(),
-               vec![new_ds.clone(), other_ds.clone()].iter().sorted_by_key(|ds| &ds.uuid().value).collect_vec());
-    assert_eq!(new_dao.users(other_ds.uuid())?,
+    assert_eq!(new_dao.datasets()?.iter().sorted_by_key(|ds| &ds.uuid.value).collect_vec(),
+               vec![new_ds.clone(), other_ds.clone()].iter().sorted_by_key(|ds| &ds.uuid.value).collect_vec());
+    assert_eq!(new_dao.users(&other_ds.uuid)?,
                other_ds_users);
-    assert_eq!(new_dao.chats(other_ds.uuid())?.into_iter().map(|cwd| cwd.chat).collect_vec(),
+    assert_eq!(new_dao.chats(&other_ds.uuid)?.into_iter().map(|cwd| cwd.chat).collect_vec(),
                vec![other_chat.clone()]);
 
-    let new_other_ds_root = new_dao.dataset_root(other_ds.uuid())?;
-    for (old_cwd, new_cwd) in helper.m.dao_holder.dao.chats(other_ds.uuid())?.iter()
-        .zip(new_dao.chats(other_ds.uuid())?.iter())
+    let new_other_ds_root = new_dao.dataset_root(&other_ds.uuid)?;
+    for (old_cwd, new_cwd) in helper.m.dao_holder.dao.chats(&other_ds.uuid)?.iter()
+        .zip(new_dao.chats(&other_ds.uuid)?.iter())
     {
         assert!(PracticalEqTuple::new(&old_cwd.chat, &other_ds_root, old_cwd)
             .practically_equals(&PracticalEqTuple::new(&new_cwd.chat, &new_other_ds_root, new_cwd))?);
@@ -220,7 +220,7 @@ fn merge_chats_match_single_message() -> EmptyRes {
         }],
     );
 
-    let new_chats = new_dao.chats(new_ds.uuid())?;
+    let new_chats = new_dao.chats(&new_ds.uuid)?;
     assert_eq!(new_chats.len(), 1);
 
     let (msg_a_regular, msg_b_regular) = match (msgs_a[0].typed(), msgs_b[0].typed()) {
@@ -264,9 +264,9 @@ fn merge_chats_keep_single_message() -> EmptyRes {
         }],
     );
 
-    let new_ds_root = new_dao.dataset_root(new_ds.uuid())?;
+    let new_ds_root = new_dao.dataset_root(&new_ds.uuid)?;
 
-    let new_chats = new_dao.chats(new_ds.uuid())?;
+    let new_chats = new_dao.chats(&new_ds.uuid)?;
     assert_eq!(new_chats.len(), 1);
 
     let new_chat = &new_chats[0].chat;
@@ -393,17 +393,17 @@ fn merge_files_helper(mode: MergeFileHelperTestMode,
 
     let (new_dao, new_ds, _tmpdir) =
         merge(&helper, dont_replace_both_users(), make_chat_merges(&helper));
-    let new_ds_root = new_dao.dataset_root(new_ds.uuid())?;
+    let new_ds_root = new_dao.dataset_root(&new_ds.uuid)?;
 
-    let new_chats = new_dao.chats(new_ds.uuid())?;
+    let new_chats = new_dao.chats(&new_ds.uuid)?;
     assert_eq!(new_chats.len(), 1);
 
     let new_chat = &new_chats[0].chat;
     let new_messages = new_dao.first_messages(new_chat, usize::MAX)?;
     assert_eq!(new_messages.len(), 1);
 
-    let m_files = dataset_files(helper.m.dao_holder.dao.as_ref(), helper.m.ds.uuid());
-    let s_files = dataset_files(helper.s.dao_holder.dao.as_ref(), helper.s.ds.uuid());
+    let m_files = dataset_files(helper.m.dao_holder.dao.as_ref(), &helper.m.ds.uuid);
+    let s_files = dataset_files(helper.s.dao_holder.dao.as_ref(), &helper.s.ds.uuid);
     assert_eq!(m_files.len(), 3);
     assert_eq!(s_files.len(), match mode {
         NoSlaveChat => 0,
@@ -411,7 +411,7 @@ fn merge_files_helper(mode: MergeFileHelperTestMode,
         AmendMasterMessagesOnly => 1,
         AmendAllMessages => 3,
     });
-    let new_files = dataset_files(&new_dao, new_ds.uuid());
+    let new_files = dataset_files(&new_dao, &new_ds.uuid);
 
     let expected_files = if matches!(mode, NoSlaveChat) {
         m_files
@@ -436,11 +436,11 @@ fn merge_chats_replace_single_message() -> EmptyRes {
 
     let helper = {
         let chat = create_personal_chat(&ZERO_PB_UUID, 1, &users_a[1], vec![1, 2], msgs_a.len());
-        let cwms = vec![ChatWithMessages { chat: Some(chat), messages: msgs_a }];
+        let cwms = vec![ChatWithMessages { chat, messages: msgs_a }];
         let m_dao = create_dao("One", users_a.clone(), cwms, |_, _| {});
 
         let chat = create_personal_chat(&ZERO_PB_UUID, 1, &users_b[1], vec![1, 2], msgs_b.len());
-        let cwms = vec![ChatWithMessages { chat: Some(chat), messages: msgs_b }];
+        let cwms = vec![ChatWithMessages { chat, messages: msgs_b }];
         let s_dao = create_dao("Two", users_b, cwms, |_, _| {});
 
         MergerHelper::new_from_daos(m_dao, s_dao)
@@ -461,9 +461,9 @@ fn merge_chats_replace_single_message() -> EmptyRes {
     ];
     let (new_dao, new_ds, _tmpdir) =
         merge(&helper, dont_replace_both_users(), chat_merges);
-    let new_ds_root = new_dao.dataset_root(new_ds.uuid())?;
+    let new_ds_root = new_dao.dataset_root(&new_ds.uuid)?;
 
-    let new_chats = new_dao.chats(new_ds.uuid())?;
+    let new_chats = new_dao.chats(&new_ds.uuid)?;
     assert_eq!(new_chats.len(), 1);
 
     let new_chat = &new_chats[0].chat;
@@ -499,9 +499,9 @@ fn merge_chats_keep_two_messages() -> EmptyRes {
     ];
     let (new_dao, new_ds, _tmpdir) =
         merge(&helper, dont_replace_both_users(), chat_merges);
-    let new_ds_root = new_dao.dataset_root(new_ds.uuid())?;
+    let new_ds_root = new_dao.dataset_root(&new_ds.uuid)?;
 
-    let new_chats = new_dao.chats(new_ds.uuid())?;
+    let new_chats = new_dao.chats(&new_ds.uuid)?;
     assert_eq!(new_chats.len(), 1);
     let new_chat = &new_chats[0].chat;
 
@@ -538,9 +538,9 @@ fn merge_chats_replace_two_messages() -> EmptyRes {
     ];
     let (new_dao, new_ds, _tmpdir) =
         merge(&helper, dont_replace_both_users(), chat_merges);
-    let new_ds_root = new_dao.dataset_root(new_ds.uuid())?;
+    let new_ds_root = new_dao.dataset_root(&new_ds.uuid)?;
 
-    let new_chats = new_dao.chats(new_ds.uuid())?;
+    let new_chats = new_dao.chats(&new_ds.uuid)?;
     assert_eq!(new_chats.len(), 1);
     let new_chat = &new_chats[0].chat;
 
@@ -603,9 +603,9 @@ fn merge_chats_match_replace_keep() -> EmptyRes {
     ];
     let (new_dao, new_ds, _tmpdir) =
         merge(&helper, dont_replace_both_users(), chat_merges);
-    let new_ds_root = new_dao.dataset_root(new_ds.uuid())?;
+    let new_ds_root = new_dao.dataset_root(&new_ds.uuid)?;
 
-    let new_chats = new_dao.chats(new_ds.uuid())?;
+    let new_chats = new_dao.chats(&new_ds.uuid)?;
     assert_eq!(new_chats.len(), 1);
     let new_chat = &new_chats[0].chat;
 
@@ -693,9 +693,9 @@ fn merge_chats_merge_all_modes() -> EmptyRes {
     ];
     let (new_dao, new_ds, _tmpdir) =
         merge(&helper, dont_replace_both_users(), chat_merges);
-    let new_ds_root = new_dao.dataset_root(new_ds.uuid())?;
+    let new_ds_root = new_dao.dataset_root(&new_ds.uuid)?;
 
-    let new_chats = new_dao.chats(new_ds.uuid())?;
+    let new_chats = new_dao.chats(&new_ds.uuid)?;
     assert_eq!(new_chats.len(), 1);
 
     let new_chat = &new_chats[0].chat;
@@ -759,9 +759,9 @@ fn merge_chats_merge_a_lot_of_messages() -> EmptyRes {
     ];
     let (new_dao, new_ds, _tmpdir) =
         merge(&helper, dont_replace_both_users(), chat_merges);
-    let new_ds_root = new_dao.dataset_root(new_ds.uuid())?;
+    let new_ds_root = new_dao.dataset_root(&new_ds.uuid)?;
 
-    let new_chats = new_dao.chats(new_ds.uuid())?;
+    let new_chats = new_dao.chats(&new_ds.uuid)?;
     assert_eq!(new_chats.len(), 1);
 
     let new_chat = &new_chats[0].chat;
@@ -979,7 +979,7 @@ fn members_test_helper(clue: &str,
                         make_messages_with_members(users, name_or_unnamed(&chat.name_option))
                     };
                     chat.msg_count = messages.len() as i32;
-                    vec![ChatWithMessages { chat: Some(chat), messages }]
+                    vec![ChatWithMessages { chat, messages }]
                 }
             }
         };
@@ -1011,7 +1011,7 @@ fn members_test_helper(clue: &str,
     let chat_merges = make_chat_merges(&helper);
     let (new_dao, new_ds, _tmpdir) = merge(&helper, user_merges, chat_merges);
 
-    let new_chats = new_dao.chats(new_ds.uuid())?;
+    let new_chats = new_dao.chats(&new_ds.uuid)?;
     assert_eq!(new_chats.len(), 1);
     let new_chat = &new_chats[0].chat;
 
@@ -1072,9 +1072,9 @@ fn merge_chats_content_preserved_on_match_and_keep() -> EmptyRes {
     ];
     let (new_dao, new_ds, _tmpdir) =
         merge(&helper, dont_replace_both_users(), chat_merges);
-    let new_ds_root = new_dao.dataset_root(new_ds.uuid())?;
+    let new_ds_root = new_dao.dataset_root(&new_ds.uuid)?;
 
-    let new_chats = new_dao.chats(new_ds.uuid())?;
+    let new_chats = new_dao.chats(&new_ds.uuid)?;
     assert_eq!(new_chats.len(), 1);
     let new_chat = &new_chats[0].chat;
 
@@ -1124,9 +1124,9 @@ fn merge_chats_content_appended_on_match() -> EmptyRes {
     ];
     let (new_dao, new_ds, _tmpdir) =
         merge(&helper, dont_replace_both_users(), chat_merges);
-    let new_ds_root = new_dao.dataset_root(new_ds.uuid())?;
+    let new_ds_root = new_dao.dataset_root(&new_ds.uuid)?;
 
-    let new_chats = new_dao.chats(new_ds.uuid())?;
+    let new_chats = new_dao.chats(&new_ds.uuid)?;
     assert_eq!(new_chats.len(), 1);
     let new_chat = &new_chats[0].chat;
 

@@ -64,7 +64,7 @@ impl WhatsAppAndroidDataLoader {
         let myself_id = users.myself_id.unwrap();
         // Filter out users not participating in chats.
         let participating_user_ids: HashSet<i64, Hasher> = cwms.iter()
-            .map(|cwm| cwm.chat.as_ref().unwrap())
+            .map(|cwm| &cwm.chat)
             .flat_map(|c| &c.member_ids)
             .copied()
             .collect();
@@ -115,7 +115,7 @@ impl WhatsAppAndroidDataLoader {
             .optional().map(|o| o.flatten())?.unwrap_or("Me".to_owned());
 
         users.id_to_user.insert(MYSELF_ID, User {
-            ds_uuid: Some(ds_uuid.clone()),
+            ds_uuid: ds_uuid.clone(),
             id: *MYSELF_ID,
             first_name_option: Some(my_name),
             last_name_option: None,
@@ -163,7 +163,7 @@ fn parse_users_from_stmt(stmt: &mut Statement, ds_uuid: &PbUuid, users: &mut Use
         let first_name_option = sort_name_option.or(wa_name_option);
 
         users.id_to_user.insert(id, User {
-            ds_uuid: Some(ds_uuid.clone()),
+            ds_uuid: ds_uuid.clone(),
             id: *id,
             first_name_option,
             last_name_option: None, // Last name is unreliable
@@ -327,8 +327,8 @@ fn parse_chats(conn: &Connection, ds_uuid: &PbUuid, users: &mut Users) -> Result
         };
 
         cwms_map.insert(jid.clone(), ChatWithMessages {
-            chat: Some(Chat {
-                ds_uuid: Some(ds_uuid.clone()),
+            chat: Chat {
+                ds_uuid: ds_uuid.clone(),
                 id,
                 name_option,
                 source_type: SourceType::WhatsappDb as i32,
@@ -337,7 +337,7 @@ fn parse_chats(conn: &Connection, ds_uuid: &PbUuid, users: &mut Users) -> Result
                 member_ids: vec![],
                 msg_count: 0, // Some messages might be filtered out later, so at this point we're leaving it unset
                 main_chat_id: None,
-            }),
+            },
             messages: Vec::with_capacity(row.get::<_, usize>("msgs_count")?),
         });
     }
@@ -439,7 +439,7 @@ fn parse_chats(conn: &Connection, ds_uuid: &PbUuid, users: &mut Users) -> Result
     for (jid, cwm) in cwms_map.iter_mut() {
         let mut msg_rows = msgs_stmt.query([jid])?;
         let mut call_rows = calls_stmt.query([jid])?;
-        let chat: &mut Chat = cwm.chat.as_mut().unwrap();
+        let chat: &mut Chat = &mut cwm.chat;
         let chat_tpe = ChatType::resolve(chat.tpe).unwrap();
 
         let mut member_ids: HashSet<UserId, Hasher> = Default::default();
@@ -563,7 +563,7 @@ fn parse_chats(conn: &Connection, ds_uuid: &PbUuid, users: &mut Users) -> Result
     // WhatsApp has a lot of chats with block/unblock/migration messages only, which might be related to
     // changing phone number. These chats are not interesting.
     Ok(cwms_map.into_values()
-        .filter(|cwm| cwm.chat.as_ref().is_some_and(|c| c.msg_count > 0))
+        .filter(|cwm| cwm.chat.msg_count > 0)
         .filter(|cwm| cwm.messages.iter().any(|m| matches!(m.typed(), message::Typed::Regular(_))))
         .collect_vec())
 }
@@ -611,12 +611,12 @@ fn parse_system_message<'a>(
                     // We only know some weird "new_photo_id" that leads nowhere
                     text_column = None; // Text is a new_photo_id
                     GroupEditPhoto(MessageServiceGroupEditPhoto {
-                        photo: Some(ContentPhoto {
+                        photo: ContentPhoto {
                             path_option: None,
                             width: 0,
                             height: 0,
                             is_one_time: false,
-                        })
+                        }
                     })
                 }
                 SystemActionType::GroupCreate => {

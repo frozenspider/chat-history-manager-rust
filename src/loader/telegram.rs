@@ -85,7 +85,7 @@ impl Users {
                       original.last_name_option.or(new.last_name_option))
             };
         User {
-            ds_uuid: original.ds_uuid.or(new.ds_uuid),
+            ds_uuid: original.ds_uuid,
             id: if original.id == 0 { new.id } else { original.id },
             first_name_option,
             last_name_option,
@@ -174,7 +174,6 @@ fn parse_telegram_file(path: &Path, ds: Dataset, myself_chooser: &dyn MyselfChoo
     log::info!("Parsing '{}'", path_to_str(&path)?);
 
     let start_time = Instant::now();
-    let ds_uuid = ds.uuid.as_ref().unwrap();
 
     let mut file_content = fs::read(&path)?;
     let parsed = simd_json::to_borrowed_value(&mut file_content)?;
@@ -185,7 +184,7 @@ fn parse_telegram_file(path: &Path, ds: Dataset, myself_chooser: &dyn MyselfChoo
     let root_obj = as_object!(parsed, "root");
 
     let mut myself = User {
-        ds_uuid: Some(ds_uuid.clone()),
+        ds_uuid: ds.uuid.clone(),
         ..Default::default()
     };
 
@@ -193,9 +192,9 @@ fn parse_telegram_file(path: &Path, ds: Dataset, myself_chooser: &dyn MyselfChoo
     let keys = root_obj.keys().map(|s| s.deref()).collect::<HashSet<_>>();
     let (users, chats_with_messages) =
         if single_chat_keys.is_superset(&keys) {
-            parser_single::parse(root_obj, ds_uuid, &mut myself, myself_chooser)?
+            parser_single::parse(root_obj, &ds.uuid, &mut myself, myself_chooser)?
         } else {
-            parser_full::parse(root_obj, ds_uuid, &mut myself)?
+            parser_full::parse(root_obj, &ds.uuid, &mut myself)?
         };
 
     log::info!("Processed in {} ms", start_time.elapsed().as_millis());
@@ -209,11 +208,10 @@ fn parse_telegram_file(path: &Path, ds: Dataset, myself_chooser: &dyn MyselfChoo
 
     // Sanity check: every chat member is supposed to have an associated user.
     for cwm in &chats_with_messages {
-        let chat = cwm.chat.as_ref().context("Chat absent!")?;
-        for member_id in chat.member_ids() {
+        for member_id in cwm.chat.member_ids() {
             if !users.id_to_user.contains_key(&member_id) {
                 bail!("No member with id={} found for chat with id={} '{}'",
-                      *member_id, chat.id, name_or_unnamed(&chat.name_option));
+                      *member_id, cwm.chat.id, name_or_unnamed(&cwm.chat.name_option));
             }
         }
     }
@@ -385,7 +383,7 @@ fn parse_chat(json_path: &str,
     }
     chat.member_ids = member_ids.into_iter().map(|s| *s).collect();
 
-    Ok(Some(ChatWithMessages { chat: Some(chat), messages }))
+    Ok(Some(ChatWithMessages { chat, messages }))
 }
 
 //
@@ -857,12 +855,12 @@ fn parse_service_message(message_json: &mut MessageJson,
             }), None),
         "suggest_profile_photo" =>
             (SealedValueOptional::SuggestProfilePhoto(MessageServiceSuggestProfilePhoto {
-                photo: Some(ContentPhoto {
+                photo: ContentPhoto {
                     path_option: message_json.field_opt_path("photo")?,
                     height: message_json.field_i32("height")?,
                     width: message_json.field_i32("width")?,
                     is_one_time: false,
-                })
+                }
             }), None),
         "clear_history" =>
             (SealedValueOptional::ClearHistory(MessageServiceClearHistory {}), None),
@@ -878,12 +876,12 @@ fn parse_service_message(message_json: &mut MessageJson,
             }), None),
         "edit_group_photo" =>
             (SealedValueOptional::GroupEditPhoto(MessageServiceGroupEditPhoto {
-                photo: Some(ContentPhoto {
+                photo: ContentPhoto {
                     path_option: message_json.field_opt_path("photo")?,
                     height: message_json.field_i32("height")?,
                     width: message_json.field_i32("width")?,
                     is_one_time: false,
-                })
+                }
             }), None),
         "delete_group_photo" =>
             (SealedValueOptional::GroupDeletePhoto(MessageServiceGroupDeletePhoto {}), None),

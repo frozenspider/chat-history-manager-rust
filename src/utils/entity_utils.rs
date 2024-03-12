@@ -102,7 +102,7 @@ impl ShortUser {
 
     pub fn to_user(&self, ds_uuid: &PbUuid) -> User {
         User {
-            ds_uuid: Some(ds_uuid.clone()),
+            ds_uuid: ds_uuid.clone(),
             id: *self.id,
             first_name_option: self.full_name_option.clone(),
             last_name_option: None,
@@ -146,10 +146,6 @@ impl User {
     }
 }
 
-impl Dataset {
-    pub fn uuid(&self) -> &PbUuid { self.uuid.as_ref().unwrap() }
-}
-
 impl Display for Difference {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.message)?;
@@ -170,7 +166,7 @@ pub struct ChatWithDetails {
 
 impl ChatWithDetails {
     pub fn ds_uuid(&self) -> &PbUuid {
-        self.chat.ds_uuid.as_ref().unwrap()
+        &self.chat.ds_uuid
     }
 
     pub fn id(&self) -> ChatId { ChatId(self.chat.id) }
@@ -190,22 +186,20 @@ impl ChatWithDetails {
     }
 }
 
-impl TryFrom<ChatWithDetailsPb> for ChatWithDetails {
-    type Error = anyhow::Error;
-
-    fn try_from(value: ChatWithDetailsPb) -> Result<Self> {
-        Ok(Self {
-            chat: value.chat.context("Chat was empty")?,
+impl From<ChatWithDetailsPb> for ChatWithDetails {
+    fn from(value: ChatWithDetailsPb) -> Self {
+        Self {
+            chat: value.chat,
             last_msg_option: value.last_msg_option,
             members: value.members,
-        })
+        }
     }
 }
 
 impl From<ChatWithDetails> for ChatWithDetailsPb {
     fn from(value: ChatWithDetails) -> Self {
         Self {
-            chat: Some(value.chat),
+            chat: value.chat,
             last_msg_option: value.last_msg_option,
             members: value.members,
         }
@@ -213,11 +207,6 @@ impl From<ChatWithDetails> for ChatWithDetailsPb {
 }
 
 impl Chat {
-    /// Unfortunately needed heler due to rust-protobuf code generation strategy.
-    pub fn ds_uuid(&self) -> &PbUuid {
-        self.ds_uuid.as_ref().unwrap()
-    }
-
     pub fn id(&self) -> ChatId { ChatId(self.id) }
 
     pub fn qualified_name(&self) -> String {
@@ -327,7 +316,7 @@ impl Message {
                 use message_service::SealedValueOptional::*;
                 match ms {
                     PhoneCall(_) => vec![],
-                    SuggestProfilePhoto(v) => vec![v.photo.as_ref().and_then(|p| p.path_option.as_deref())],
+                    SuggestProfilePhoto(v) => vec![v.photo.path_option.as_deref()],
                     PinMessage(_) => vec![],
                     ClearHistory(_) => vec![],
                     BlockUser(_) => vec![],
@@ -335,7 +324,7 @@ impl Message {
                     Notice(_) => vec![],
                     GroupCreate(_) => vec![],
                     GroupEditTitle(_) => vec![],
-                    GroupEditPhoto(v) => vec![v.photo.as_ref().and_then(|p| p.path_option.as_deref())],
+                    GroupEditPhoto(v) => vec![v.photo.path_option.as_deref()],
                     GroupDeletePhoto(_) => vec![],
                     GroupInviteMembers(_) => vec![],
                     GroupRemoveMembers(_) => vec![],

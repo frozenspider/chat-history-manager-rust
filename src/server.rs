@@ -35,13 +35,6 @@ type DaoRefCell = RefCell<Box<dyn ChatHistoryDao>>;
 
 type ChmLock<'a> = MutexGuard<'a, ChatHistoryManagerServer>;
 
-#[macro_export]
-macro_rules! from_req {
-    ($req:ident.$field:ident) => {
-        $req.$field.as_ref().context(concat!("Request has no ", stringify!($field)))?
-    };
-}
-
 // Should be used wrapped in Arc<Mutex<Self>>
 pub struct ChatHistoryManagerServer {
     loader: Loader,
@@ -150,7 +143,7 @@ pub async fn debug_request_myself(port: u16) -> Result<usize> {
     let ds_uuid = PbUuid { value: "00000000-0000-0000-0000-000000000000".to_owned() };
     let chosen = chooser.choose_myself(&[
         User {
-            ds_uuid: Some(ds_uuid.clone()),
+            ds_uuid: ds_uuid.clone(),
             id: 100,
             first_name_option: Some("User 100 FN".to_owned()),
             last_name_option: None,
@@ -158,7 +151,7 @@ pub async fn debug_request_myself(port: u16) -> Result<usize> {
             phone_number_option: None,
         },
         User {
-            ds_uuid: Some(ds_uuid),
+            ds_uuid,
             id: 200,
             first_name_option: None,
             last_name_option: Some("User 200 LN".to_owned()),

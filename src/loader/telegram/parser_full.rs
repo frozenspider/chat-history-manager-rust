@@ -20,7 +20,7 @@ pub(super) fn parse(root_obj: &Object,
                 "list" => {
                     for v in value.as_array().context("Contact list is not an array!")? {
                         let mut contact = parse_contact("contact", v)?;
-                        contact.ds_uuid = Some(ds_uuid.clone());
+                        contact.ds_uuid = ds_uuid.clone();
                         users.insert(contact);
                     }
                     Ok(())
@@ -73,8 +73,7 @@ pub(super) fn parse(root_obj: &Object,
             for v in chats_arr {
                 if let Some(mut cwm) = parse_chat(json_path, as_object!(v, json_path, "chat"),
                                                   ds_uuid, Some(&myself.id()), &mut users)? {
-                    let c = cwm.chat.as_mut().unwrap();
-                    c.ds_uuid = Some(ds_uuid.clone());
+                    cwm.chat.ds_uuid = ds_uuid.clone();
                     chats_with_messages.push(cwm);
                 }
             }

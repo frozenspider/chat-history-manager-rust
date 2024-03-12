@@ -13,7 +13,7 @@ fn basics() -> EmptyRes {
     assert_eq!(dao.name(), &dao.name);
     assert_eq!(dao.storage_path(), dao.storage_path);
     assert_eq!(dao.datasets()?.iter().collect_vec(), vec![&dao.dataset()]);
-    let ds_uuid = dao.datasets()?.remove(0).uuid.unwrap();
+    let ds_uuid = dao.datasets()?.remove(0).uuid;
 
     assert_eq!(dao.dataset_root(&ds_uuid)?, dao.ds_roots[&ds_uuid]);
 
@@ -33,7 +33,7 @@ fn basics() -> EmptyRes {
 fn messages_first_last_scroll() -> EmptyRes {
     let dao_holder = create_specific_dao();
     let dao = dao_holder.dao;
-    let ds_uuid = dao.datasets()?.remove(0).uuid.unwrap();
+    let ds_uuid = dao.datasets()?.remove(0).uuid;
     let chat = dao.chats(&ds_uuid)?.remove(0).chat;
     let msgs = &dao.cwms[&ds_uuid][0].messages;
     let len = msgs.len();
@@ -66,7 +66,7 @@ fn messages_first_last_scroll() -> EmptyRes {
 fn messages_befoer_after_slice() -> EmptyRes {
     let dao_holder = create_specific_dao();
     let dao = dao_holder.dao;
-    let ds_uuid = dao.datasets()?.remove(0).uuid.unwrap();
+    let ds_uuid = dao.datasets()?.remove(0).uuid;
     let chat = dao.chats(&ds_uuid)?.remove(0).chat;
     let msgs = &dao.cwms[&ds_uuid][0].messages;
     let len = msgs.len();
@@ -128,7 +128,7 @@ fn messages_befoer_after_slice() -> EmptyRes {
 fn messages_around() -> EmptyRes {
     let dao_holder = create_specific_dao();
     let dao = dao_holder.dao;
-    let ds_uuid = dao.datasets()?.remove(0).uuid.unwrap();
+    let ds_uuid = dao.datasets()?.remove(0).uuid;
     let chat = dao.chats(&ds_uuid)?.remove(0).chat;
     let msgs = &dao.cwms[&ds_uuid][0].messages;
     let len = msgs.len();
@@ -179,7 +179,7 @@ fn messages_around() -> EmptyRes {
 pub fn create_specific_dao() -> InMemoryDaoHolder {
     let users = vec![
         User {
-            ds_uuid: Some(ZERO_PB_UUID.clone()),
+            ds_uuid: ZERO_PB_UUID.clone(),
             id: 1,
             first_name_option: Some("Wwwwww Www".to_owned()),
             last_name_option: None,
@@ -187,7 +187,7 @@ pub fn create_specific_dao() -> InMemoryDaoHolder {
             phone_number_option: None,
         },
         User {
-            ds_uuid: Some(ZERO_PB_UUID.clone()),
+            ds_uuid: ZERO_PB_UUID.clone(),
             id: 2,
             first_name_option: Some("Aaaaa".to_owned()),
             last_name_option: Some("Aaaaaaaaaaa".to_owned()),
@@ -200,8 +200,8 @@ pub fn create_specific_dao() -> InMemoryDaoHolder {
         let messages =
             (0..10).map(|i| create_regular_message(i, (i % 2) + 1)).collect_vec();
         ChatWithMessages {
-            chat: Some(Chat {
-                ds_uuid: Some(ZERO_PB_UUID.clone()),
+            chat: Chat {
+                ds_uuid: ZERO_PB_UUID.clone(),
                 id: 1,
                 name_option: Some("Chat One".to_owned()),
                 source_type: SourceType::Telegram as i32,
@@ -210,7 +210,7 @@ pub fn create_specific_dao() -> InMemoryDaoHolder {
                 member_ids: users.iter().map(|u| u.id).collect_vec(),
                 msg_count: messages.len() as i32,
                 main_chat_id: None,
-            }),
+            },
             messages,
         }
     }];

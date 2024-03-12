@@ -182,11 +182,9 @@ fn dataset_map_to_dao_data(dataset_map: DatasetMap) -> Vec<DatasetEntry> {
     dataset_map.into_values().sorted_by_key(|e| e.ds.alias.clone()).map(|mut entry| {
         // Now that we know all user names, rename chats accordingly
         for cwm in entry.cwms.values_mut() {
-            if let Some(ref mut chat) = cwm.chat {
-                let chat_email = chat.name_option.as_ref().unwrap();
-                if let Some(pretty_name) = entry.users.get(chat_email).map(|u| u.pretty_name()) {
-                    chat.name_option = Some(pretty_name);
-                }
+            let chat_email = cwm.chat.name_option.as_ref().unwrap();
+            if let Some(pretty_name) = entry.users.get(chat_email).map(|u| u.pretty_name()) {
+                cwm.chat.name_option = Some(pretty_name);
             }
         }
         DatasetEntry {
@@ -556,7 +554,7 @@ fn upsert_user(users: &mut HashMap<String, User>,
                username: &str,
                first_name_or_email: Option<String>) {
     let user = users.entry(username.to_owned()).or_insert_with(|| User {
-        ds_uuid: Some(ds_uuid.clone()),
+        ds_uuid: ds_uuid.clone(),
         id: loader::hash_to_id(username),
         first_name_option: None,
         last_name_option: None,

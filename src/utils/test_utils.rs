@@ -195,10 +195,10 @@ pub fn get_simple_dao_entities<MsgType>(
 ) -> DaoEntities<MsgType> {
     let dao = dao_holder.dao.as_ref();
     let ds = dao.datasets().unwrap().remove(0);
-    let ds_root = dao.dataset_root(ds.uuid()).unwrap();
-    let users = dao.users(&ds.uuid()).unwrap();
-    let chat = dao.chats(&ds.uuid()).unwrap();
-    let cwd_option = if chat.is_empty() { None } else { Some(dao.chats(&ds.uuid()).unwrap().remove(0)) };
+    let ds_root = dao.dataset_root(&ds.uuid).unwrap();
+    let users = dao.users(&ds.uuid).unwrap();
+    let chat = dao.chats(&ds.uuid).unwrap();
+    let cwd_option = if chat.is_empty() { None } else { Some(dao.chats(&ds.uuid).unwrap().remove(0)) };
     let msgs = match cwd_option {
         Some(ref cwd) => dao.first_messages(&cwd.chat, usize::MAX).unwrap(),
         None => vec![],
@@ -219,7 +219,7 @@ pub fn create_simple_dao(
     let users = (1..=num_users).map(|i| create_user(&ZERO_PB_UUID, i as i64)).collect_vec();
     let member_ids = users.iter().map(|u| u.id).collect_vec();
     let chat = create_group_chat(&ZERO_PB_UUID, 1, "One", member_ids, messages.len());
-    let cwms = vec![ChatWithMessages { chat: Some(chat), messages }];
+    let cwms = vec![ChatWithMessages { chat, messages }];
     create_dao(name_suffix, users, cwms, |ds_root, m| amend_message(is_master, ds_root, m))
 }
 
@@ -237,7 +237,7 @@ pub fn create_dao(
             }, "All messages should have valid user IDs!");
 
     let ds = Dataset {
-        uuid: Some(PbUuid::random()),
+        uuid: PbUuid::random(),
         alias: format!("Dataset {name_suffix}"),
     };
 
@@ -249,11 +249,9 @@ pub fn create_dao(
 
     let mut cwms = cwms;
     for cwm in cwms.iter_mut() {
-        for c in cwm.chat.iter_mut() {
-            c.ds_uuid = ds.uuid.clone();
-            let img = create_random_file(&ds_root.0);
-            c.img_path_option = Some(ds_root.to_relative(&img).unwrap())
-        }
+        cwm.chat.ds_uuid = ds.uuid.clone();
+        let img = create_random_file(&ds_root.0);
+        cwm.chat.img_path_option = Some(ds_root.to_relative(&img).unwrap());
         for m in cwm.messages.iter_mut() {
             amend_messages(&ds_root, m);
         }
@@ -274,7 +272,7 @@ pub fn create_dao(
 
 pub fn create_user(ds_uuid: &PbUuid, id: i64) -> User {
     User {
-        ds_uuid: Some(ds_uuid.clone()),
+        ds_uuid: ds_uuid.clone(),
         id,
         first_name_option: Some("User".to_owned()),
         last_name_option: Some(id.to_string()),
@@ -286,7 +284,7 @@ pub fn create_user(ds_uuid: &PbUuid, id: i64) -> User {
 pub fn create_personal_chat(ds_uuid: &PbUuid, idx: i32, user: &User, member_ids: Vec<i64>, msg_count: usize) -> Chat {
     assert!(member_ids.len() == 2);
     Chat {
-        ds_uuid: Some(ds_uuid.clone()),
+        ds_uuid: ds_uuid.clone(),
         id: idx as i64,
         name_option: user.pretty_name_option(),
         source_type: SourceType::Telegram as i32,
@@ -301,7 +299,7 @@ pub fn create_personal_chat(ds_uuid: &PbUuid, idx: i32, user: &User, member_ids:
 pub fn create_group_chat(ds_uuid: &PbUuid, id: i64, name_suffix: &str, member_ids: Vec<i64>, msg_count: usize) -> Chat {
     assert!(member_ids.len() >= 2);
     Chat {
-        ds_uuid: Some(ds_uuid.clone()),
+        ds_uuid: ds_uuid.clone(),
         id: id,
         name_option: Some(format!("Chat {}", name_suffix)),
         source_type: SourceType::Telegram as i32,
@@ -397,7 +395,7 @@ impl<T> ExtOption<T> for Option<T> {
 /// Since InMemoryDao is usually used to store just one dataset, test helpers are in order.
 impl InMemoryDao {
     pub fn ds_uuid(&self) -> PbUuid {
-        self.dataset().uuid().clone()
+        self.dataset().uuid.clone()
     }
 
     pub fn dataset(&self) -> Dataset {

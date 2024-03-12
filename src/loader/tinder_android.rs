@@ -40,7 +40,7 @@ impl<H: HttpClient + 'static> TinderAndroidDataLoader<H> {
         let mut users: Users = Default::default();
 
         users.insert(MYSELF_KEY.to_owned(), User {
-            ds_uuid: Some(ds_uuid.clone()),
+            ds_uuid: ds_uuid.clone(),
             id: *MYSELF_ID,
             first_name_option: Some("Me".to_owned()), // No way to know your own name, sadly
             last_name_option: None,
@@ -58,7 +58,7 @@ impl<H: HttpClient + 'static> TinderAndroidDataLoader<H> {
             let name_option = row.get::<_, Option<String>>("name")?;
 
             users.insert(key, User {
-                ds_uuid: Some(ds_uuid.clone()),
+                ds_uuid: ds_uuid.clone(),
                 id: *id,
                 first_name_option: name_option,
                 last_name_option: None,
@@ -146,8 +146,8 @@ impl<H: HttpClient + 'static> TinderAndroidDataLoader<H> {
             messages.iter_mut().enumerate().for_each(|(i, m)| m.internal_id = i as i64);
 
             cwms.push(ChatWithMessages {
-                chat: Some(Chat {
-                    ds_uuid: Some(ds_uuid.clone()),
+                chat: Chat {
+                    ds_uuid: ds_uuid.clone(),
                     id: user.id,
                     name_option: user.first_name_option.clone(),
                     source_type: SourceType::TinderDb as i32,
@@ -156,7 +156,7 @@ impl<H: HttpClient + 'static> TinderAndroidDataLoader<H> {
                     member_ids: vec![*MYSELF_ID, user.id],
                     msg_count: messages.len() as i32,
                     main_chat_id: None,
-                }),
+                },
                 messages,
             });
         }

@@ -363,10 +363,10 @@ fn inserts() -> EmptyRes {
 fn update_dataset_same_uuid() -> EmptyRes {
     let (mut dao, _tmp_dir) = create_sqlite_dao();
 
-    let ds = dao.insert_dataset(Dataset { uuid: Some(ZERO_PB_UUID.clone()), alias: "My Dataset".to_owned() })?;
-    dao.insert_user(create_user(ds.uuid(), 1), true)?;
+    let ds = dao.insert_dataset(Dataset { uuid: ZERO_PB_UUID.clone(), alias: "My Dataset".to_owned() })?;
+    dao.insert_user(create_user(&ds.uuid, 1), true)?;
 
-    let ds = dao.as_mutable()?.update_dataset(ds.uuid().clone(), Dataset { uuid: ds.uuid.clone(), alias: "Renamed Dataset".to_owned() })?;
+    let ds = dao.as_mutable()?.update_dataset(ds.uuid.clone(), Dataset { uuid: ds.uuid.clone(), alias: "Renamed Dataset".to_owned() })?;
     assert_eq!(dao.datasets()?.remove(0), ds);
 
     Ok(())
@@ -381,8 +381,8 @@ fn delete_dataset() -> EmptyRes {
     for f in dst_files.iter() {
         assert!(f.exists());
     }
-    let other_ds = dao.insert_dataset(Dataset { uuid: Some(ZERO_PB_UUID.clone()), alias: "My Dataset".to_owned() })?;
-    let other_user = dao.insert_user(create_user(other_ds.uuid(), 1), true)?;
+    let other_ds = dao.insert_dataset(Dataset { uuid: ZERO_PB_UUID.clone(), alias: "My Dataset".to_owned() })?;
+    let other_user = dao.insert_user(create_user(&other_ds.uuid, 1), true)?;
     assert_eq!(dao.datasets()?.len(), 2);
 
     dao.delete_dataset(daos.ds_uuid.clone())?;
@@ -404,7 +404,7 @@ fn delete_dataset() -> EmptyRes {
 
     // Other dataset remain unaffected
     assert_eq!(dao.datasets()?.len(), 1);
-    assert_eq!(dao.users(other_ds.uuid())?, vec![other_user]);
+    assert_eq!(dao.users(&other_ds.uuid)?, vec![other_user]);
 
     Ok(())
 }
@@ -415,7 +415,7 @@ fn update_user() -> EmptyRes {
 
     let (mut dao, _tmp_dir) = create_sqlite_dao();
 
-    let ds = dao.insert_dataset(Dataset { uuid: Some(ZERO_PB_UUID.clone()), alias: "My Dataset".to_owned() })?;
+    let ds = dao.insert_dataset(Dataset { uuid: ZERO_PB_UUID.clone(), alias: "My Dataset".to_owned() })?;
 
     let users: Vec<User> = (1..=3)
         .map(|i| dao.insert_user(create_user(&ZERO_PB_UUID, i as i64), i == 1))
@@ -480,9 +480,9 @@ fn update_user() -> EmptyRes {
     assert_eq!(dao.update_user(changed_users[0].id(), changed_users[0].clone())?, changed_users[0]);
 
     // Renaming myself should not affect private chat names
-    assert_eq!(dao.chat_option(ds.uuid(), personal_chat_u2.id)?.map(|cwd| cwd.chat), Some(personal_chat_u2.clone()));
-    assert_eq!(dao.chat_option(ds.uuid(), personal_chat_u3.id)?.map(|cwd| cwd.chat), Some(personal_chat_u3.clone()));
-    assert_eq!(dao.chat_option(ds.uuid(), group_chat.id)?.map(|cwd| cwd.chat), Some(group_chat.clone()));
+    assert_eq!(dao.chat_option(&ds.uuid, personal_chat_u2.id)?.map(|cwd| cwd.chat), Some(personal_chat_u2.clone()));
+    assert_eq!(dao.chat_option(&ds.uuid, personal_chat_u3.id)?.map(|cwd| cwd.chat), Some(personal_chat_u3.clone()));
+    assert_eq!(dao.chat_option(&ds.uuid, group_chat.id)?.map(|cwd| cwd.chat), Some(group_chat.clone()));
 
     changed_users[1].first_name_option = Some("U1 FN".to_owned());
     changed_users[1].last_name_option = Some("U1 LN".to_owned());
@@ -497,24 +497,24 @@ fn update_user() -> EmptyRes {
     assert_eq!(dao.update_user(changed_users[1].id(), changed_users[1].clone())?, changed_users[1]);
     assert_eq!(dao.update_user(changed_users[2].id(), changed_users[2].clone())?, changed_users[2]);
 
-    assert_eq!(dao.users(ds.uuid())?, changed_users);
-    assert_eq!(dao.myself(ds.uuid())?, changed_users[0]);
+    assert_eq!(dao.users(&ds.uuid)?, changed_users);
+    assert_eq!(dao.myself(&ds.uuid)?, changed_users[0]);
 
     // Personal chat names should be renamed accordingly
 
-    assert_eq!(dao.chat_option(ds.uuid(), personal_chat_u2.id)?.unwrap().chat,
+    assert_eq!(dao.chat_option(&ds.uuid, personal_chat_u2.id)?.unwrap().chat,
                Chat {
                    name_option: Some("U1 FN U1 LN".to_owned()),
                    ..personal_chat_u2.clone()
                });
 
-    assert_eq!(dao.chat_option(ds.uuid(), personal_chat_u3.id)?.unwrap().chat,
+    assert_eq!(dao.chat_option(&ds.uuid, personal_chat_u3.id)?.unwrap().chat,
                Chat {
                    name_option: None,
                    ..personal_chat_u3.clone()
                });
 
-    assert_eq!(dao.chat_option(ds.uuid(), group_chat.id)?.unwrap().chat,
+    assert_eq!(dao.chat_option(&ds.uuid, group_chat.id)?.unwrap().chat,
                group_chat);
 
     // String members should also be renamed
@@ -552,13 +552,13 @@ fn update_user_change_id() -> EmptyRes {
         .filter(|m| m.from_id == *old_id).collect_vec();
     assert!(old_group_user_msgs.len() > 0 && old_personal_user_msgs.len() > 0);
 
-    assert_eq!(dao.chats(dst_ds.uuid())?.len(), 4);
+    assert_eq!(dao.chats(&dst_ds.uuid)?.len(), 4);
 
     dao.update_user(old_id, User { id: *new_id, ..old_user.clone() })?;
-    assert_eq!(dao.users(dst_ds.uuid())?.len(), 9);
+    assert_eq!(dao.users(&dst_ds.uuid)?.len(), 9);
 
-    assert!(dao.users(dst_ds.uuid())?.into_iter().find(|u| u.id() == old_id).is_none());
-    let new_user = dao.users(dst_ds.uuid())?.into_iter().find(|u| u.id() == new_id).unwrap();
+    assert!(dao.users(&dst_ds.uuid)?.into_iter().find(|u| u.id() == old_id).is_none());
+    let new_user = dao.users(&dst_ds.uuid)?.into_iter().find(|u| u.id() == new_id).unwrap();
     assert_eq!(new_user, User { id: *new_id, ..old_user.clone() });
 
     let new_group_cwd = dao.chats(&daos.ds_uuid)?.into_iter()
@@ -594,8 +594,8 @@ fn update_chat_change_id() -> EmptyRes {
     let dst_ds = dao.datasets()?.remove(0);
     assert_eq!(dao.users(&daos.ds_uuid)?.len(), 9);
 
-    assert_eq!(dao.chats(dst_ds.uuid())?.len(), 4);
-    let cwd = dao.chats(dst_ds.uuid())?.into_iter()
+    assert_eq!(dao.chats(&dst_ds.uuid)?.len(), 4);
+    let cwd = dao.chats(&dst_ds.uuid)?.into_iter()
         .find(|cwd| cwd.chat.tpe == ChatType::PrivateGroup as i32).unwrap();
 
     let old_files = dao.first_messages(&cwd.chat, usize::MAX)?.iter()
@@ -608,9 +608,9 @@ fn update_chat_change_id() -> EmptyRes {
     let new_id = ChatId(112233);
     let old_chat = cwd.chat.clone();
     dao.update_chat(old_id, Chat { id: *new_id, ..cwd.chat })?;
-    assert_eq!(dao.chats(dst_ds.uuid())?.len(), 4);
+    assert_eq!(dao.chats(&dst_ds.uuid)?.len(), 4);
 
-    let cwd = dao.chats(dst_ds.uuid())?.into_iter().find(|cwd| cwd.id() == new_id).unwrap();
+    let cwd = dao.chats(&dst_ds.uuid)?.into_iter().find(|cwd| cwd.id() == new_id).unwrap();
     assert_eq!(cwd.chat, Chat { id: *new_id, ..old_chat.clone() });
 
     // Files must be moved to a different dir
@@ -655,15 +655,15 @@ fn delete_chat() -> EmptyRes {
     let dst_ds = dao.datasets()?.remove(0);
     assert_eq!(dao.users(&daos.ds_uuid)?.len(), 9);
 
-    assert_eq!(dao.chats(dst_ds.uuid())?.len(), 4);
-    let cwd = dao.chats(dst_ds.uuid())?.into_iter()
+    assert_eq!(dao.chats(&dst_ds.uuid)?.len(), 4);
+    let cwd = dao.chats(&dst_ds.uuid)?.into_iter()
         .find(|cwd| cwd.chat.tpe == ChatType::PrivateGroup as i32).unwrap();
     let files = dao.first_messages(&cwd.chat, usize::MAX)?.iter()
         .flat_map(|m| m.files(&daos.dst_ds_root)).collect_vec();
     assert!(files.len() > 0);
 
     dao.delete_chat(cwd.chat)?;
-    assert_eq!(dao.chats(dst_ds.uuid())?.len(), 3);
+    assert_eq!(dao.chats(&dst_ds.uuid)?.len(), 3);
 
     // Files must be moved to backup dir
     let specific_backup_paths: Vec<_> =
@@ -930,9 +930,9 @@ fn init() -> TestDaos {
 
 fn init_from(src_dao: Box<InMemoryDao>, src_dir: PathBuf, src_dao_tmpdir: Option<TmpDir>) -> TestDaos {
     let (dst_dao, dst_dao_tmpdir) = create_sqlite_dao();
-    let src_dataset_uuids = src_dao.datasets().unwrap().into_iter().map(|ds| ds.uuid.unwrap()).collect_vec();
+    let src_dataset_uuids = src_dao.datasets().unwrap().into_iter().map(|ds| ds.uuid).collect_vec();
     dst_dao.copy_datasets_from(src_dao.as_ref(), &src_dataset_uuids).unwrap();
-    let ds_uuid = src_dao.datasets().unwrap()[0].uuid().clone();
+    let ds_uuid = src_dao.datasets().unwrap()[0].uuid.clone();
     let src_ds_root = src_dao.dataset_root(&ds_uuid).unwrap();
     let dst_ds_root = dst_dao.dataset_root(&ds_uuid).unwrap();
     TestDaos { src_dao, src_dir, src_dao_tmpdir, dst_dao, dst_dao_tmpdir, ds_uuid, src_ds_root, dst_ds_root }

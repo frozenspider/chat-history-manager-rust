@@ -685,7 +685,7 @@ fn present_absent_not_downloaded() -> EmptyRes {
             }
         } else {
             message_service!(message_service::SealedValueOptional::GroupEditPhoto(
-                MessageServiceGroupEditPhoto { photo: Some(photo.clone()) }
+                MessageServiceGroupEditPhoto { photo: photo.clone() }
             ))
         };
         let text = vec![RichText::make_plain(format!("Message for a photo {idx}"))];
@@ -770,7 +770,7 @@ fn present_absent_not_downloaded() -> EmptyRes {
                     transform(photo)
                 }
                 message_service_pat!(GroupEditPhoto(ref mut edit_photo)) => {
-                    transform(edit_photo.photo.as_mut().unwrap())
+                    transform(&mut edit_photo.photo)
                 }
                 _ => unreachable!()
             };
