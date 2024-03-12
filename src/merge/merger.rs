@@ -356,7 +356,7 @@ fn fixup_members(msg: &mut Message, final_users: &[User], cwd: &ChatWithDetails)
                 Some(GroupRemoveMembers(ref mut v)) => {
                     v.members = fixup_members_inner(&v.members);
                 }
-                Some(GroupCall(ref mut v)) => {
+                Some(PhoneCall(ref mut v)) => {
                     v.members = fixup_members_inner(&v.members);
                 }
                 _ => { /* NOOP*/ }

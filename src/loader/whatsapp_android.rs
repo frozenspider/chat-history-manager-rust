@@ -548,6 +548,7 @@ fn parse_chats(conn: &Connection, ds_uuid: &PbUuid, users: &mut Users) -> Result
                 message_service!(SealedValueOptional::PhoneCall(MessageServicePhoneCall {
                     duration_sec_option: get_zero_as_null(row, columns::call_logs::DURATION)?,
                     discard_reason_option: None,
+                    members: vec![],
                 })),
             ));
         }
@@ -661,6 +662,7 @@ fn parse_system_message<'a>(
             PhoneCall(MessageServicePhoneCall {
                 duration_sec_option: None,
                 discard_reason_option: Some("missed".to_owned()),
+                members: vec![],
             }),
         _ => unreachable!()
     };

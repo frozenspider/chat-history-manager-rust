@@ -168,9 +168,8 @@ message MessageService {
     MessageServiceGroupRemoveMembers    group_remove_members = 8;
     MessageServiceGroupMigrateFrom      group_migrate_from = 9;
     MessageServiceGroupMigrateTo        group_migrate_to = 10;
-    MessageServiceGroupCall             group_call = 11; // TODO: Unite with PhoneCall
 
-    // Removed: message_deleted = 14
+    // Removed: group_call = 11, message_deleted = 14
   }
 }
 
@@ -372,6 +371,9 @@ message ContentSharedContact {
 message MessageServicePhoneCall {
   optional int32 duration_sec_option = 1;
   optional string discard_reason_option = 2;
+
+  // Is sometimes populated for group calls
+  repeated string members = 3;
 }
 
 message MessageServiceSuggestProfilePhoto {
@@ -428,11 +430,6 @@ message MessageServiceGroupMigrateFrom {
 
 // Migrate to supergroup of the same name
 message MessageServiceGroupMigrateTo {}
-
-// This is different to PhoneCall
-message MessageServiceGroupCall {
-  repeated string members = 1;
-}
 
 //
 // HistoryDaoService

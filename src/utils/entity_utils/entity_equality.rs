@@ -126,7 +126,10 @@ impl<'a> PracticalEq for Tup<'a, MessageService> {
             ($T:ident, $name1:ident, $name2:ident) => { (Some($T($name1)), Some($T($name2))) };
         }
         match (self.v.sealed_value_optional.as_ref(), other.v.sealed_value_optional.as_ref()) {
-            case!(PhoneCall, c1, c2) => Ok(c1 == c2),
+            case!(PhoneCall, c1, c2) => {
+                Ok(c1 == c2 &&
+                    members_practically_equals((&c1.members, self.cwd), (&c2.members, other.cwd))?)
+            }
             case!(SuggestProfilePhoto, c1, c2) => {
                 // Only need to compare photos
                 self.with(c1).apply(|c| &c.photo).practically_equals(&other.with(c2).apply(|c| &c.photo))
@@ -151,8 +154,7 @@ impl<'a> PracticalEq for Tup<'a, MessageService> {
                 members_practically_equals((&c1.members, self.cwd), (&c2.members, other.cwd)),
             case!(GroupMigrateFrom, c1, c2) => Ok(c1 == c2),
             case!(GroupMigrateTo, c1, c2) => Ok(c1 == c2),
-            case!(GroupCall, c1, c2) =>
-                members_practically_equals((&c1.members, self.cwd), (&c2.members, other.cwd)),
+
             _ => Ok(false)
         }
     }

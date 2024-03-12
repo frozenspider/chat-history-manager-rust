@@ -939,7 +939,9 @@ fn members_test_helper(clue: &str,
             GroupRemoveMembers(MessageServiceGroupRemoveMembers {
                 members: members.clone()
             }),
-            GroupCall(MessageServiceGroupCall {
+            PhoneCall(MessageServicePhoneCall {
+                duration_sec_option: None,
+                discard_reason_option: None,
                 members: members.clone()
             }),
         ];
@@ -1028,7 +1030,7 @@ fn members_test_helper(clue: &str,
     assert_eq!(coerce_enum!(service_value(&new_messages[0]), GroupCreate(v) => v).members, expected_members, "{clue}");
     assert_eq!(coerce_enum!(service_value(&new_messages[1]), GroupInviteMembers(v) => v).members, expected_members, "{clue}");
     assert_eq!(coerce_enum!(service_value(&new_messages[2]), GroupRemoveMembers(v) => v).members, expected_members, "{clue}");
-    assert_eq!(coerce_enum!(service_value(&new_messages[3]), GroupCall(v) => v).members, expected_members, "{clue}");
+    assert_eq!(coerce_enum!(service_value(&new_messages[3]), PhoneCall(v) => v).members, expected_members, "{clue}");
     Ok(())
 }
 

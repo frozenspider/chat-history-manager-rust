@@ -796,7 +796,7 @@ impl MutableChatHistoryDao for SqliteDao {
                     .load(conn)?;
 
                 for (id, members_string) in old_mc_members {
-                    let new_members_string = utils::serialize_arr(&utils::deserialize_arr(members_string.unwrap())
+                    let new_members_string = utils::serialize_arr(&utils::deserialize_arr(members_string)
                         .into_iter()
                         .map(|s| if s == old_name { new_name.clone() } else { s })
                         .collect_vec());

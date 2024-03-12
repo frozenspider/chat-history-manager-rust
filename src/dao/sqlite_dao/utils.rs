@@ -18,8 +18,11 @@ pub fn serialize_arr(v: &[String]) -> Option<String> {
     if v.is_empty() { None } else { Some(v.iter().join(";;;")) }
 }
 
-pub fn deserialize_arr(v: String) -> Vec<String> {
-    if v.is_empty() { vec![] } else { v.split(";;;").map(|v| v.to_owned()).collect() }
+pub fn deserialize_arr(v: Option<String>) -> Vec<String> {
+    match v.as_deref() {
+        None | Some("") => vec![],
+        Some(v) => v.split(";;;").map(|v| v.to_owned()).collect()
+    }
 }
 
 fn serialize_bool(b: bool) -> i32 {
@@ -462,6 +465,7 @@ pub mod message {
                 ("phone_call", Some(RawMessageContent {
                     duration_sec: v.duration_sec_option,
                     discard_reason: v.discard_reason_option.clone(),
+                    members: serialize_arr(&v.members),
                     ..Default::default()
                 })),
             SuggestProfilePhoto(v) =>
@@ -516,11 +520,6 @@ pub mod message {
                 })),
             GroupMigrateTo(_) =>
                 ("group_migrate_to", None),
-            GroupCall(v) =>
-                ("group_call", Some(RawMessageContent {
-                    members: serialize_arr(&v.members),
-                    ..Default::default()
-                })),
         };
 
         if let Some(ref mut mc) = mc {
@@ -706,6 +705,7 @@ pub mod message {
                 PhoneCall(MessageServicePhoneCall {
                     duration_sec_option: raw.duration_sec,
                     discard_reason_option: raw.discard_reason,
+                    members: deserialize_arr(raw.members),
                 })
             }
             "suggest_profile_photo" => {
@@ -736,7 +736,7 @@ pub mod message {
                 let raw = raw_or_bail!();
                 GroupCreate(MessageServiceGroupCreate {
                     title: get_or_bail!(raw.title),
-                    members: raw.members.map(deserialize_arr).unwrap_or_default(),
+                    members: deserialize_arr(raw.members),
                 })
             }
             "group_edit_title" => {
@@ -756,13 +756,13 @@ pub mod message {
             "group_invite_members" => {
                 let raw = raw_or_bail!();
                 GroupInviteMembers(MessageServiceGroupInviteMembers {
-                    members: deserialize_arr(get_or_bail!(raw.members)),
+                    members: deserialize_arr(Some(get_or_bail!(raw.members))),
                 })
             }
             "group_remove_members" => {
                 let raw = raw_or_bail!();
                 GroupRemoveMembers(MessageServiceGroupRemoveMembers {
-                    members: deserialize_arr(get_or_bail!(raw.members)),
+                    members: deserialize_arr(Some(get_or_bail!(raw.members))),
                 })
             }
             "group_migrate_from" => {
@@ -773,12 +773,6 @@ pub mod message {
             }
             "group_migrate_to" =>
                 GroupMigrateTo(MessageServiceGroupMigrateTo {}),
-            "group_call" => {
-                let raw = raw_or_bail!();
-                GroupCall(MessageServiceGroupCall {
-                    members: deserialize_arr(get_or_bail!(raw.members)),
-                })
-            }
             subtype => bail!("Unknown service message subtype {}!", subtype)
         })
     }

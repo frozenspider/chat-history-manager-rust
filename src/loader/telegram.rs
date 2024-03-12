@@ -843,11 +843,13 @@ fn parse_service_message(message_json: &mut MessageJson,
             (SealedValueOptional::PhoneCall(MessageServicePhoneCall {
                 duration_sec_option: message_json.field_opt_i32("duration_seconds")?,
                 discard_reason_option: message_json.field_opt_str("discard_reason")?,
+                members: vec![],
             }), None),
         "group_call" => // Treated the same as phone_call
             (SealedValueOptional::PhoneCall(MessageServicePhoneCall {
                 duration_sec_option: message_json.field_opt_i32("duration")?,
                 discard_reason_option: None,
+                members: vec![],
             }), None),
         "pin_message" =>
             (SealedValueOptional::PinMessage(MessageServicePinMessage {
@@ -910,8 +912,11 @@ fn parse_service_message(message_json: &mut MessageJson,
         "migrate_to_supergroup" =>
             (SealedValueOptional::GroupMigrateTo(MessageServiceGroupMigrateTo {}), None),
         "invite_to_group_call" =>
-            (SealedValueOptional::GroupCall(MessageServiceGroupCall {
-                members: parse_members(message_json)?
+            // TODO: This should probably modify a previous group call if one is in progress
+            (SealedValueOptional::PhoneCall(MessageServicePhoneCall {
+                duration_sec_option: None,
+                discard_reason_option: None,
+                members: parse_members(message_json)?,
             }), None),
         "set_messages_ttl" => {
             let mut period = message_json.field_i64("period")?;

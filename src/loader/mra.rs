@@ -457,6 +457,7 @@ fn process_call(
     Ok(Some((vec![], message_service!(ServiceSvo::PhoneCall(MessageServicePhoneCall {
             duration_sec_option: None,
             discard_reason_option: None,
+            members: vec![],
         }))
     )))
 }

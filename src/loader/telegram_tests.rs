@@ -374,7 +374,9 @@ fn loading_2021_07() -> EmptyRes {
             from_id: member.id,
             text: vec![],
             searchable_string: "Www Wwwwww".to_owned(),
-            typed: Some(message_service!(GroupCall(MessageServiceGroupCall {
+            typed: Some(message_service!(PhoneCall(MessageServicePhoneCall {
+                duration_sec_option: None,
+                discard_reason_option: None,
                 members: vec!["Www Wwwwww".to_owned()]
             }))),
         });
@@ -385,7 +387,9 @@ fn loading_2021_07() -> EmptyRes {
             from_id: member.id,
             text: vec![],
             searchable_string: "Myself".to_owned(),
-            typed: Some(message_service!(GroupCall(MessageServiceGroupCall {
+            typed: Some(message_service!(PhoneCall(MessageServicePhoneCall {
+                duration_sec_option: None,
+                discard_reason_option: None,
                 members: vec!["Myself".to_owned()]
             }))),
         });

@@ -330,7 +330,6 @@ impl Message {
                     GroupRemoveMembers(_) => vec![],
                     GroupMigrateFrom(_) => vec![],
                     GroupMigrateTo(_) => vec![],
-                    GroupCall(_) => vec![],
                 }
             }
             message_service_pat_unreachable!() => { unreachable!() }
@@ -615,11 +614,11 @@ pub fn make_searchable_string(components: &[RichTextElement], typed: &message::T
         message_service_pat!(m) => {
             use message_service::SealedValueOptional::*;
             match m {
+                PhoneCall(m) => m.members.clone(),
                 GroupCreate(m) => vec![vec![m.title.clone()], m.members.clone()].into_iter().flatten().collect_vec(),
                 GroupInviteMembers(m) => m.members.clone(),
                 GroupRemoveMembers(m) => m.members.clone(),
                 GroupMigrateFrom(m) => vec![m.title.clone()],
-                GroupCall(m) => m.members.clone(),
                 _ => vec![],
             }
         }
