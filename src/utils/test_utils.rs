@@ -318,7 +318,9 @@ pub fn create_regular_message(idx: usize, user_id: usize) -> Message {
         if idx > 0 { Some(rng.gen_range(0..idx) as i64) } else { None };
 
     let typed = message_regular! {
-        edit_timestamp_option: Some((BASE_DATE.clone() + Duration::minutes(idx as i64) + Duration::seconds(5)).timestamp()),
+        edit_timestamp_option: Some(
+                (BASE_DATE.clone() + Duration::try_minutes(idx as i64).unwrap() + Duration::try_seconds(5).unwrap()
+            ).timestamp()),
         is_deleted: false,
         reply_to_message_id_option: reply_to_message_id_option,
         forward_from_name_option: Some(format!("u{user_id}")),
@@ -334,7 +336,7 @@ pub fn create_regular_message(idx: usize, user_id: usize) -> Message {
     Message {
         internal_id: idx as i64 * 100,
         source_id_option: Some(idx as i64),
-        timestamp: (BASE_DATE.clone() + Duration::minutes(idx as i64)).timestamp(),
+        timestamp: (BASE_DATE.clone() + Duration::try_minutes(idx as i64).unwrap()).timestamp(),
         from_id: user_id as i64,
         text,
         searchable_string,

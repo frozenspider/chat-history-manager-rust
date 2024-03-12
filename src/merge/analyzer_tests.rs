@@ -675,7 +675,7 @@ fn present_absent_not_downloaded() -> EmptyRes {
     let make_msg_photo = |idx: i64, is_regular: bool, photo: &ContentPhoto| {
         let typed: message::Typed = if is_regular {
             message_regular! {
-                edit_timestamp_option: Some((BASE_DATE.clone() + Duration::minutes(10 + idx)).timestamp()),
+                edit_timestamp_option: Some((BASE_DATE.clone() + Duration::try_minutes(10 + idx).unwrap()).timestamp()),
                 is_deleted: false,
                 reply_to_message_id_option: None,
                 forward_from_name_option: Some("some user".to_owned()),
