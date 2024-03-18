@@ -319,6 +319,11 @@ name = "chat-history-manager"
 version = "0.3.0"
 dependencies = [
  "chat-history-manager-backend",
+ "clap",
+ "deepsize",
+ "env_logger",
+ "log",
+ "mimalloc",
 ]
 
 [[package]]
@@ -327,14 +332,12 @@ version = "0.3.0"
 dependencies = [
  "anyhow",
  "chrono",
- "clap",
  "const_format",
  "deepsize",
  "derive_deref",
  "diesel",
  "diesel_migrations",
  "encoding_rs",
- "env_logger",
  "fs_extra",
  "futures",
  "hashers",
@@ -342,7 +345,6 @@ dependencies = [
  "itertools 0.12.1",
  "lazy_static",
  "log",
- "mimalloc",
  "num-derive",
  "num-traits",
  "pretty_assertions",

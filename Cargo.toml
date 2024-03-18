@@ -1,3 +1,28 @@
+[package]
+name = "chat-history-manager"
+authors.workspace = true
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+chat-history-manager-backend = { workspace = true }
+
+# General
+mimalloc = "0.1.39" # As advise by SIMD Json docs
+deepsize = { workspace = true }
+
+# Logging
+log = { workspace = true }
+env_logger = "0.11.3"
+
+# CLI
+clap = { version = "4.5.2", features = ["derive"] }
+
+
+# ======================================================================================================================
+# WORKSPACE
+# ======================================================================================================================
+
 [workspace]
 members = [
     "backend"
@@ -11,11 +36,7 @@ edition = "2021"
 [workspace.dependencies]
 chat-history-manager-backend = { path = "backend" }
 
-[package]
-name = "chat-history-manager"
-authors.workspace = true
-version.workspace = true
-edition.workspace = true
+deepsize = "0.2.0"
 
-[dependencies]
-chat-history-manager-backend = { workspace = true }
+# Logging
+log = "0.4.21"

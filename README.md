@@ -10,7 +10,7 @@ Crude UI written in Scala in available as a [spearate project](https://github.co
 
 To run the gRPC server on a default port 50051, use
 ```
-cd backend && cargo run --release start-server
+cargo run --release start-server
 ```
 
 Supports a bunch of different history formats, refer to sections below for their list and instuction on how to
