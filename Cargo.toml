@@ -3,11 +3,19 @@ members = [
     "backend"
 ]
 
-[package]
-name = "chat-history-manager"
+[workspace.package]
 authors = ["frozenspider"]
 version = "0.3.0"
 edition = "2021"
 
-[dependencies]
+[workspace.dependencies]
+chat-history-manager-backend = { path = "backend" }
 
+[package]
+name = "chat-history-manager"
+authors.workspace = true
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+chat-history-manager-backend = { workspace = true }

@@ -1,7 +1,3 @@
-extern crate core;
-#[macro_use]
-extern crate num_derive;
-
 use std::path::Path;
 
 use prelude::*;
@@ -18,6 +14,8 @@ mod utils;
 
 pub mod prelude {
     pub use std::collections::{HashMap, HashSet};
+
+    pub use num_derive::*;
 
     pub use crate::*;
     pub use crate::protobuf::history::*;
