@@ -20,7 +20,7 @@ impl HistoryLoaderService for Arc<Mutex<ChatHistoryManagerServer>> {
                 return Ok(LoadResponse { name: dao.name().to_owned() });
             }
 
-            let dao = self_lock.loader.load(&path)?;
+            let dao = self_lock.loader.load(&path, self_lock.myself_chooser.as_ref())?;
             let response = LoadResponse { name: dao.name().to_owned() };
             self_lock.loaded_daos.insert(req.key.clone(), RefCell::new(dao));
             Ok(response)

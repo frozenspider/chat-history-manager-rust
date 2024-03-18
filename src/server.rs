@@ -38,7 +38,18 @@ type ChmLock<'a> = MutexGuard<'a, ChatHistoryManagerServer>;
 // Should be used wrapped in Arc<Mutex<Self>>
 pub struct ChatHistoryManagerServer {
     loader: Loader,
+    myself_chooser: Box<dyn MyselfChooser>,
     loaded_daos: HashMap<DaoKey, DaoRefCell>,
+}
+
+impl ChatHistoryManagerServer {
+    pub fn new_wrapped(loader: Loader, myself_chooser: Box<dyn MyselfChooser>) -> Arc<Mutex<Self>> {
+        Arc::new(Mutex::new(ChatHistoryManagerServer {
+            loader,
+            myself_chooser,
+            loaded_daos: HashMap::new(),
+        }))
+    }
 }
 
 trait ChatHistoryManagerServerTrait {
@@ -98,19 +109,15 @@ impl ChatHistoryManagerServerTrait for Arc<Mutex<ChatHistoryManagerServer>> {
 
 // https://betterprogramming.pub/building-a-grpc-server-with-rust-be2c52f0860e
 #[tokio::main]
-pub async fn start_server<H: HttpClient>(port: u16, http_client: &'static H) -> EmptyRes {
+pub async fn start_server(port: u16, loader: Loader) -> EmptyRes {
     let addr = format!("127.0.0.1:{port}").parse::<SocketAddr>().unwrap();
 
     let remote_port = port + 1;
     let runtime_handle = Handle::current();
     let lazy_channel = Endpoint::new(format!("http://127.0.0.1:{remote_port}"))?.connect_lazy();
-    let myself_chooser = Box::new(MyselfChooserImpl { runtime_handle, channel: lazy_channel });
-    let loader = Loader::new(http_client, myself_chooser);
 
-    let chm_server = Arc::new(Mutex::new(ChatHistoryManagerServer {
-        loader,
-        loaded_daos: HashMap::new(),
-    }));
+    let myself_chooser = Box::new(MyselfChooserImpl { runtime_handle, channel: lazy_channel });
+    let chm_server = ChatHistoryManagerServer::new_wrapped(loader, myself_chooser);
 
     log::info!("Server listening on {}", addr);
 

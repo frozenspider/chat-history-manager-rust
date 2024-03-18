@@ -14,17 +14,20 @@ static GLOBAL: MiMalloc = MiMalloc;
 #[command(version, about, long_about = None)]
 struct Args {
     #[command(subcommand)]
-    command: Option<Command>,
+    command: Command,
 }
 
-/// Start a gRPC server on port 50051, unless a debug command is specified
+const DEFAULT_SERVER_PORT: u16 = 50051;
+
 #[derive(Subcommand, Debug)]
 enum Command {
+    /// Start a gRPC server on the given port (defaults to 50051)
+    StartServer { server_port: Option<u16> },
     /// (For debugging purposes only) Parse and load a given file using whichever loader is appropriate,
     /// and print the result in-memory DB size to the log
     Parse { path: String },
     /// (For debugging purposes only) Ask UI which user is "myself" and print it to the log
-    RequestMyself,
+    RequestMyself { port: Option<u16> },
 }
 
 /** Starts a server by default. */
@@ -48,20 +51,20 @@ fn main() {
     }
 }
 
-fn execute_command(command: Option<Command>) -> EmptyRes {
-    let server_port: u16 = 50051;
-
+fn execute_command(command: Command) -> EmptyRes {
     match command {
-        None => {
+        Command::StartServer { server_port } => {
+            let server_port = server_port.unwrap_or(DEFAULT_SERVER_PORT);
             start_server(server_port)?;
         }
-        Some(Command::Parse { path }) => {
-            let parsed = parse_file(&path).with_context(|| format!("Failed to parse {path}"))?;
+        Command::Parse { path } => {
+            let parsed = parse_file(&path, &NoChooser).with_context(|| format!("Failed to parse {path}"))?;
             let size: usize = parsed.deep_size_of();
             log::info!("Size of parsed in-memory DB: {} MB ({} B)", size / 1024 / 1024, size);
         }
-        Some(Command::RequestMyself) => {
-            debug_request_myself(server_port + 1)?;
+        Command::RequestMyself { port } => {
+            let port = port.unwrap_or(DEFAULT_SERVER_PORT + 1);
+            debug_request_myself(port)?;
         }
     }
     Ok(())

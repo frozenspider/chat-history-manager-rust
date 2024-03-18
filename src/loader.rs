@@ -24,7 +24,7 @@ mod whatsapp_text;
 mod badoo_android;
 mod mra;
 
-trait DataLoader {
+trait DataLoader: Send {
     fn name(&self) -> &'static str;
 
     /// Used in dataset alias
@@ -59,13 +59,11 @@ trait DataLoader {
 }
 
 pub struct Loader {
-    loaders: Vec<Box<dyn DataLoader + Send>>,
-    myself_chooser: Box<dyn MyselfChooser + Send>,
+    loaders: Vec<Box<dyn DataLoader>>,
 }
 
 impl Loader {
-    pub fn new<H: HttpClient>(http_client: &'static H,
-                              myself_chooser: Box<dyn MyselfChooser + Send>) -> Self {
+    pub fn new<H: HttpClient>(http_client: &'static H) -> Self {
         Loader {
             loaders: vec![
                 Box::new(TelegramDataLoader),
@@ -75,30 +73,26 @@ impl Loader {
                 Box::new(BadooAndroidDataLoader),
                 Box::new(MailRuAgentDataLoader),
             ],
-            myself_chooser,
         }
     }
 
-    /// Can handle the following:
-    /// * Sqlite DB
-    /// * H2 DB - opens remotely it via gRPC DAO
-    /// * In other cases, attempts to parse a file as a foreign history
-    pub fn load(&self, path: &Path) -> Result<Box<dyn ChatHistoryDao>> {
+    /// If the given file is an internal Sqlite DB, open it, otherwise attempt to parse a file as a foreign history.
+    pub fn load(&self, path: &Path, myself_chooser: &dyn MyselfChooser) -> Result<Box<dyn ChatHistoryDao>> {
         let filename = path_file_name(path)?;
         if filename == SqliteDao::FILENAME {
             Ok(Box::new(SqliteDao::load(path)?))
         } else {
-            Ok(self.parse(path)?)
+            Ok(self.parse(path, myself_chooser)?)
         }
     }
 
     /// Parses a history in a foreign format
-    pub fn parse(&self, path: &Path) -> Result<Box<InMemoryDao>> {
+    pub fn parse(&self, path: &Path, myself_chooser: &dyn MyselfChooser) -> Result<Box<InMemoryDao>> {
         ensure!(path.exists(), "File not found");
         let (named_errors, loads): (Vec<_>, Vec<_>) =
             self.loaders.iter()
                 .partition_map(|loader| match loader.looks_about_right(path) {
-                    Ok(()) => Either::Right(|| loader.load(path, self.myself_chooser.as_ref())),
+                    Ok(()) => Either::Right(|| loader.load(path, myself_chooser)),
                     Err(why) => Either::Left((loader.name(), why)),
                 });
         match loads.first() {
@@ -107,7 +101,7 @@ impl Loader {
             None => {
                 // Report why everyone rejected the file.
                 err!("No loader accepted the file:\n{}",
-                 named_errors.iter().map(|(name, why)| format!("{}: {}", name, why)).join("\n"))
+                     named_errors.iter().map(|(name, why)| format!("{}: {}", name, why)).join("\n"))
             }
         }
     }

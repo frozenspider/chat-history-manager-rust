@@ -8,9 +8,9 @@ Big part of app's functionality is merging chat history snapshots taken on diffe
 Doesn't (currently) has a UI of its own, exposing a gRPC API instead.
 UI written in Scala in available as a [spearate project](https://github.com/frozenspider/chat-history-manager) 
 
-To run the gRPC server (on a hardcoded port 50051), use
+To run the gRPC server on a default port 50051, use
 ```
-cargo run --release
+cargo run --release start-server
 ```
 
 Supports a bunch of different history formats, refer to sections below for their list and instuction on how to

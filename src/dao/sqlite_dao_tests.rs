@@ -17,7 +17,7 @@ use super::*;
 const TELEGRAM_DIR: &str = "telegram_2020-01";
 
 thread_local! {
-    static LOADER: Loader = Loader::new::<MockHttpClient>(&HTTP_CLIENT, Box::new(NoChooser));
+    static LOADER: Loader = Loader::new::<MockHttpClient>(&HTTP_CLIENT);
 }
 
 type Tup<'a, T> = PracticalEqTuple<'a, T>;
@@ -924,7 +924,7 @@ struct TestDaos {
 
 fn init() -> TestDaos {
     let src_dir = resource(TELEGRAM_DIR);
-    let src_dao = LOADER.with(|loader| loader.parse(&src_dir).unwrap());
+    let src_dao = LOADER.with(|loader| loader.parse(&src_dir, &NoChooser).unwrap());
     init_from(src_dao, src_dir, None)
 }
 

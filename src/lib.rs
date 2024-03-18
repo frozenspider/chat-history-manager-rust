@@ -1,5 +1,4 @@
 extern crate core;
-
 #[macro_use]
 extern crate num_derive;
 
@@ -8,6 +7,7 @@ use std::path::Path;
 use prelude::*;
 
 use crate::dao::in_memory_dao::InMemoryDao;
+use crate::loader::Loader;
 
 mod protobuf;
 mod loader;
@@ -32,17 +32,18 @@ pub mod prelude {
 // Entry points
 //
 
-pub fn parse_file(path: &str) -> Result<Box<InMemoryDao>> {
+pub fn parse_file(path: &str, myself_chooser: &dyn MyselfChooser) -> Result<Box<InMemoryDao>> {
     thread_local! {
-        static LOADER: loader::Loader = loader::Loader::new(&ReqwestHttpClient, Box::new(NoChooser));
+        static LOADER: Loader = Loader::new(&ReqwestHttpClient);
     }
     LOADER.with(|loader| {
-        loader.parse(Path::new(path))
+        loader.parse(Path::new(path), myself_chooser)
     })
 }
 
 pub fn start_server(port: u16) -> EmptyRes {
-    server::start_server(port, &ReqwestHttpClient)
+    let loader = Loader::new(&ReqwestHttpClient);
+    server::start_server(port, loader)
 }
 
 pub fn debug_request_myself(port: u16) -> EmptyRes {
@@ -55,7 +56,7 @@ pub fn debug_request_myself(port: u16) -> EmptyRes {
 // Other
 //
 
-pub trait MyselfChooser {
+pub trait MyselfChooser: Send {
     fn choose_myself(&self, users: &[User]) -> Result<usize>;
 }
 
