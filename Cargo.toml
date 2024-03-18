@@ -1,67 +1,13 @@
+[workspace]
+members = [
+    "backend"
+]
+
 [package]
-name = "chat-history-manager-rust"
+name = "chat-history-manager"
 authors = ["frozenspider"]
 version = "0.3.0"
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [dependencies]
-itertools = "0.12.1"
-simd-json = "0.13.8"
-mimalloc = "0.1.39" # As advise by SIMD Json docs
-chrono = "0.4.35"
-lazy_static = "1.4.0"
-hashers = "1.0.1"
-rand = { version = "0.8.5", features = ["small_rng"] }
-derive_deref = "1.1.1"
-anyhow = { version = "1.0.81", features = ["backtrace"] }
-ical = "0.10.0"
-const_format = "0.2.32"
-reqwest = { version = "0.11.26", features = ["blocking"] }
-deepsize = "0.2.0"
-zip = "0.6.6"
-fs_extra = "1.3.0"
-clap = { version = "4.5.2", features = ["derive"] }
 
-# Text processing
-regex = "1.10.3"
-unicode-segmentation = "1.11.0"
-utf16string = "0.2.0"
-rtf-grimoire = "0.2.1"
-encoding_rs = "0.8.33"
-
-# Enum derivation
-num-traits = "0.2.18"
-num-derive = "0.4.2"
-
-# Database
-rusqlite = { version = "0.30.0", features = ["bundled", "backup"] }
-diesel = { version = "2.1.4", features = ["sqlite", "returning_clauses_for_sqlite_3_35"] }
-diesel_migrations = { version = "2.1.0", features = ["sqlite"] }
-
-# Protobuf and web service
-prost = "0.12.3"
-tonic = "0.11.0"
-tonic-reflection = "0.11.0"
-
-# Async processing
-futures = "0.3.30"
-tokio = { version = "1.36.0", features = ["macros", "rt-multi-thread"] }
-
-# Logging
-log = "0.4.21"
-env_logger = "0.11.3"
-
-[dependencies.uuid]
-version = "1.7.0"
-features = [
-    "v4",                # Lets you generate random UUIDs
-    "fast-rng",          # Use a faster (but still sufficiently random) RNG
-    "macro-diagnostics", # Enable better diagnostics for compile-time UUIDs
-]
-
-[dev-dependencies]
-pretty_assertions = "1.4.0"
-
-[build-dependencies]
-tonic-build = "0.11.0"
