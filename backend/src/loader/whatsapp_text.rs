@@ -35,7 +35,7 @@ impl DataLoader for WhatsAppTextDataLoader {
             bail!("File {} is not named as expected", filename);
         }
         if !TIMESTAMP_REGEX.is_match(super::first_line(path)?.as_str()) {
-            bail!("File {} does not start with a timestamp as expected", path_to_str(path)?);
+            bail!("File {} does not start with a timestamp as expected", path.display());
         }
         Ok(())
     }

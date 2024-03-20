@@ -2,8 +2,11 @@
  * This file is only needed for a placeholder, since ScalaPB relies on importing this file
  * (which is provided implicitly).
  * On the Rust side though, this file is not present.
- *
+
  * See https://github.com/scalapb/ScalaPB/blob/master/protobuf/scalapb/scalapb.proto
+ *
+ * To prevent this file from shadowing implicitly provided scalapb.proto file, we name it differently
+ * and create a short-living properly named copy during the build process.
  */
 syntax = "proto3";
 

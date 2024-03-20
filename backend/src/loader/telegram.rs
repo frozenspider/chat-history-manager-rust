@@ -45,10 +45,10 @@ impl DataLoader for TelegramDataLoader {
     fn looks_about_right_inner(&self, src_path: &Path) -> EmptyRes {
         let path = get_real_path(src_path);
         if !path.exists() {
-            bail!("{} not found in {}", RESULT_JSON, path_to_str(src_path)?);
+            bail!("{} not found in {}", RESULT_JSON, src_path.display());
         }
         if !super::first_line(&path)?.starts_with('{') {
-            bail!("{} is not a valid JSON file", path_to_str(&path)?);
+            bail!("{} is not a valid JSON file", path.display());
         }
         Ok(())
     }
@@ -171,7 +171,7 @@ fn parse_telegram_file(path: &Path, ds: Dataset, myself_chooser: &dyn MyselfChoo
     let path = get_real_path(path);
     assert!(path.exists()); // Should be checked by looks_about_right already.
 
-    log::info!("Parsing '{}'", path_to_str(&path)?);
+    log::info!("Parsing '{}'", path.display());
 
     let start_time = Instant::now();
 

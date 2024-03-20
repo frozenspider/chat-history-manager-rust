@@ -10,7 +10,9 @@
 /target
 
 # Generated
+core/src/protobuf/*
 backend/src/protobuf/*
+
 # WhatsApp databases
 backend/resources/test/*/databases/*
 

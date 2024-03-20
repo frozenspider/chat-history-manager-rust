@@ -118,6 +118,7 @@ pub fn path_file_name(path: &Path) -> Result<&str> {
     path.file_name().and_then(|p: &OsStr| p.to_str()).context("Failed to convert filename to string")
 }
 
+/// Note: For use in logging and error messages, use `path.display()` instead
 pub fn path_to_str(path: &Path) -> Result<&str> {
     path.to_str().context("Failed to convert path to a string")
 }

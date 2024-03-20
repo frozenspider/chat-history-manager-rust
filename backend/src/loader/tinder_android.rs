@@ -2,7 +2,6 @@ use std::fs;
 
 use rusqlite::Connection;
 
-use crate::prelude::*;
 use crate::loader::DataLoader;
 
 use super::*;

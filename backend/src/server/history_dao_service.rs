@@ -30,7 +30,7 @@ impl HistoryDaoService for Arc<Mutex<ChatHistoryManagerServer>> {
             for entry in fs::read_dir(&new_storage_path)? {
                 let file_name = path_file_name(&entry?.path())?.to_owned();
                 if !file_name.starts_with('.') {
-                    bail!("Directory {} is not empty! Found {file_name} there", path_to_str(&new_storage_path)?)
+                    bail!("Directory {} is not empty! Found {file_name} there", new_storage_path.display())
                 }
             }
             let new_db_file = new_storage_path.join(SqliteDao::FILENAME);

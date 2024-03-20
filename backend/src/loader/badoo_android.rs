@@ -4,7 +4,6 @@ use rusqlite::Connection;
 use simd_json::prelude::*;
 
 use crate::loader::DataLoader;
-use crate::prelude::*;
 
 use super::*;
 

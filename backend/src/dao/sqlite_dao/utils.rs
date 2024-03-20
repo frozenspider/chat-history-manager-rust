@@ -10,7 +10,6 @@ use uuid::Uuid;
 use crate::dao::{DaoCacheInner, UserCacheForDataset};
 use crate::dao::sqlite_dao::{self, subpaths};
 use crate::prelude::*;
-use crate::protobuf::history::message::Typed;
 
 use super::mapping::*;
 
@@ -94,7 +93,7 @@ pub mod dataset {
     pub fn serialize(ds: &Dataset) -> RawDataset {
         let uuid = Uuid::parse_str(&ds.uuid.value).expect("Invalid UUID!");
         RawDataset {
-            uuid: Vec::from(uuid.as_ref()),
+            uuid: Vec::from(uuid.as_bytes()),
             alias: ds.alias.clone(),
         }
     }
@@ -156,7 +155,7 @@ pub mod chat {
     pub fn select_by_ds(ds_uuid: &Uuid,
                         conn: &mut SqliteConnection) -> Result<Vec<RawChatQ>> {
         Ok(sql_query(SELECT_BY_DS_SQL)
-            .bind::<Binary, _>(ds_uuid.as_ref())
+            .bind::<Binary, _>(ds_uuid.as_bytes().as_slice())
             .load::<RawChatQ>(conn)?)
     }
 
@@ -164,7 +163,7 @@ pub mod chat {
                                    id: i64,
                                    conn: &'a mut SqliteConnection) -> Result<Vec<RawChatQ>> {
         Ok(sql_query(SELECT_BY_DS_AND_ID_SQL)
-            .bind::<Binary, _>(ds_uuid.as_ref())
+            .bind::<Binary, _>(ds_uuid.as_bytes().as_slice())
             .bind::<BigInt, _>(id)
             .load::<RawChatQ>(conn)?)
     }
@@ -275,7 +274,7 @@ pub mod message {
                                     dst_ds_root: &DatasetRoot) -> Result<FullRawMessage> {
         let (tpe, subtype, mc, time_edited, is_deleted, forward_from_name, reply_to_message_id) =
             match m.typed.as_ref().unwrap() {
-                Typed::Regular(mr) => {
+                crate::message::Typed::Regular(mr) => {
                     let content = mr.content_option.as_ref()
                         .map(|mc| serialize_content_and_copy_files(mc.sealed_value_optional.as_ref().unwrap(),
                                                                    chat_id, src_ds_root, dst_ds_root)).transpose()?;

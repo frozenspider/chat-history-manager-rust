@@ -1,7 +1,8 @@
 use std::collections::HashSet;
 
-use crate::entity_utils::*;
-use crate::protobuf::history::*;
+use chat_history_manager_core::protobuf::history::*;
+use chat_history_manager_core::utils::entity_utils::*;
+
 use crate::utils::*;
 
 /// Entity practical equality.

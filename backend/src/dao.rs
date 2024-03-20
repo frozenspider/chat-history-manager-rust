@@ -223,14 +223,6 @@ pub struct UserCacheForDataset {
     pub user_by_id: HashMap<UserId, User>,
 }
 
-impl std::hash::Hash for PbUuid {
-    fn hash<H: std::hash::Hasher>(&self, hasher: &mut H) {
-        self.value.hash(hasher)
-    }
-}
-
-impl Eq for PbUuid {}
-
 #[derive(DeepSizeOf)]
 pub struct DaoCache {
     pub inner: Box<RefCell<DaoCacheInner>>,

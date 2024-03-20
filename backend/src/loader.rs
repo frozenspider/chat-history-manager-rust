@@ -15,7 +15,6 @@ use crate::loader::telegram::TelegramDataLoader;
 use crate::loader::tinder_android::TinderAndroidDataLoader;
 use crate::loader::whatsapp_android::WhatsAppAndroidDataLoader;
 use crate::loader::whatsapp_text::WhatsAppTextDataLoader;
-use crate::protobuf::history::{Dataset, PbUuid, SourceType};
 
 mod telegram;
 mod tinder_android;

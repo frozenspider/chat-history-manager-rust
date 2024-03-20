@@ -1,0 +1,29 @@
+[package]
+name = "chat-history-manager-core"
+authors.workspace = true
+version.workspace = true
+edition.workspace = true
+
+[features]
+test-utils = []
+
+[dependencies]
+itertools = { workspace = true }
+lazy_static = { workspace = true }
+derive_deref = { workspace = true }
+anyhow = { workspace = true }
+deepsize = { workspace = true }
+uuid = { workspace = true }
+
+# Text processing
+regex = { workspace = true }
+
+# Protobuf
+prost = { workspace = true }
+
+[build-dependencies]
+prost = { workspace = true }
+tonic-build = { workspace = true }
+
+log = { workspace = true }
+env_logger = { workspace = true }

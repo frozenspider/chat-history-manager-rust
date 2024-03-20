@@ -37,21 +37,21 @@ impl SqliteDao {
     const MIGRATIONS: EmbeddedMigrations = embed_migrations!("./resources/main/migrations");
 
     pub fn create(db_file: &Path) -> Result<Self> {
-        ensure!(!db_file.exists(), "File {} already exists!", path_to_str(db_file)?);
+        ensure!(!db_file.exists(), "File {} already exists!", db_file.display());
         Self::create_load_inner(db_file)
     }
 
     #[allow(unused)]
     pub fn load(db_file: &Path) -> Result<Self> {
-        ensure!(db_file.exists(), "File {} does not exist!", path_to_str(db_file)?);
+        ensure!(db_file.exists(), "File {} does not exist!", db_file.display());
         Self::create_load_inner(db_file)
     }
 
     fn check_db_file_path(db_file: &Path) -> EmptyRes {
         ensure!(db_file.parent().is_some_and(|p| p.exists()),
-                "Parent directory for {} does not exist!", path_to_str(db_file)?);
+                "Parent directory for {} does not exist!", db_file.display());
         ensure!(path_file_name(db_file)? == SqliteDao::FILENAME,
-                "Incorrect file name for {}, expected {}", path_to_str(db_file)?, SqliteDao::FILENAME);
+                "Incorrect file name for {}, expected {}", db_file.display(), SqliteDao::FILENAME);
         Ok(())
     }
 
@@ -270,7 +270,7 @@ impl WithCache for SqliteDao {
         for ds_uuid in ds_uuids {
             let uuid = Uuid::parse_str(&ds_uuid.value)?;
             let rows: Vec<(User, bool)> = user::table
-                .filter(user::columns::ds_uuid.eq(uuid.as_ref()))
+                .filter(user::columns::ds_uuid.eq(uuid.as_bytes().as_slice()))
                 .select(RawUser::as_select())
                 .load_iter(self.conn.borrow_mut().deref_mut())?
                 .flatten()
@@ -341,7 +341,7 @@ impl ChatHistoryDao for SqliteDao {
         self.fetch_messages(|conn| {
             use schema::*;
             Ok(message::table
-                .filter(message::columns::ds_uuid.eq(uuid.as_ref()))
+                .filter(message::columns::ds_uuid.eq(uuid.as_bytes().as_slice()))
                 .filter(message::columns::chat_id.eq(chat.id))
                 .order_by(message::columns::internal_id.asc())
                 .left_join(message_content::table)
@@ -357,7 +357,7 @@ impl ChatHistoryDao for SqliteDao {
         let mut msgs = self.fetch_messages(|conn| {
             use schema::*;
             Ok(message::table
-                .filter(message::columns::ds_uuid.eq(uuid.as_ref()))
+                .filter(message::columns::ds_uuid.eq(uuid.as_bytes().as_slice()))
                 .filter(message::columns::chat_id.eq(chat.id))
                 .order_by(message::columns::internal_id.desc())
                 .left_join(message_content::table)
@@ -374,7 +374,7 @@ impl ChatHistoryDao for SqliteDao {
         let mut msgs = self.fetch_messages(|conn| {
             use schema::*;
             Ok(message::table
-                .filter(message::columns::ds_uuid.eq(uuid.as_ref()))
+                .filter(message::columns::ds_uuid.eq(uuid.as_bytes().as_slice()))
                 .filter(message::columns::chat_id.eq(chat.id))
                 .filter(message::columns::internal_id.lt(*msg_id))
                 .order_by(message::columns::internal_id.desc())
@@ -392,7 +392,7 @@ impl ChatHistoryDao for SqliteDao {
         self.fetch_messages(|conn| {
             use schema::*;
             Ok(message::table
-                .filter(message::columns::ds_uuid.eq(uuid.as_ref()))
+                .filter(message::columns::ds_uuid.eq(uuid.as_bytes().as_slice()))
                 .filter(message::columns::chat_id.eq(chat.id))
                 .filter(message::columns::internal_id.gt(*msg_id))
                 .order_by(message::columns::internal_id.asc())
@@ -415,7 +415,7 @@ impl ChatHistoryDao for SqliteDao {
             self.fetch_messages(|conn| {
                 use schema::*;
                 Ok(message::table
-                    .filter(message::columns::ds_uuid.eq(uuid.as_ref()))
+                    .filter(message::columns::ds_uuid.eq(uuid.as_bytes().as_slice()))
                     .filter(message::columns::chat_id.eq(chat.id))
                     .filter(message::columns::internal_id.ge(*first_id))
                     .filter(message::columns::internal_id.le(*msg2_id))
@@ -450,7 +450,7 @@ impl ChatHistoryDao for SqliteDao {
                 self.fetch_messages(|conn| {
                     use schema::*;
                     Ok(message::table
-                        .filter(message::columns::ds_uuid.eq(uuid.as_ref()))
+                        .filter(message::columns::ds_uuid.eq(uuid.as_bytes().as_slice()))
                         .filter(message::columns::chat_id.eq(chat.id))
                         .filter($cond)
                         .order_by(message::columns::internal_id.$order())
@@ -631,7 +631,7 @@ impl MutableChatHistoryDao for SqliteDao {
 
         use schema::*;
         let updated_rows = update(dataset::dsl::dataset)
-            .filter(dataset::columns::uuid.eq(uuid.as_ref()))
+            .filter(dataset::columns::uuid.eq(uuid.as_bytes().as_slice()))
             .set(raw_ds)
             .execute(conn)?;
 
@@ -653,7 +653,7 @@ impl MutableChatHistoryDao for SqliteDao {
         conn.transaction(|conn| {
             let mut delete_by_ds_uuid = |sql: &str| -> QueryResult<usize> {
                 sql_query(sql)
-                    .bind::<sql_types::Binary, _>(uuid.as_ref())
+                    .bind::<sql_types::Binary, _>(uuid.as_bytes().as_slice())
                     .execute(conn)
             };
 
@@ -673,25 +673,25 @@ impl MutableChatHistoryDao for SqliteDao {
                 )
             ")?;
             delete(message::dsl::message)
-                .filter(message::columns::ds_uuid.eq(uuid.as_ref()))
+                .filter(message::columns::ds_uuid.eq(uuid.as_bytes().as_slice()))
                 .execute(conn)?;
 
             // Chats
             delete(chat_member::dsl::chat_member)
-                .filter(chat_member::columns::ds_uuid.eq(uuid.as_ref()))
+                .filter(chat_member::columns::ds_uuid.eq(uuid.as_bytes().as_slice()))
                 .execute(conn)?;
             delete(chat::dsl::chat)
-                .filter(chat::columns::ds_uuid.eq(uuid.as_ref()))
+                .filter(chat::columns::ds_uuid.eq(uuid.as_bytes().as_slice()))
                 .execute(conn)?;
 
             // Users
             delete(user::dsl::user)
-                .filter(user::columns::ds_uuid.eq(uuid.as_ref()))
+                .filter(user::columns::ds_uuid.eq(uuid.as_bytes().as_slice()))
                 .execute(conn)?;
 
             // Finally, dataset itself
             let deleted_rows = delete(dataset::dsl::dataset)
-                .filter(dataset::columns::uuid.eq(uuid.as_ref()))
+                .filter(dataset::columns::uuid.eq(uuid.as_bytes().as_slice()))
                 .execute(conn)?;
             ensure!(deleted_rows == 1, "{deleted_rows} rows changed when deleting dataset with UUID {:?}", ds_uuid);
 
@@ -712,7 +712,7 @@ impl MutableChatHistoryDao for SqliteDao {
         let conn = conn.deref_mut();
 
         let uuid = Uuid::parse_str(&user.ds_uuid.value).expect("Invalid UUID!");
-        let raw_user = utils::user::serialize(&user, is_myself, &Vec::from(uuid.as_ref()));
+        let raw_user = utils::user::serialize(&user, is_myself, &Vec::from(uuid.as_bytes().as_slice()));
 
         insert_into(schema::user::dsl::user)
             .values(raw_user)
@@ -732,7 +732,7 @@ impl MutableChatHistoryDao for SqliteDao {
         let conn = conn.deref_mut();
 
         let uuid = Uuid::parse_str(&ds_uuid.value).expect("Invalid UUID!");
-        let raw_user = utils::user::serialize(&user, is_myself, &Vec::from(uuid.as_ref()));
+        let raw_user = utils::user::serialize(&user, is_myself, &Vec::from(uuid.as_bytes().as_slice()));
         let id_changed = user.id != *old_id;
 
         conn.transaction(|conn| {
@@ -740,7 +740,7 @@ impl MutableChatHistoryDao for SqliteDao {
             defer_fk(conn)?;
 
             let updated_rows = update(user::dsl::user)
-                .filter(user::columns::ds_uuid.eq(uuid.as_ref()))
+                .filter(user::columns::ds_uuid.eq(uuid.as_bytes().as_slice()))
                 .filter(user::columns::id.eq(*old_id))
                 .set((user::columns::id.eq(user.id), &raw_user))
                 .execute(conn)?;
@@ -749,14 +749,14 @@ impl MutableChatHistoryDao for SqliteDao {
             // After changing user, rename private chat(s) with him accordingly. If user is self, do nothing.
             if !is_myself {
                 let chat_ids: Vec<i64> = chat_member::table
-                    .filter(chat_member::columns::ds_uuid.eq(uuid.as_ref()))
+                    .filter(chat_member::columns::ds_uuid.eq(uuid.as_bytes().as_slice()))
                     .filter(chat_member::columns::user_id.eq(user.id))
                     .select(chat_member::columns::chat_id)
                     .load(conn)?;
 
                 use utils::EnumSerialization;
                 update(chat::dsl::chat)
-                    .filter(chat::columns::ds_uuid.eq(uuid.as_ref()))
+                    .filter(chat::columns::ds_uuid.eq(uuid.as_bytes().as_slice()))
                     .filter(chat::columns::id.eq_any(chat_ids))
                     .filter(chat::columns::tpe.eq(ChatType::serialize(ChatType::Personal as i32)?))
                     .set(chat::columns::name.eq(user.pretty_name_option()))
@@ -766,7 +766,7 @@ impl MutableChatHistoryDao for SqliteDao {
             // If user ID changed, we need to update membership accordingly
             if id_changed {
                 update(message::dsl::message)
-                    .filter(message::columns::ds_uuid.eq(uuid.as_ref()))
+                    .filter(message::columns::ds_uuid.eq(uuid.as_bytes().as_slice()))
                     .filter(message::columns::from_id.eq(*old_id))
                     .set(message::columns::from_id.eq(user.id))
                     .execute(conn)?;
@@ -789,7 +789,7 @@ impl MutableChatHistoryDao for SqliteDao {
                     .inner_join(chat_member::table
                         .on(chat_member::columns::ds_uuid.eq(chat::columns::ds_uuid)
                             .and(chat_member::columns::chat_id.eq(chat::columns::id))))
-                    .filter(chat::columns::ds_uuid.eq(uuid.as_ref()))
+                    .filter(chat::columns::ds_uuid.eq(uuid.as_bytes().as_slice()))
                     .filter(chat_member::columns::user_id.eq(user.id))
                     .filter(message_content::columns::members.like(format!("%{old_name}%")))
                     .select((message_content::columns::id, message_content::columns::members))
@@ -822,7 +822,7 @@ impl MutableChatHistoryDao for SqliteDao {
         }
 
         let uuid = Uuid::parse_str(&chat.ds_uuid.value).expect("Invalid UUID!");
-        let uuid_bytes = Vec::from(uuid.as_ref());
+        let uuid_bytes = Vec::from(uuid.as_bytes().as_slice());
         let raw_chat = utils::chat::serialize(&chat, &uuid_bytes)?;
 
         let myself = self.myself(&chat.ds_uuid)?;
@@ -854,7 +854,7 @@ impl MutableChatHistoryDao for SqliteDao {
         let conn = conn.deref_mut();
 
         let uuid = Uuid::parse_str(&chat.ds_uuid.value).expect("Invalid UUID!");
-        let uuid_bytes = Vec::from(uuid.as_ref());
+        let uuid_bytes = Vec::from(uuid.as_bytes().as_slice());
         let raw_chat = utils::chat::serialize(&chat, &uuid_bytes)?;
         let id_changed = chat.id != *old_id;
 
@@ -863,7 +863,7 @@ impl MutableChatHistoryDao for SqliteDao {
             defer_fk(conn)?;
 
             let updated_rows = update(chat::dsl::chat)
-                .filter(chat::columns::ds_uuid.eq(uuid.as_ref()))
+                .filter(chat::columns::ds_uuid.eq(uuid.as_bytes().as_slice()))
                 .filter(chat::columns::id.eq(*old_id))
                 .set((chat::columns::id.eq(raw_chat.id), &raw_chat))
                 .execute(conn)?;
@@ -871,19 +871,19 @@ impl MutableChatHistoryDao for SqliteDao {
 
             if id_changed {
                 update(chat::dsl::chat)
-                    .filter(chat::columns::ds_uuid.eq(uuid.as_ref()))
+                    .filter(chat::columns::ds_uuid.eq(uuid.as_bytes().as_slice()))
                     .filter(chat::columns::main_chat_id.eq(*old_id))
                     .set(chat::columns::main_chat_id.eq(raw_chat.id))
                     .execute(conn)?;
 
                 update(chat_member::dsl::chat_member)
-                    .filter(chat_member::columns::ds_uuid.eq(uuid.as_ref()))
+                    .filter(chat_member::columns::ds_uuid.eq(uuid.as_bytes().as_slice()))
                     .filter(chat_member::columns::chat_id.eq(*old_id))
                     .set(chat_member::columns::chat_id.eq(raw_chat.id))
                     .execute(conn)?;
 
                 update(message::dsl::message)
-                    .filter(message::columns::ds_uuid.eq(uuid.as_ref()))
+                    .filter(message::columns::ds_uuid.eq(uuid.as_bytes().as_slice()))
                     .filter(message::columns::chat_id.eq(*old_id))
                     .set(message::columns::chat_id.eq(raw_chat.id))
                     .execute(conn)?;
@@ -907,7 +907,7 @@ impl MutableChatHistoryDao for SqliteDao {
                     ")
                         .bind::<sql_types::Text, _>(&old_rel_path)
                         .bind::<sql_types::Text, _>(&new_rel_path)
-                        .bind::<sql_types::Binary, _>(uuid.as_ref())
+                        .bind::<sql_types::Binary, _>(uuid.as_bytes().as_slice())
                         .bind::<sql_types::BigInt, _>(chat.id)
                         .execute(conn)?;
 
@@ -924,7 +924,7 @@ impl MutableChatHistoryDao for SqliteDao {
                         .bind::<sql_types::Text, _>(&new_rel_path)
                         .bind::<sql_types::Text, _>(&old_rel_path)
                         .bind::<sql_types::Text, _>(&new_rel_path)
-                        .bind::<sql_types::Binary, _>(uuid.as_ref())
+                        .bind::<sql_types::Binary, _>(uuid.as_bytes().as_slice())
                         .bind::<sql_types::BigInt, _>(chat.id)
                         .execute(conn)?;
                 }
@@ -949,7 +949,7 @@ impl MutableChatHistoryDao for SqliteDao {
         conn.transaction(|conn| {
             let delete_by_ds_and_chat = |sql: &str, conn: &mut SqliteConnection| -> QueryResult<usize> {
                 sql_query(sql)
-                    .bind::<sql_types::Binary, _>(uuid.as_ref())
+                    .bind::<sql_types::Binary, _>(uuid.as_bytes().as_slice())
                     .bind::<sql_types::BigInt, _>(chat.id)
                     .execute(conn)
             };
@@ -962,7 +962,7 @@ impl MutableChatHistoryDao for SqliteDao {
                     WHERE ds_uuid = ? AND chat_id = ?
                 )
             ")
-                .bind::<sql_types::Binary, _>(uuid.as_ref())
+                .bind::<sql_types::Binary, _>(uuid.as_bytes().as_slice())
                 .bind::<sql_types::BigInt, _>(chat.id)
                 .load::<PathsWrapper>(conn)?
                 .into_iter()
@@ -990,17 +990,17 @@ impl MutableChatHistoryDao for SqliteDao {
                 )
             ", conn)?;
             delete(message::dsl::message)
-                .filter(message::columns::ds_uuid.eq(uuid.as_ref()))
+                .filter(message::columns::ds_uuid.eq(uuid.as_bytes().as_slice()))
                 .filter(message::columns::chat_id.eq(chat.id))
                 .execute(conn)?;
 
             // Chat
             delete(chat_member::dsl::chat_member)
-                .filter(chat_member::columns::ds_uuid.eq(uuid.as_ref()))
+                .filter(chat_member::columns::ds_uuid.eq(uuid.as_bytes().as_slice()))
                 .filter(chat_member::columns::chat_id.eq(chat.id))
                 .execute(conn)?;
             let deleted_rows = delete(chat::dsl::chat)
-                .filter(chat::columns::ds_uuid.eq(uuid.as_ref()))
+                .filter(chat::columns::ds_uuid.eq(uuid.as_bytes().as_slice()))
                 .filter(chat::columns::id.eq(chat.id))
                 .execute(conn)?;
             ensure!(deleted_rows == 1, "{deleted_rows} rows changed when deleting chat {}", chat.qualified_name());
@@ -1012,7 +1012,7 @@ impl MutableChatHistoryDao for SqliteDao {
                     SELECT cm.user_id FROM chat_member cm
                     WHERE cm.ds_uuid = user.ds_uuid
                 )
-            ").bind::<sql_types::Binary, _>(uuid.as_ref()).execute(conn)?;
+            ").bind::<sql_types::Binary, _>(uuid.as_bytes().as_slice()).execute(conn)?;
 
             // Moving all dataset files to backup directory
             let backup_ds_root = self.choose_final_backup_path("")?.join(path_file_name(&ds_root.0)?);
@@ -1056,7 +1056,7 @@ impl MutableChatHistoryDao for SqliteDao {
 
         use schema::*;
         let updated_rows = update(chat::dsl::chat)
-            .filter(chat::columns::ds_uuid.eq(uuid.as_ref()))
+            .filter(chat::columns::ds_uuid.eq(uuid.as_bytes().as_slice()))
             .filter(chat::columns::id.eq(slave_chat.id)
                 .or(chat::columns::main_chat_id.eq(slave_chat.id)))
             .set(chat::columns::main_chat_id.eq(master_chat.id))
@@ -1072,7 +1072,7 @@ impl MutableChatHistoryDao for SqliteDao {
 
         let dst_ds_root = self.dataset_root(&chat.ds_uuid)?;
         let uuid = Uuid::parse_str(&chat.ds_uuid.value).expect("Invalid UUID!");
-        let uuid_bytes = Vec::from(uuid.as_ref());
+        let uuid_bytes = Vec::from(uuid.as_bytes().as_slice());
 
         self.copy_messages(conn, &msgs, chat.id,
                            &uuid_bytes, src_ds_root, &dst_ds_root)?;
@@ -1097,7 +1097,7 @@ impl ShiftableChatHistoryDao for SqliteDao {
         ")
             .bind::<sql_types::Integer, _>(timestamp_shift)
             .bind::<sql_types::Integer, _>(timestamp_shift)
-            .bind::<sql_types::Binary, _>(uuid.as_ref())
+            .bind::<sql_types::Binary, _>(uuid.as_bytes().as_slice())
             .execute(conn)?;
         Ok(())
     }
@@ -1168,7 +1168,7 @@ fn copy_file(src_rel_path: &str,
             // Assume hash collisions don't exist
             ensure!(subpath.use_hashing || files_are_equal(&src_file, &dst_file)?,
                     "File already exists: {}, and it doesn't match source {}",
-                    path_to_str(&dst_file)?, src_absolute_path)
+                    dst_file.display(), src_absolute_path)
         } else {
             fs::copy(src_file, dst_file)?;
         }

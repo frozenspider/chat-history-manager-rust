@@ -4,8 +4,6 @@ use std::path::{Path, PathBuf};
 use deepsize::DeepSizeOf;
 use itertools::Itertools;
 
-use crate::protobuf::history::message::Typed;
-
 use super::*;
 
 #[cfg(test)]
@@ -337,9 +335,9 @@ impl ShiftableChatHistoryDao for InMemoryDao {
             for m in cwm.messages.iter_mut() {
                 m.timestamp += timestamp_shift;
                 match m.typed_mut() {
-                    Typed::Regular(mr) =>
+                    message::Typed::Regular(mr) =>
                         mr.edit_timestamp_option.iter_mut().for_each(|ts| *ts += timestamp_shift),
-                    Typed::Service(_) => { /* NOOP */ }
+                    message::Typed::Service(_) => { /* NOOP */ }
                 }
             }
         }

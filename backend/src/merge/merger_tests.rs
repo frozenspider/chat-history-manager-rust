@@ -1180,7 +1180,7 @@ fn merge(helper: &MergerHelper,
          user_merges: Vec<UserMergeDecision>,
          chat_merges: Vec<ChatMergeDecision>) -> (SqliteDao, Dataset, TmpDir) {
     let new_dao_tmpdir = TmpDir::new();
-    log::info!("Using temp dir {} for Sqlite DAO", path_to_str(&new_dao_tmpdir.path).unwrap());
+    log::info!("Using temp dir {} for Sqlite DAO", new_dao_tmpdir.path.display());
     let (new_dao, new_ds) = merge_datasets(
         &new_dao_tmpdir.path,
         helper.m.dao_holder.dao.as_ref(),

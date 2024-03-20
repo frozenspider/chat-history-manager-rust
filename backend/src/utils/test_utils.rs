@@ -13,8 +13,10 @@ use rand::{Rng, SeedableRng};
 use rand::rngs::SmallRng;
 use uuid::Uuid;
 
-use crate::prelude::*;
+pub use chat_history_manager_core::utils::test_utils::*;
+
 use crate::dao::ChatHistoryDao;
+use crate::prelude::*;
 
 lazy_static! {
     pub static ref BASE_DATE: DateTime<FixedOffset> = dt("2019-01-02 11:15:21", None);
@@ -423,12 +425,6 @@ pub struct InMemoryDaoHolder {
     // We need to hold tmp_dir here to prevent early destruction.
     #[allow(unused)]
     pub tmp_dir: TmpDir,
-}
-
-pub const fn src_id(id: i64) -> MessageSourceId { MessageSourceId(id) }
-
-impl Message {
-    pub fn source_id(&self) -> MessageSourceId { src_id(self.source_id_option.unwrap()) }
 }
 
 pub trait MsgVec {

@@ -6,7 +6,6 @@ use num_traits::FromPrimitive;
 use regex::Regex;
 use rusqlite::{Connection, OptionalExtension, Row, Statement};
 
-use crate::prelude::*;
 use crate::dao::in_memory_dao::InMemoryDao;
 use crate::loader::DataLoader;
 

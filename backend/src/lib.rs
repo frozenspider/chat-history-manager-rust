@@ -24,6 +24,13 @@ pub mod prelude {
     pub use crate::utils::*;
     pub use crate::utils::entity_utils::*;
     pub use crate::utils::entity_utils::entity_equality::*;
+
+    pub use chat_history_manager_core::message_regular;
+    pub use chat_history_manager_core::message_regular_pat;
+    pub use chat_history_manager_core::message_service;
+    pub use chat_history_manager_core::message_service_pat;
+    pub use chat_history_manager_core::message_service_pat_unreachable;
+    pub use chat_history_manager_core::utils::entity_utils::*;
 }
 
 //

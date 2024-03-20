@@ -13,7 +13,7 @@ deepsize = { workspace = true }
 
 # Logging
 log = { workspace = true }
-env_logger = "0.11.3"
+env_logger = { workspace = true }
 
 # CLI
 clap = { version = "4.5.2", features = ["derive"] }
@@ -25,7 +25,8 @@ clap = { version = "4.5.2", features = ["derive"] }
 
 [workspace]
 members = [
-    "backend"
+    "core",
+    "backend",
 ]
 
 [workspace.package]
@@ -34,9 +35,34 @@ version = "0.3.0"
 edition = "2021"
 
 [workspace.dependencies]
+chat-history-manager-core = { path = "core" }
 chat-history-manager-backend = { path = "backend" }
 
+itertools = "0.12.1"
+lazy_static = "1.4.0"
+derive_deref = "1.1.1"
+anyhow = { version = "1.0.81", features = ["backtrace"] }
 deepsize = "0.2.0"
+
+# Text processing
+regex = "1.10.3"
+
+# Protobuf
+prost = "0.12.3"
+prost-build = "0.12.3"
+prost-types = "0.12.3"
+tonic = "0.11.0"
+tonic-build = "0.11.0"
+tonic-reflection = "0.11.0"
 
 # Logging
 log = "0.4.21"
+env_logger = "0.11.3"
+
+[workspace.dependencies.uuid]
+version = "1.7.0"
+features = [
+    "v4", # Lets you generate random UUIDs
+    "fast-rng", # Use a faster (but still sufficiently random) RNG
+    "macro-diagnostics", # Enable better diagnostics for compile-time UUIDs
+]
