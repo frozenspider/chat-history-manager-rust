@@ -6,6 +6,7 @@ edition.workspace = true
 
 [dependencies]
 chat-history-manager-backend = { workspace = true }
+chat-history-manager-ui = { workspace = true }
 
 # General
 mimalloc = "0.1.39" # As advise by SIMD Json docs
@@ -27,6 +28,7 @@ clap = { version = "4.5.2", features = ["derive"] }
 members = [
     "core",
     "backend",
+    "ui"
 ]
 
 [workspace.package]
@@ -37,6 +39,7 @@ edition = "2021"
 [workspace.dependencies]
 chat-history-manager-core = { path = "core" }
 chat-history-manager-backend = { path = "backend" }
+chat-history-manager-ui = { path = "ui" }
 
 itertools = "0.12.1"
 lazy_static = "1.4.0"

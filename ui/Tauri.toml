@@ -1,0 +1,23 @@
+identifier = "org.fs.chm"
+
+[build]
+beforeBuildCommand = ""
+beforeDevCommand = ""
+frontendDist = "./frontend"
+
+[app]
+# Injects window.__TAURI__ global variable
+withGlobalTauri = true
+
+[[app.windows]]
+title = "Hello, Tauri!"
+fullscreen = false
+width = 800
+height = 600
+resizable = true
+
+[bundle]
+icon = [
+  "frontend/32x32.png",
+  "frontend/icon.icns"
+]

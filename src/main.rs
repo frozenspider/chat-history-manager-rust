@@ -14,7 +14,7 @@ static GLOBAL: MiMalloc = MiMalloc;
 #[command(version, about, long_about = None)]
 struct Args {
     #[command(subcommand)]
-    command: Command,
+    command: Option<Command>,
 }
 
 const DEFAULT_SERVER_PORT: u16 = 50051;
@@ -51,18 +51,21 @@ fn main() {
     }
 }
 
-fn execute_command(command: Command) -> EmptyRes {
+fn execute_command(command: Option<Command>) -> EmptyRes {
     match command {
-        Command::StartServer { server_port } => {
+        None => {
+            chat_history_manager_ui::start();
+        }
+        Some(Command::StartServer { server_port }) => {
             let server_port = server_port.unwrap_or(DEFAULT_SERVER_PORT);
             start_server(server_port)?;
         }
-        Command::Parse { path } => {
+        Some(Command::Parse { path }) => {
             let parsed = parse_file(&path, &NoChooser).with_context(|| format!("Failed to parse {path}"))?;
             let size: usize = parsed.deep_size_of();
             log::info!("Size of parsed in-memory DB: {} MB ({} B)", size / 1024 / 1024, size);
         }
-        Command::RequestMyself { port } => {
+        Some(Command::RequestMyself { port }) => {
             let port = port.unwrap_or(DEFAULT_SERVER_PORT + 1);
             debug_request_myself(port)?;
         }

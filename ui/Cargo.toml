@@ -1,0 +1,12 @@
+[package]
+name = "chat-history-manager-ui"
+authors.workspace = true
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+lazy_static = { workspace = true }
+
+# Tauri
+tauri = { version = "2.0.0-beta.13", features = [ "config-toml" ] }
+tauri-plugin-dialog = "2.0.0-beta.3"
