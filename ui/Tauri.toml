@@ -1,9 +1,10 @@
 identifier = "org.fs.chm"
 
 [build]
-beforeBuildCommand = ""
-beforeDevCommand = ""
-frontendDist = "./frontend"
+beforeDevCommand = "pnpm dev"
+beforeBuildCommand = "pnpm generate"
+devUrl = "http://localhost:3000"
+frontendDist = "./frontend/out"
 
 [app]
 # Injects window.__TAURI__ global variable
@@ -17,7 +18,9 @@ height = 600
 resizable = true
 
 [bundle]
+# Can't find a way to get rid of these icons
 icon = [
-  "frontend/32x32.png",
-  "frontend/icon.icns"
+  "frontend/src/app/32x32.png",
+  "frontend/src/app/icon.icns",
+  "frontend/out/favicon.ico",
 ]
