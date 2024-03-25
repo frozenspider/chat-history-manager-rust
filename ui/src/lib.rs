@@ -7,11 +7,11 @@ use lazy_static::lazy_static;
 use std::str::FromStr;
 use tauri::{AppHandle, Manager, Runtime};
 use tauri::menu::{Menu, MenuId, MenuItem, PredefinedMenuItem, Submenu};
-use tauri_plugin_dialog::DialogExt;
+use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
 
 #[tauri::command]
 fn open_popup(handle: AppHandle) {
-    let file_path = "popup.html";
+    let file_path = "popup";
     let _settings_window = tauri::WebviewWindowBuilder::new(
         &handle,
         "my-popup", /* the unique window label */
@@ -20,6 +20,16 @@ fn open_popup(handle: AppHandle) {
         .title("My Popup")
         .build()
         .unwrap();
+}
+
+#[tauri::command]
+fn report_error_string(handle: AppHandle, error: String) {
+    log::error!("UI reported error: {}", error);
+    handle.dialog()
+        .message(error)
+        .title("Error")
+        .kind(MessageDialogKind::Error)
+        .show(|_res| ()/*Ignore the result*/);
 }
 
 lazy_static! {
@@ -65,7 +75,7 @@ pub fn start() {
         .menu(|handle| {
             make_menu(handle)
         })
-        .invoke_handler(tauri::generate_handler![open_popup])
+        .invoke_handler(tauri::generate_handler![open_popup, report_error_string])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

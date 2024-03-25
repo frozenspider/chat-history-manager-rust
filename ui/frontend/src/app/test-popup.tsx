@@ -1,12 +1,10 @@
 'use client'
 
 import { useEffect, useState } from 'react';
-import { invoke } from '@tauri-apps/api/core'
+import { InvokeTauri } from "@/app/utils";
 
 function OpenPopup() {
-  invoke<void>('open_popup', { name: 'Next.js' })
-    .then(result => console.log(result))
-    .catch(console.error)
+  InvokeTauri<void>('open_popup', { name: 'Next.js' })
 }
 
 export default function TestPopup() {

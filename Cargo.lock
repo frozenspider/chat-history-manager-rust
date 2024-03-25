@@ -756,7 +756,9 @@ dependencies = [
 name = "chat-history-manager-ui"
 version = "0.3.0"
 dependencies = [
+ "anyhow",
  "lazy_static",
+ "log",
  "tauri",
  "tauri-plugin-dialog",
 ]
