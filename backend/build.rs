@@ -4,17 +4,6 @@ use std::fs::File;
 use std::io::{Read, Write};
 use std::path::Path;
 
-struct Cleanup {
-    to_delete: PathBuf,
-}
-
-impl Drop for Cleanup {
-    fn drop(&mut self) {
-        fs::remove_file(&self.to_delete)
-            .unwrap_or_else(|e| log::warn!("failed to remove file {:?}: {}", self.to_delete, e));
-    }
-}
-
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::Builder::new()
         .filter(None, log::LevelFilter::Debug)
@@ -23,8 +12,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let curr_dir = env::current_dir().unwrap_or_else(|e| panic!("current directory is inaccessible: {}", e));
 
     let scalapb_target = curr_dir.join("../scalapb/scalapb.proto");
-    fs::copy(scalapb_target.parent().unwrap().join("_scalapb.proto"), &scalapb_target)?;
-    let _cleanup = Cleanup { to_delete: scalapb_target };
+    if !scalapb_target.exists() {
+        fs::copy(scalapb_target.parent().unwrap().join("_scalapb.proto"), &scalapb_target)?;
+    }
 
     let proto_files = vec!["backend/protobuf/services.proto"];
     let proto_includes = vec![".."];

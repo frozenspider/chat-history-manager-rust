@@ -4,7 +4,10 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "copy-scalapb": "cp ../../scalapb/_scalapb.proto ../../scalapb/scalapb.proto",
+    "protobuf-js": "pnpm run copy-scalapb && protoc --js_out=core/protobuf:./src/ -I ../.. core/protobuf/entities.proto",
+    "protobuf-ts": "pnpm run copy-scalapb && protoc --plugin=protoc-gen-ts=./node_modules/.bin/protoc-gen-ts --ts_out=core/protobuf:./src -I ../.. core/protobuf/entities.proto",
+    "build": "pnpm run protobuf-js && pnpm run protobuf-ts && next build",
     "start": "next start",
     "lint": "next lint"
   },
@@ -23,7 +26,9 @@
     "postcss": "^8",
     "tailwindcss": "^3.3.0",
     "eslint": "^8",
-    "eslint-config-next": "14.1.4"
+    "eslint-config-next": "14.1.4",
+    "grpc_tools_node_protoc_ts": "^5.3.3",
+    "protoc-gen-js": "^3.21.2"
   },
   "packageManager": "pnpm@8.15.5+sha1.a58c038faac410c947dbdb93eb30994037d0fce2"
 }

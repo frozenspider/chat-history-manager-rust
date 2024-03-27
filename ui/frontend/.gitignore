@@ -4,6 +4,9 @@
 .pnp.js
 .yarn/install-state.gz
 
+# Generated
+/src/core
+
 # Testing
 /coverage
 
