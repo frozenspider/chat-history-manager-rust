@@ -5,9 +5,8 @@
   "scripts": {
     "dev": "next dev",
     "copy-scalapb": "cp ../../scalapb/_scalapb.proto ../../scalapb/scalapb.proto",
-    "protobuf-js": "pnpm run copy-scalapb && protoc --js_out=core/protobuf:./src/ -I ../.. core/protobuf/entities.proto",
-    "protobuf-ts": "pnpm run copy-scalapb && protoc --plugin=protoc-gen-ts=./node_modules/.bin/protoc-gen-ts --ts_out=core/protobuf:./src -I ../.. core/protobuf/entities.proto",
-    "build": "pnpm run protobuf-js && pnpm run protobuf-ts && next build",
+    "protobuf": "pnpm run copy-scalapb && mkdir -p src/protobuf && protoc --plugin=./node_modules/.bin/protoc-gen-ts_proto --ts_proto_out=src/protobuf/ --ts_proto_opt=removeEnumPrefix=true --ts_proto_opt=emitImportedFiles=false --ts_proto_opt=oneof=unions --ts_proto_opt=env=browser --ts_proto_opt=esModuleInterop=true -I ../.. core/protobuf/entities.proto",
+    "build": "pnpm run protobuf && next build",
     "start": "next start",
     "lint": "next lint"
   },
@@ -15,7 +14,9 @@
     "@tauri-apps/api": "2.0.0-beta.6",
     "react": "^18",
     "react-dom": "^18",
-    "next": "14.1.4"
+    "next": "14.1.4",
+    "protobufjs": "^7.2.6",
+    "long": "^5.2.3"
   },
   "devDependencies": {
     "typescript": "^5",
@@ -27,8 +28,7 @@
     "tailwindcss": "^3.3.0",
     "eslint": "^8",
     "eslint-config-next": "14.1.4",
-    "grpc_tools_node_protoc_ts": "^5.3.3",
-    "protoc-gen-js": "^3.21.2"
+    "ts-proto": "^1.170.0"
   },
   "packageManager": "pnpm@8.15.5+sha1.a58c038faac410c947dbdb93eb30994037d0fce2"
 }

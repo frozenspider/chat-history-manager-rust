@@ -5,7 +5,7 @@
 .yarn/install-state.gz
 
 # Generated
-/src/core
+/src/protobuf
 
 # Testing
 /coverage
