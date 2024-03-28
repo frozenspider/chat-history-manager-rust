@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "copy-scalapb": "cp ../../scalapb/_scalapb.proto ../../scalapb/scalapb.proto",
-    "protobuf": "pnpm run copy-scalapb && mkdir -p src/protobuf && protoc --plugin=./node_modules/.bin/protoc-gen-ts_proto --ts_proto_out=src/protobuf/ --ts_proto_opt=removeEnumPrefix=true --ts_proto_opt=emitImportedFiles=false --ts_proto_opt=oneof=unions --ts_proto_opt=env=browser --ts_proto_opt=esModuleInterop=true -I ../.. core/protobuf/entities.proto",
+    "protobuf": "pnpm run copy-scalapb && mkdir -p src/protobuf && protoc --plugin=./node_modules/.bin/protoc-gen-ts_proto --ts_proto_out=src/protobuf/ --ts_proto_opt=removeEnumPrefix=true --ts_proto_opt=emitImportedFiles=false --ts_proto_opt=oneof=unions --ts_proto_opt=env=browser --ts_proto_opt=esModuleInterop=true --ts_proto_opt=snakeToCamel=false -I ../.. core/protobuf/entities.proto",
     "build": "pnpm run protobuf && next build",
     "start": "next start",
     "lint": "next lint"

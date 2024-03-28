@@ -5,8 +5,14 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
+chat-history-manager-core = { workspace = true }
+
 lazy_static = { workspace = true }
 anyhow = { workspace = true }
+
+# Serde
+serde = { workspace = true }
+serde_json = { workspace = true }
 
 # Tauri
 tauri = { version = "2.0.0-beta.13", features = [ "config-toml" ] }
